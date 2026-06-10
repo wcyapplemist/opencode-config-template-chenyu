@@ -339,10 +339,11 @@ USAGE:
     Usage: opencode --agent build 'implement auth feature'
             opencode --agent explore 'find all API routes'
  
-       SKILLS (54):
-           Framework (9):        test-generator-framework, linting-workflow,
+        SKILLS (55):
+            Framework (10):       test-generator-framework, linting-workflow,
                                   pr-creation-workflow, error-resolver-workflow,
                                   tdd-workflow, docx-creation, pptx-specialist,
+                                  ppt-template-filler,
                                   xlsx-specialist, pdf-specialist
 
           Language-Specific (4): python-pytest-creator, python-ruff-linter,
@@ -1217,10 +1218,10 @@ function Deploy-Skills {
         Write-Host "Deployed $skillCount skills to $SkillsDir" -ForegroundColor Green
         Write-Host ""
         Write-Host "  Skill Categories:" -ForegroundColor Cyan
-        Write-Host "    Framework (9):"
+        Write-Host "    Framework (10):"
         Write-Host "      - test-generator-framework, linting-workflow"
         Write-Host "      - pr-creation-workflow, error-resolver-workflow, tdd-workflow"
-        Write-Host "      - docx-creation, pptx-specialist"
+        Write-Host "      - docx-creation, pptx-specialist, ppt-template-filler"
         Write-Host "      - xlsx-specialist, pdf-specialist"
     - Language-Specific (4):"
         Write-Host "      - python-pytest-creator, python-ruff-linter"

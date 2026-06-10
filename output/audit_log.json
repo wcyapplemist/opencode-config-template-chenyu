@@ -1,0 +1,659 @@
+[
+  {
+    "TransactionDate": "2026-01-01",
+    "RawDescription": "Advice FAST Payment / Receipt INCOMING PAYNOW REF 0015767 FROM: SONG JIAQI# PAYNOW PAYMENT OTHER",
+    "Amount": "48.28",
+    "Balance": "24236.54",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-02",
+    "RawDescription": "Debit Card Transaction RM FOOD MANUFACTURING SI SGP 30DEC 4628-4504-1990-2995",
+    "Amount": "-1.00",
+    "Balance": "22302.46",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-03",
+    "RawDescription": "Debit Card Transaction MR COCONUT-FAR EAST PL SI SGP 31DEC 4628-4504-1990-2995",
+    "Amount": "-5.40",
+    "Balance": "22297.06",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-03",
+    "RawDescription": "Debit Card Transaction ATLASVENDING SINGAPORE SGP 30DEC 4628-4504-1990-2995",
+    "Amount": "-0.80",
+    "Balance": "22296.26",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-03",
+    "RawDescription": "Debit Card Transaction PULSE SINGAPORE 179 SGP 31DEC 4628-4504-1990-2995",
+    "Amount": "-159.90",
+    "Balance": "22136.36",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-03",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 01JAN 4628-4504-1990-2995",
+    "Amount": "-21.00",
+    "Balance": "22097.76",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-05",
+    "RawDescription": "Debit Card Transaction QIN JI ROUGAMO - TCM SI SGP 02JAN 4628-4504-1990-2995",
+    "Amount": "-100.00",
+    "Balance": "21953.58",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-05",
+    "RawDescription": "Debit Card Transaction BREADTALK-CM SINGAPORE SGP 02JAN 4628-4504-1990-2995",
+    "Amount": "-21.80",
+    "Balance": "21931.78",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-05",
+    "RawDescription": "Debit Card Transaction BUS/MRT 771322021 SI SGP 30DEC 4628-4504-1990-2995",
+    "Amount": "-2.56",
+    "Balance": "21929.22",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-05",
+    "RawDescription": "Debit Card Transaction 7-ELEVEN-CLEMENTI MRT SI SGP 01JAN 4628-4504-1990-2995",
+    "Amount": "-1.90",
+    "Balance": "21927.32",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-05",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 02JAN 4628-4504-1990-2995",
+    "Amount": "-20.00",
+    "Balance": "21907.32",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-06",
+    "RawDescription": "Debit Card Transaction BUS/MRT 771887598 SI SGP 31DEC 4628-4504-1990-2995",
+    "Amount": "-3.36",
+    "Balance": "21867.89",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-06",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 03JAN 4628-4504-1990-2995",
+    "Amount": "-19.00",
+    "Balance": "21848.89",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-06",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 04JAN 4628-4504-1990-2995",
+    "Amount": "-25.00",
+    "Balance": "21823.89",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-07",
+    "RawDescription": "Debit Card Transaction BUS/MRT 772910817 SI SGP 02JAN 4628-4504-1990-2995",
+    "Amount": "-2.56",
+    "Balance": "21852.27",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-08",
+    "RawDescription": "Debit Card Transaction 7-ELEVEN-6 CLEMENTI RD SI SGP 06JAN 4628-4504-1990-2995",
+    "Amount": "-2.90",
+    "Balance": "21839.77",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-09",
+    "RawDescription": "Debit Card Transaction MCDONALD'S (WCP) SI SGP 05JAN 4628-4504-1990-2995",
+    "Amount": "-13.15",
+    "Balance": "21826.62",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-09",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 07JAN 4628-4504-1990-2995",
+    "Amount": "-18.00",
+    "Balance": "21808.62",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-10",
+    "RawDescription": "Debit Card Transaction IDRINK SINGAPORE SGP 08JAN 4628-4504-1990-2995",
+    "Amount": "-4.00",
+    "Balance": "21804.62",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-12",
+    "RawDescription": "Debit Card Transaction BUS/MRT 775055394 SI SGP 06JAN 4628-4504-1990-2995",
+    "Amount": "-2.56",
+    "Balance": "21782.34",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-12",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 09JAN 4628-4504-1990-2995",
+    "Amount": "-17.00",
+    "Balance": "21765.34",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-13",
+    "RawDescription": "Debit Card Transaction MCDONALD'S (WCP) SI SGP 08JAN 4628-4504-1990-2995",
+    "Amount": "-16.55",
+    "Balance": "21748.73",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-13",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 10JAN 4628-4504-1990-2995",
+    "Amount": "-21.00",
+    "Balance": "21727.73",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-13",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 11JAN 4628-4504-1990-2995",
+    "Amount": "-24.00",
+    "Balance": "21703.73",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-13",
+    "RawDescription": "Debit Card Transaction DBS VISA DEBIT CASHBACK NOV 12JAN 4628-4504-1990-2995",
+    "Amount": "18.07",
+    "Balance": "21721.80",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-14",
+    "RawDescription": "Debit Card Transaction IDRINK SINGAPORE SGP 12JAN 4628-4504-1990-2995",
+    "Amount": "-5.60",
+    "Balance": "21694.36",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-14",
+    "RawDescription": "Debit Card Transaction BUS/MRT 776269660 SI SGP 08JAN 4628-4504-1990-2995 w",
+    "Amount": "-2.56",
+    "Balance": "21691.80",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-15",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 13JAN 4628-4504-1990-2995",
+    "Amount": "-23.00",
+    "Balance": "21668.80",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-15",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 13JAN 4628-4504-1990-2995",
+    "Amount": "-21.00",
+    "Balance": "21647.80",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-16",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 14JAN 4628-4504-1990-2995",
+    "Amount": "-18.00",
+    "Balance": "21629.20",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-17",
+    "RawDescription": "Debit Card Transaction BUS/MRT 778682422 SI SGP 12JAN 4628-4504-1990-2995",
+    "Amount": "-2.56",
+    "Balance": "21626.64",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-17",
+    "RawDescription": "Debit Card Transaction 7-ELEVEN-6 CLEMENTI RD SI SGP 15JAN 4628-4504-1990-2995",
+    "Amount": "-7.60",
+    "Balance": "21619.04",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-17",
+    "RawDescription": "Debit Card Transaction SLOPPY B SANDWICH ON G SI SGP 15JAN 4628-4504-1990-2995",
+    "Amount": "-12.80",
+    "Balance": "21606.24",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-17",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 15JAN 4628-4504-1990-2995",
+    "Amount": "-15.00",
+    "Balance": "21591.24",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-19",
+    "RawDescription": "Debit Card Transaction 7-ELEVEN-6 CLEMENTI RD SI SGP 16JAN 4628-4504-1990-2995",
+    "Amount": "-3.90",
+    "Balance": "21556.99",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-19",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 16JAN 4628-4504-1990-2995",
+    "Amount": "-22.00",
+    "Balance": "21534.99",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-20",
+    "RawDescription": "Debit Card Transaction OCTOBOX SINGAPORE SGP 17JAN 4628-4504-1990-2995",
+    "Amount": "-16.45",
+    "Balance": "21506.35",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-20",
+    "RawDescription": "Debit Card Transaction BUS/MRT 779933979 SI SGP 14JAN 4628-4504-1990-2995",
+    "Amount": "-2.56",
+    "Balance": "21503.79",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-20",
+    "RawDescription": "Debit Card Transaction JOLLIBEE NUS SINGAPORE SGP 16JAN 4628-4504-1990-2995",
+    "Amount": "-13.35",
+    "Balance": "21490.44",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-20",
+    "RawDescription": "Debit Card Transaction JOLLIBEE NUS SINGAPORE SGP 17JAN 4628-4504-1990-2995",
+    "Amount": "-16.10",
+    "Balance": "21474.34",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-20",
+    "RawDescription": "Debit Card Transaction BAOS PASTRY SINGAPO.. SI SGP 18JAN 4628-4504-1990-2995",
+    "Amount": "-43.10",
+    "Balance": "21431.24",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-21",
+    "RawDescription": "Debit Card Transaction THE SOY INC AX SINGAPORE SGP 19JAN 4628-4504-1990-2995",
+    "Amount": "-2.60",
+    "Balance": "21410.04",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-21",
+    "RawDescription": "Debit Card Transaction MR COCONUT-WESTGATE SI SGP 18JAN 4628-4504-1990-2995",
+    "Amount": "-7.20",
+    "Balance": "21402.84",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-21",
+    "RawDescription": "Debit Card Transaction SHOPEE SINGAPORE MP SI SGP 18JAN 4628-4504-1990-2995",
+    "Amount": "-3.99",
+    "Balance": "21398.85",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-21",
+    "RawDescription": "Debit Card Transaction BUS/MRT 780514038 SI SGP 15JAN 4628-4504-1990-2995",
+    "Amount": "-2.56",
+    "Balance": "21396.29",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-21",
+    "RawDescription": "Debit Card Transaction BUS/MRT 781107665 SI SGP 16JAN 4628-4504-1990-2995",
+    "Amount": "-2.56",
+    "Balance": "21393.73",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-22",
+    "RawDescription": "Debit Card Transaction THE SOY INC AX SINGAPORE SGP 20JAN 4628-4504-1990-2995",
+    "Amount": "-2.30",
+    "Balance": "21358.97",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-22",
+    "RawDescription": "Debit Card Transaction THE SOY INC AX SINGAPORE SGP 20JAN 4628-4504-1990-2995",
+    "Amount": "-4.10",
+    "Balance": "21354.87",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-22",
+    "RawDescription": "Debit Card Transaction BUS/MRT 782054785 SI SGP 17JAN 4628-4504-1990-2995",
+    "Amount": "-2.56",
+    "Balance": "21352.31",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-23",
+    "RawDescription": "Debit Card Transaction BUS/MRT 782458385 SI SGP 18JAN 4628-4504-1990-2995",
+    "Amount": "-3.27",
+    "Balance": "21308.03",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-23",
+    "RawDescription": "Debit Card Transaction ATLASVENDING SINGAPORE SGP 20JAN 4628-4504-1990-2995",
+    "Amount": "-1.10",
+    "Balance": "21306.93",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-23",
+    "RawDescription": "Debit Card Transaction ATLASVENDING SINGAPORE SGP 20JAN 4628-4504-1990-2995",
+    "Amount": "-1.10",
+    "Balance": "21305.83",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-24",
+    "RawDescription": "Debit Card Transaction OPENAI *CHATGPT SUBSCR OP USA 23JAN 4628-4504-1990-2995 USD21.80",
+    "Amount": "-28.94",
+    "Balance": "21267.69",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-24",
+    "RawDescription": "Debit Card Transaction IDRINK SINGAPORE SGP 22JAN 4628-4504-1990-2995",
+    "Amount": "-4.00",
+    "Balance": "21263.69",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-24",
+    "RawDescription": "Debit Card Transaction BUS/MRT 783043833 SI SGP 19JAN 4628-4504-1990-2995",
+    "Amount": "-2.56",
+    "Balance": "21261.13",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-24",
+    "RawDescription": "Debit Card Transaction DBS VISA DEBIT CASHBACK DEC 23JAN 4628-4504-1990-2995 w",
+    "Amount": "20.00",
+    "Balance": "21281.13",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-26",
+    "RawDescription": "Advice Bill Payment SPS-8955364263 : I-BANK REF: 17694289605761527120",
+    "Amount": "-77.87",
+    "Balance": "21188.06",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-26",
+    "RawDescription": "Debit Card Transaction BUS/MRT 783675438 SI SGP 20JAN 4628-4504-1990-2995",
+    "Amount": "-1.28",
+    "Balance": "19193.78",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-26",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 23JAN 4628-4504-1990-2995",
+    "Amount": "-19.00",
+    "Balance": "19174.78",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-27",
+    "RawDescription": "Debit Card Transaction YUE HWA CHINESE PRODUC SI SGP 24JAN 4628-4504-1990-2995",
+    "Amount": "-11.30",
+    "Balance": "19163.48",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-27",
+    "RawDescription": "Debit Card Transaction BUS/MRT 784290105 SI SGP 21JAN 4628-4504-1990-2995",
+    "Amount": "-1.28",
+    "Balance": "19162.20",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-27",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 25JAN 4628-4504-1990-2995",
+    "Amount": "-16.00",
+    "Balance": "19146.20",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-28",
+    "RawDescription": "Debit Card Transaction THE SOY INC AX SINGAPORE SGP 26JAN 4628-4504-1990-2995",
+    "Amount": "-4.10",
+    "Balance": "19142.10",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-28",
+    "RawDescription": "Debit Card Transaction BUS/MRT 785472899 SI SGP 23JAN 4628-4504-1990-2995",
+    "Amount": "-3.50",
+    "Balance": "19138.60",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-28",
+    "RawDescription": "Debit Card Transaction BUS/MRT 784875314 SI SGP 22JAN 4628-4504-1990-2995",
+    "Amount": "-2.56",
+    "Balance": "19136.04",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-28",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 26JAN 4628-4504-1990-2995",
+    "Amount": "-22.00",
+    "Balance": "19114.04",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-29",
+    "RawDescription": "Debit Card Transaction BUS/MRT 786435296 SI SGP 24JAN 4628-4504-1990-2995",
+    "Amount": "-4.01",
+    "Balance": "19110.03",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-29",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 27JAN 4628-4504-1990-2995 w",
+    "Amount": "-23.00",
+    "Balance": "19087.03",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-29",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 27JAN 4628-4504-1990-2995",
+    "Amount": "-24.00",
+    "Balance": "19063.03",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-30",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 28JAN 4628-4504-1990-2995",
+    "Amount": "-20.00",
+    "Balance": "19043.03",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-31",
+    "RawDescription": "Debit Card Transaction BUS/MRT 787440920 SI SGP 26JAN 4628-4504-1990-2995",
+    "Amount": "-2.56",
+    "Balance": "19040.47",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-31",
+    "RawDescription": "Debit Card Transaction FOODPANDA SINGAPORE SI SGP 29JAN 4628-4504-1990-2995",
+    "Amount": "-22.00",
+    "Balance": "19018.47",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  },
+  {
+    "TransactionDate": "2026-01-31",
+    "RawDescription": "Interest Earned",
+    "Amount": "0.93",
+    "Balance": "19019.40",
+    "Reason": "low confidence: 0.15; empty category",
+    "OriginalCategory": null,
+    "OriginalCounterparty": null
+  }
+]

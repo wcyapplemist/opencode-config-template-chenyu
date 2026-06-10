@@ -531,10 +531,11 @@ USAGE:
       microsoft-copilot  M365 Copilot conversations
       microsoft-dataverse Business data (Dynamics 365)
 
-   SKILLS (52):
-            Framework (9):        test-generator-framework, linting-workflow,
+   SKILLS (53):
+            Framework (10):       test-generator-framework, linting-workflow,
                                   pr-creation-workflow, error-resolver-workflow,
                                   tdd-workflow, docx-creation, pptx-specialist,
+                                  ppt-template-filler,
                                   xlsx-specialist, pdf-specialist
 
           Language-Specific (4): python-pytest-creator, python-ruff-linter,
