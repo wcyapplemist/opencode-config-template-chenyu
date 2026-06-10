@@ -13,8 +13,9 @@ metadata:
 I fill the PowerPoint template (`template.pptx`) with structured content using `ppt_builder.py`. I am the **only approved method** for generating presentations from structured data.
 
 - Accept a JSON array (`slide_data_list`) and render it into a `.pptx` file
-- Use two slide types: `title_slide` and `content_slide`
+- Resolve Slide Master layouts **by name** (robust to layout reordering)
 - Add slides from the template's Slide Master layouts, filling placeholders by type
+- Write English speaker notes to each slide's Notes pane (Presenter View only)
 - Handle missing placeholders gracefully with warnings (never crash)
 
 ## When to use me
@@ -39,24 +40,40 @@ The engine uses a single template:
 
 ### Layout Mapping
 
-| Slide Type | Layout Index | Layout Name | Placeholders Used |
-|------------|-------------|-------------|-------------------|
-| `title_slide` | 0 | Title Slide | TITLE + SUBTITLE |
-| `content_slide` | 8 | Title and content | CENTER_TITLE + OBJECT |
+Layouts are resolved **by name**, not by index. The default mapping (`slide_type` → layout name) lives in `_LAYOUT_NAME_MAP` inside `ppt_builder.py`; `template.config.json` overrides the name for `title_slide` / `content_slide`.
+
+| Slide Type | Layout Name (template.pptx) | Placeholders Used |
+|------------|-----------------------------|-------------------|
+| `title_slide` | `Title Slide` | CENTER_TITLE + SUBTITLE |
+| `content_slide` | `Title and Content` | TITLE + OBJECT |
+| `section_header_slide` | `Section Header` | TITLE + BODY |
+| `two_content_slide` | `7_Two Content` | TITLE + OBJECT×2 |
+| `closing_slide` | `End` | CENTER_TITLE + SUBTITLE |
+
+```json
+{
+  "title_slide_layout": "Title Slide",
+  "content_slide_layout": "Title and Content"
+}
+```
 
 ## Input Data Format
+
+**Language: English only.** All slide content AND speaker notes MUST be in English. Do not translate into any other language, even if the request is in Chinese or explicitly asks for a non-English deck.
 
 ```json
 [
   {
     "slide_type": "title_slide",
     "title": "BETEKK 2026 Q1 Quarterly Review",
-    "subtitle": "March 2026"
+    "subtitle": "March 2026",
+    "notes": "KEY MESSAGE: Open with energy — set the context in one line.\n\"Hold the slide for two seconds before you speak.\"\n\"Good [morning/afternoon], I'm [Name]. Welcome to our Q1 review — the short version is, we had a strong quarter.\"\nPause. Let it land.\n\"I'll take you through the numbers, then what's next.\"\nTRANSITION: \"Let's look at the numbers.\"\nCOACHING: Eye contact, confident. Do not read the slide."
   },
   {
     "slide_type": "content_slide",
     "title": "Key Business Metrics",
-    "body": "**Revenue Growth** — 32% YoY increase\n**New Contracts** — 18 signed this quarter\n**Customer Satisfaction** — 96.5% approval rating"
+    "body": "**Revenue Growth** — 32% YoY increase\n**New Contracts** — 18 signed this quarter\n**Customer Satisfaction** — 96.5% approval rating",
+    "notes": "KEY MESSAGE: Strong across every metric — revenue, pipeline, and satisfaction.\n\"Three numbers tell the story this quarter.\"\n\"Revenue is up thirty-two percent year on year — our fastest growth yet.\"\nPause. Let the number land.\n\"We signed eighteen new contracts, and customer satisfaction sits at ninety-six-point-five percent.\"\n\"Ask yourself: which of these would you lead with to your board?\"\nTRANSITION: \"Here is what actually drove these results.\"\nCOACHING: Matter-of-fact tone. Be ready for: \"Is the satisfaction score biased?\" — answer: independent survey, 200+ respondents."
   }
 ]
 ```
@@ -65,10 +82,12 @@ The engine uses a single template:
 
 | Field | Required | Slide Type | Description |
 |-------|----------|------------|-------------|
-| `slide_type` | Yes | All | Must be `"title_slide"` or `"content_slide"` |
+| `slide_type` | Yes | All | One of: `title_slide`, `content_slide`, `section_header_slide`, `two_content_slide`, `closing_slide` |
 | `title` | Yes | All | Main heading text |
-| `subtitle` | No | `title_slide` only | Subheading text |
-| `body` | No | `content_slide` only | Body content. `\n` = new paragraph. Format: `**Title** — Description` |
+| `subtitle` | No | `title_slide`, `closing_slide` | Subheading text |
+| `body` | No | `content_slide`, `content_image_slide` | Body content. `\n` = new paragraph. Format: `**Title** — Description` |
+| `body_left` / `body_right` | No | `two_content_slide`, `comparison_slide` | Left/right column body (same body-text format) |
+| `notes` | Yes | All | Full English presenter script (**~120–180 words**). Written to the slide's Notes pane (Presenter View only). `\n` = new paragraph. Must be **spoken dialogue** (quoted, speakable sentences tied to the slide's content), **interspersed stage directions**, a `TRANSITION` line, and `COACHING` with delivery + an anticipated Q&A — NOT bullet summaries. Cover/closing use `[Name]` / `[morning/afternoon]` placeholders. |
 
 ### Body Text Parsing
 

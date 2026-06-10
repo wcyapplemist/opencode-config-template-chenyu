@@ -19,6 +19,9 @@ venv/
 .DS_Store
 Thumbs.db
 
+# Office lock files (temp files created when a doc is open)
+~$*
+
 # Docker
 .env
 

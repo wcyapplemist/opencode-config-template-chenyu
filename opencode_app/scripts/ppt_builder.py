@@ -3,8 +3,12 @@ ppt_builder.py
 ==============
 PPT engine using template.pptx Slide Master layouts with proper placeholders.
 
-Loads the template, adds new slides from named layouts, fills placeholders
-by type (TITLE, SUBTITLE, OBJECT), and saves the result.
+Loads the template, adds new slides from named layouts (resolved by name, not
+index, so layout reordering does not break it), fills placeholders by type
+(TITLE, SUBTITLE, OBJECT), and saves the result.
+
+Layouts are matched by name via ``_LAYOUT_NAME_MAP``; ``template.config.json``
+may override the layout name for ``title_slide`` / ``content_slide``.
 
 Usage:
     from ppt_builder import generate_ppt_from_data, DEFAULT_OUTPUT_DIR
@@ -46,37 +50,55 @@ _OBJECT_TYPE = PP_PLACEHOLDER.OBJECT
 
 _REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
-_EXTENDED_LAYOUT_MAP: Dict[str, int] = {
-    "title_slide": 0,
-    "agenda_slide": 1,
-    "section_header_slide": 2,
-    "section_header_sub_image_slide": 3,
-    "content_image_slide": 4,
-    "section_header_sub_slide": 5,
-    "two_content_dark_slide": 6,
-    "two_content_white_slide": 7,
-    "content_slide": 8,
-    "content_table_slide": 9,
-    "content_2_slide": 10,
-    "content_dark_slide": 11,
-    "closing_slide": 12,
+_LAYOUT_NAME_MAP: Dict[str, List[str]] = {
+    "title_slide": ["Title Slide"],
+    "closing_slide": ["End"],
+    "section_header_slide": ["Section Header"],
+    "content_slide": ["Title and Content"],
+    "two_content_slide": ["7_Two Content"],
+    "comparison_slide": ["Comparison"],
+    "content_image_slide": ["Picture with Caption"],
 }
 
 _LAYOUTS_WITH_SUBTITLE = {
-    "title_slide", "agenda_slide", "closing_slide",
-    "section_header_sub_slide",
+    "title_slide", "closing_slide",
 }
 _LAYOUTS_WITH_BODY = {
     "content_slide", "content_image_slide",
-    "content_2_slide", "content_table_slide",
-}
-_LAYOUTS_WITH_BODY_AS_SUBTITLE = {
-    "section_header_sub_image_slide",
 }
 _LAYOUTS_WITH_TWO_BODIES = {
-    "two_content_dark_slide", "two_content_white_slide",
-    "content_dark_slide",
+    "two_content_slide", "comparison_slide",
 }
+
+
+def _normalize_layout_name(name: str) -> str:
+    return re.sub(r"^\d+_", "", name).strip().lower()
+
+
+def _build_layout_index(prs: Presentation) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    exact: Dict[str, Any] = {}
+    normalized: Dict[str, Any] = {}
+    for layout in prs.slide_layouts:
+        nm = layout.name
+        exact[nm.lower()] = layout
+        norm_key = _normalize_layout_name(nm)
+        normalized.setdefault(norm_key, layout)
+    return exact, normalized
+
+
+def _resolve_layout(
+    candidate_names: List[str],
+    exact: Dict[str, Any],
+    normalized: Dict[str, Any],
+) -> Optional[Any]:
+    for cand in candidate_names:
+        if cand.lower() in exact:
+            return exact[cand.lower()]
+    for cand in candidate_names:
+        key = _normalize_layout_name(cand)
+        if key in normalized:
+            return normalized[key]
+    return None
 
 
 def _load_config() -> Dict[str, Any]:
@@ -148,6 +170,18 @@ def _parse_line(line: str) -> Tuple[str, str]:
     return (clean, "")
 
 
+def _set_notes(slide: Any, notes_text: str) -> bool:
+    text = (notes_text or "").strip()
+    if not text:
+        return False
+    try:
+        slide.notes_slide.notes_text_frame.text = text
+        return True
+    except Exception as exc:
+        logger.warning("Failed to set notes: %s", exc)
+        return False
+
+
 def _set_body_text(shape: Any, text: str) -> bool:
     if not shape or not shape.has_text_frame:
         return False
@@ -193,8 +227,6 @@ def generate_ppt_from_data(
     output.parent.mkdir(parents=True, exist_ok=True)
 
     config = _load_config()
-    title_layout_idx = config.get("title_slide_layout", 0)
-    content_layout_idx = config.get("content_slide_layout", 8)
 
     logger.info("Loading template: %s", template.name)
     prs = Presentation(str(template))
@@ -203,22 +235,33 @@ def generate_ppt_from_data(
     removed = _remove_all_slides(prs)
     logger.info("Cleared %d example slides", removed)
 
+    exact_idx, norm_idx = _build_layout_index(prs)
+
     for page_num, slide_data in enumerate(slide_data_list, start=1):
         slide_type = slide_data.get("slide_type", "")
 
-        # Determine layout index
-        if slide_type in _EXTENDED_LAYOUT_MAP:
-            layout_idx = _EXTENDED_LAYOUT_MAP[slide_type]
-        elif slide_type == "title_slide":
-            layout_idx = min(title_layout_idx, len(prs.slide_layouts) - 1)
-        elif slide_type == "content_slide":
-            layout_idx = min(content_layout_idx, len(prs.slide_layouts) - 1)
+        # Resolve layout by name (config overrides take precedence)
+        if slide_type == "title_slide" and config.get("title_slide_layout"):
+            candidates = [config["title_slide_layout"]]
+        elif slide_type == "content_slide" and config.get("content_slide_layout"):
+            candidates = [config["content_slide_layout"]]
         else:
+            candidates = _LAYOUT_NAME_MAP.get(slide_type)
+
+        if not candidates:
             logger.warning("Page %d: unknown slide_type '%s', skipped", page_num, slide_type)
             continue
 
+        layout = _resolve_layout(candidates, exact_idx, norm_idx)
+        if layout is None:
+            logger.warning(
+                "Page %d: no layout matched %s for slide_type '%s', skipped",
+                page_num, candidates, slide_type,
+            )
+            continue
+
+        layout_idx = prs.slide_layouts.index(layout)
         try:
-            layout = prs.slide_layouts[layout_idx]
             slide = prs.slides.add_slide(layout)
             logger.info("Page %d: added slide from layout[%d] '%s'", page_num, layout_idx, layout.name)
 
@@ -249,15 +292,6 @@ def generate_ppt_from_data(
                         _set_body_text(body_ph, body_text)
                         logger.info("  Body: %d lines", len([l for l in body_text.split("\n") if l.strip()]))
 
-            # Fill body as subtitle (section_header_sub_image uses BODY placeholder for description)
-            if slide_type in _LAYOUTS_WITH_BODY_AS_SUBTITLE:
-                subtitle_text = slide_data.get("subtitle", "")
-                if subtitle_text:
-                    body_ph = _find_body_placeholder(slide)
-                    if body_ph:
-                        _set_text(body_ph, subtitle_text)
-                        logger.info("  Body-as-subtitle: \"%s\"", subtitle_text[:50])
-
             # Fill two body areas (for two-content slides)
             if slide_type in _LAYOUTS_WITH_TWO_BODIES:
                 body_left = slide_data.get("body_left", "")
@@ -273,6 +307,11 @@ def generate_ppt_from_data(
                 elif len(objects) == 1 and (body_left or body_right):
                     _set_body_text(objects[0], body_left or body_right)
 
+            # Fill speaker notes (must be English; only visible in Presenter View)
+            notes_text = slide_data.get("notes", "")
+            if _set_notes(slide, notes_text):
+                logger.info("  Notes: %d chars", len(notes_text))
+
         except Exception as exc:
             logger.error("Page %d failed: %s", page_num, exc)
 
@@ -283,7 +322,20 @@ def generate_ppt_from_data(
 
 def main() -> None:
     mock: List[Dict[str, Any]] = [
-        {"slide_type": "title_slide", "title": "AI Empowering Finance", "subtitle": "2026 Q1"},
+        {
+            "slide_type": "title_slide",
+            "title": "AI Empowering Finance",
+            "subtitle": "2026 Q1",
+            "notes": (
+                "KEY MESSAGE: Open with energy — set the stakes in one line.\n"
+                "\"Hold the slide for two seconds before you speak.\"\n"
+                "\"Good [morning/afternoon], I'm [Name]. Today I want to show you how AI is already transforming finance — not in theory, but in the numbers.\"\n"
+                "Pause. Let the tagline land.\n"
+                "\"We'll walk through where it delivers the clearest ROI today.\"\n"
+                "TRANSITION: \"Let me start with the core scenarios.\"\n"
+                "COACHING: Eye contact, confident. Do not read the slide. Be ready for: \"Is this hype or real?\" — lead with the 80 percent figure."
+            ),
+        },
         {
             "slide_type": "content_slide",
             "title": "Core AI Scenarios",
@@ -293,6 +345,16 @@ def main() -> None:
                 "**Fraud Detection** \u2014 Real-time anomaly detection with automated alerts\n"
                 "**Tax Optimization** \u2014 ML identifies savings opportunities across tax structures"
             ),
+            "notes": (
+                "KEY MESSAGE: Four high-impact scenarios where AI already delivers measurable ROI.\n"
+                "\"Let's make this concrete. These aren't edge cases — this is everyday finance.\"\n"
+                "\"Automated reporting alone removes eighty percent of the manual effort behind every monthly close.\"\n"
+                "Pause. Let the number land.\n"
+                "\"Smart reconciliation now matches transactions at ninety-nine-point-five percent accuracy, and fraud detection flags anomalies in real time.\"\n"
+                "\"Ask your CFO: how much would one missed discrepancy cost?\"\n"
+                "TRANSITION: \"Here is how we roll this out.\"\n"
+                "COACHING: Matter-of-fact tone, don't over-sell. Be ready for: \"What about false positives?\" — answer: tuned thresholds, human-in-the-loop review."
+            ),
         },
         {
             "slide_type": "content_slide",
@@ -301,6 +363,14 @@ def main() -> None:
                 "**Phase 1: Pilot** \u2014 Deploy in 2 business units by Q2\n"
                 "**Phase 2: Scale** \u2014 Expand to all departments by Q4\n"
                 "**Phase 3: Full Deployment** \u2014 Organization-wide adoption by 2027"
+            ),
+            "notes": (
+                "KEY MESSAGE: A phased, low-risk rollout — pilot, scale, then full adoption.\n"
+                "\"We don't boil the ocean. We pilot in two units first, prove the numbers, then scale.\"\n"
+                "\"By Q4 every department is on board, and full organisation-wide adoption lands in 2027.\"\n"
+                "Walk the three phases left to right.\n"
+                "TRANSITION: Open for questions.\n"
+                "COACHING: Keep it tight, end with confidence. Be ready for: \"What could delay Phase 2?\" — answer: only change-management, never the technology."
             ),
         },
     ]

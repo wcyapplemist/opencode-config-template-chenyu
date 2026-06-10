@@ -1,38 +1,56 @@
+"""
+debug_slides.py
+===============
+Generic slide inspector for template.pptx.
+
+Dumps every slide's text shapes (name + text) so you can discover the exact
+shape names needed to edit the BETEKK CanvasTEKK deck. Read-only — does not
+modify or save the template.
+
+Usage:
+    python output/debug_slides.py
+"""
+
 import sys
+from pathlib import Path
+
 from pptx import Presentation
 
-sys.stdout.reconfigure(encoding='utf-8')
+sys.stdout.reconfigure(encoding="utf-8")
 
-TEMPLATE = r'D:\BETEKK\opencode-config-template\opencode_app\scripts\templates\template.pptx'
+TEMPLATE = Path(__file__).resolve().parent.parent / "scripts" / "templates" / "template.pptx"
 
-prs = Presentation(TEMPLATE)
-print(f"Initial slides: {len(prs.slides)}")
 
-def delete_slide(prs, index):
-    rId = prs.slides._sldIdLst[index].get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
-    prs.part.drop_rel(rId)
-    sldId = prs.slides._sldIdLst[index]
-    prs.slides._sldIdLst.remove(sldId)
+def shape_text(shape) -> str:
+    if not shape.has_text_frame:
+        return "(no text frame)"
+    parts = []
+    for para in shape.text_frame.paragraphs:
+        line = "".join(run.text for run in para.runs).strip()
+        if line:
+            parts.append(line)
+    return " | ".join(parts)
 
-# Delete slides 10, 8, 5 (from highest to lowest)
-delete_slide(prs, 10)
-print(f"After delete 10: {len(prs.slides)}")
 
-delete_slide(prs, 8)
-print(f"After delete 8: {len(prs.slides)}")
+def main() -> None:
+    if not TEMPLATE.exists():
+        print(f"ERROR: template not found: {TEMPLATE}")
+        sys.exit(1)
 
-delete_slide(prs, 5)
-print(f"After delete 5: {len(prs.slides)}")
+    prs = Presentation(str(TEMPLATE))
+    print(f"Template: {TEMPLATE.name}")
+    print(f"Slides: {len(prs.slides)}  |  Layouts: {len(prs.slide_layouts)}\n")
 
-for i, slide in enumerate(prs.slides):
-    title = ""
-    for shape in slide.shapes:
-        if shape.has_text_frame:
-            for para in shape.text_frame.paragraphs:
-                txt = "".join(r.text for r in para.runs)
-                if txt.strip():
-                    title = txt.strip()[:60]
-                    break
-        if title:
-            break
-    print(f"  Slide {i}: {title}")
+    for i, slide in enumerate(prs.slides):
+        print(f"--- Slide {i} ---")
+        for shape in slide.shapes:
+            if not shape.has_text_frame:
+                continue
+            text = shape_text(shape)
+            if text:
+                print(f"  [{shape.name}] {text[:80]}")
+        print()
+
+
+if __name__ == "__main__":
+    main()
