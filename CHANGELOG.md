@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/wcyapplemist/opencode-config-template-chenyu/compare/v1.0.0...v1.1.0) (2026-06-11)
+
+
+### Features
+
+* **ppt-engine:** name-based layouts, English-only output, template-style speaker notes ([05282a6](https://github.com/wcyapplemist/opencode-config-template-chenyu/commit/05282a6a37c38576ee94abe4bd15e0af8472683f))
+
 # 1.0.0 (2026-06-10)
 
 
