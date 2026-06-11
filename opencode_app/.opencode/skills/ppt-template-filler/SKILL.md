@@ -10,10 +10,10 @@ metadata:
 
 ## What I do
 
-I fill the PowerPoint template (`template.pptx`) with structured content using `ppt_builder.py`. I am the **only approved method** for generating presentations from structured data.
+I fill the PowerPoint template (`template_tagged.pptx` preferred, `template.pptx` fallback) with structured content using `ppt_builder.py`. I am the **only approved method** for generating presentations from structured data.
 
 - Accept a JSON array (`slide_data_list`) and render it into a `.pptx` file
-- Resolve Slide Master layouts **by name** (robust to layout reordering)
+- Resolve Slide Master layouts **by name** via embedded `<p:ext>` metadata (preferred) or hardcoded mapping (fallback)
 - Add slides from the template's Slide Master layouts, filling placeholders by type
 - Write English speaker notes to each slide's Notes pane (Presenter View only)
 - Handle missing placeholders gracefully with warnings (never crash)
@@ -35,12 +35,23 @@ The engine uses a single template:
 
 | File | Description |
 |------|-------------|
-| `scripts/templates/template.pptx` | Slide Master template with named layouts and placeholders |
-| `scripts/templates/template.config.json` | Layout index mapping (`title_slide_layout`, `content_slide_layout`) |
+| `scripts/templates/template_tagged.pptx` | Slide Master template with embedded `<p:ext>` layout metadata (preferred) |
+| `scripts/templates/template.pptx` | Slide Master template without metadata (fallback) |
+| `scripts/templates/template.config.json` | Layout index mapping (`title_slide_layout`, `content_slide_layout`) — legacy override |
+| `scripts/inspect_template.py` | Reads layout metadata and outputs a JSON manifest |
 
 ### Layout Mapping
 
-Layouts are resolved **by name**, not by index. The default mapping (`slide_type` → layout name) lives in `_LAYOUT_NAME_MAP` inside `ppt_builder.py`; `template.config.json` overrides the name for `title_slide` / `content_slide`.
+Layouts are resolved **by name**, not by index. The engine uses a two-tier resolution:
+
+1. **Metadata-driven (preferred)**: If `template_tagged.pptx` exists, the engine reads `<p:ext>` metadata from each layout to build the mapping dynamically. Each layout declares a `templateId`, `compatibleWith` (backward compat), and `slots`.
+2. **Hardcoded fallback**: Uses `_LAYOUT_NAME_MAP` inside `ppt_builder.py`; `template.config.json` overrides the name for `title_slide` / `content_slide`.
+
+To discover all available layouts at runtime:
+
+```bash
+python scripts/inspect_template.py scripts/templates/template_tagged.pptx
+```
 
 | Slide Type | Layout Name (template.pptx) | Placeholders Used |
 |------------|-----------------------------|-------------------|
@@ -80,21 +91,57 @@ Layouts are resolved **by name**, not by index. The default mapping (`slide_type
 
 ### Field Reference
 
-| Field | Required | Slide Type | Description |
-|-------|----------|------------|-------------|
-| `slide_type` | Yes | All | One of: `title_slide`, `content_slide`, `section_header_slide`, `two_content_slide`, `closing_slide` |
-| `title` | Yes | All | Main heading text |
-| `subtitle` | No | `title_slide`, `closing_slide` | Subheading text |
-| `body` | No | `content_slide`, `content_image_slide` | Body content. `\n` = new paragraph. Format: `**Title** — Description` |
-| `body_left` / `body_right` | No | `two_content_slide`, `comparison_slide` | Left/right column body (same body-text format) |
-| `notes` | Yes | All | Full English presenter script (**~120–180 words**). Written to the slide's Notes pane (Presenter View only). `\n` = new paragraph. Must be **spoken dialogue** (quoted, speakable sentences tied to the slide's content), **interspersed stage directions**, a `TRANSITION` line, and `COACHING` with delivery + an anticipated Q&A — NOT bullet summaries. Cover/closing use `[Name]` / `[morning/afternoon]` placeholders. |
+| Field | Required | Description |
+|-------|----------|-------------|
+| `slide_type` | Yes | A legacy type (`title_slide`, `content_slide`, `section_header_slide`, `two_content_slide`, `closing_slide`) OR a `templateId` from `inspect_template.py` |
+| `title` | Yes | Main heading text |
+| `subtitle` | No | Subheading text (legacy types + some slot-based types) |
+| `body` | No | Body content for single-body layouts (legacy only). `\n` = new paragraph. Format: `**Title** — Description` |
+| `body_left` / `body_right` | No | Left/right column body (legacy `two_content_slide` only) |
+| `slots` | No | Dict of `{role: content}` for slot-based layouts. Keys match the `role` field from metadata. Body-style slots accept `**Title** — Description` format |
+| `notes` | Yes | Full English presenter script (**~100–150 words**). Written to the slide's Notes pane (Presenter View only). `\n` = new paragraph. Must be **spoken dialogue**, **stage directions**, a `TRANSITION` line, and `COACHING** — NOT bullet summaries. |
 
-### Body Text Parsing
+### Slot-Based Layouts
 
-Each line is parsed into a bold title run + description run:
-- Split at first ` — `, ` - `, or `: `
-- `**` markers stripped automatically
-- No card slot limit — body is a single multi-paragraph block
+When using a `templateId` as `slide_type`, provide content via the `slots` dict:
+
+```json
+[
+  {
+    "slide_type": "title_slide",
+    "title": "Quarterly Review",
+    "subtitle": "Q3 2026",
+    "notes": "..."
+  },
+  {
+    "slide_type": "content_three_column",
+    "title": "Performance Highlights",
+    "slots": {
+      "col_1": "**Revenue** — $4.2M (+32% YoY)",
+      "col_2": "**Margin** — 38% (target: 35%)",
+      "col_3": "**NPS** — 72 (industry avg: 55)"
+    },
+    "notes": "..."
+  },
+  {
+    "slide_type": "content_grid_2x2",
+    "title": "SWOT Analysis",
+    "slots": {
+      "cell_top_left": "**Strengths** — Market leader in SE Asia",
+      "cell_top_right": "**Weaknesses** — Limited EU presence",
+      "cell_bottom_left": "**Opportunities** — Green building mandate",
+      "cell_bottom_right": "**Threats** — Low-cost competitors"
+    },
+    "notes": "..."
+  },
+  {
+    "slide_type": "closing_slide",
+    "title": "Thank You",
+    "subtitle": "Questions?",
+    "notes": "..."
+  }
+]
+```
 
 ## Output Path
 
