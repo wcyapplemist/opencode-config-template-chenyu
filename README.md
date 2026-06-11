@@ -244,7 +244,7 @@ This repository implements **skill modularization** with 54 skills organized acr
 | **open3d-specialist-subagent** | Open3D 3D data processing guidance | (documentation search + version-specific guidance) | — |
 | **explorer-subagent** | Fast codebase exploration and analysis | (built-in search capabilities) | — |
 | **nextjs-mcp-advisor-subagent** | Next.js runtime guidance with MCP | nextjs-pr-workflow, nextjs-unit-test-creator | — |
-| **pptx-specialist-subagent** | PowerPoint presentations via template filling | ppt-template-filler | — |
+| **pptx-subagent** | PowerPoint presentations via template filling | ppt-template-filler | — |
 | **startup-ceo-subagent** | Startup presentations (pitch decks, investor slides, board updates) | pptx-specialist | — |
 
 > **Built-in Delegation**: Subagents with `explore` can delegate codebase scanning to the built-in `explore` subagent. Subagents with `general` can delegate parallelizable multi-step work to the built-in `general` subagent. Access is controlled via `task` permissions in each agent's frontmatter (`"*": deny` by default, explicit allowlist).
@@ -257,7 +257,7 @@ Some subagents recognize natural language triggers:
 |----------|-----------------|
 | **pr-workflow-subagent** | "create pr", "pr merge to [branch]", "merge to main", "pull request" |
 | **ticket-creation-subagent** | "create issue", "new ticket", "jira ticket" |
-| **pptx-specialist-subagent** | "PowerPoint", ".pptx", "presentation", "slides", "deck", "html to pptx" |
+| **pptx-subagent** | "PowerPoint", ".pptx", "presentation", "slides", "deck", "html to pptx" |
 | **startup-ceo-subagent** | "pitch deck", "investor deck", "board update", "fundraising", "demo day" |
 
 ### Skill Architecture

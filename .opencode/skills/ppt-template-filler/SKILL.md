@@ -22,7 +22,7 @@ I fill the PowerPoint template (`template.pptx`) with structured content using `
 
 Use this skill when:
 - You have structured content (JSON array) and need a `.pptx` output
-- The `pptx-specialist-subagent` delegates template-filling work
+- The `pptx-subagent` delegates template-filling work
 
 Do NOT use for:
 - Creating presentations from scratch
@@ -98,7 +98,7 @@ Each line is parsed into a bold title run + description run:
 
 ## Output Path
 
-Output files saved under `D:\BETEKK\opencode-config-template\opencode_app\output\`.
+Output files saved under `<project_root>/output/`.
 
 ## Execution
 
