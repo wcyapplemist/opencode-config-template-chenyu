@@ -28,8 +28,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from pptx import Presentation
+from pptx.chart.data import CategoryChartData
+from pptx.dml.color import RGBColor
+from pptx.enum.chart import XL_CHART_TYPE, XL_LABEL_POSITION, XL_LEGEND_POSITION
 from pptx.enum.shapes import PP_PLACEHOLDER
-from pptx.util import Pt
+from pptx.util import Inches, Pt
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,6 +61,7 @@ _LAYOUT_NAME_MAP: Dict[str, List[str]] = {
     "two_content_slide": ["7_Two Content"],
     "comparison_slide": ["Comparison"],
     "content_image_slide": ["Picture with Caption"],
+    "chart_slide": ["Blank"],
 }
 
 _LAYOUTS_WITH_SUBTITLE = {
@@ -68,6 +72,55 @@ _LAYOUTS_WITH_BODY = {
 }
 _LAYOUTS_WITH_TWO_BODIES = {
     "two_content_slide", "comparison_slide",
+}
+_LAYOUTS_WITH_CHART = {
+    "chart_slide",
+}
+
+_CHART_TYPE_MAP: Dict[str, Any] = {
+    "bar":                    XL_CHART_TYPE.COLUMN_CLUSTERED,
+    "bar_stacked":            XL_CHART_TYPE.COLUMN_STACKED,
+    "bar_horizontal":         XL_CHART_TYPE.BAR_CLUSTERED,
+    "bar_horizontal_stacked": XL_CHART_TYPE.BAR_STACKED,
+    "pie":                    XL_CHART_TYPE.PIE,
+    "pie_exploded":           XL_CHART_TYPE.PIE_EXPLODED,
+    "doughnut":               XL_CHART_TYPE.DOUGHNUT,
+    "line":                   XL_CHART_TYPE.LINE,
+    "line_markers":           XL_CHART_TYPE.LINE_MARKERS,
+}
+
+_LEGEND_POSITION_MAP: Dict[str, Any] = {
+    "bottom": XL_LEGEND_POSITION.BOTTOM,
+    "right":  XL_LEGEND_POSITION.RIGHT,
+    "top":    XL_LEGEND_POSITION.TOP,
+    "left":   XL_LEGEND_POSITION.LEFT,
+}
+
+_CHART_COLORS: List[RGBColor] = [
+    RGBColor(0x44, 0x72, 0xC4),
+    RGBColor(0xED, 0x7D, 0x31),
+    RGBColor(0xFF, 0xC0, 0x00),
+    RGBColor(0x5B, 0x9B, 0xD5),
+    RGBColor(0x70, 0xAD, 0x47),
+    RGBColor(0x95, 0x4F, 0x72),
+    RGBColor(0x44, 0x54, 0x6A),
+    RGBColor(0xA5, 0xA5, 0xA5),
+]
+
+_CHART_FONT_NAME = "Calibri"
+_CHART_GRIDLINE_COLOR = RGBColor(0xE7, 0xE6, 0xE6)
+_CHART_AXIS_COLOR = RGBColor(0x44, 0x54, 0x6A)
+_CHART_TEXT_COLOR = RGBColor(0x44, 0x54, 0x6A)
+
+_CHART_DEFAULT_TYPE = "bar"
+_CHART_X = Inches(0.92)
+_CHART_Y = Inches(2.0)
+_CHART_CX = Inches(11.5)
+_CHART_CY = Inches(4.5)
+
+_PIE_CHART_TYPES = {"pie", "pie_exploded", "doughnut"}
+_BAR_CHART_TYPES = {
+    "bar", "bar_stacked", "bar_horizontal", "bar_horizontal_stacked",
 }
 
 
@@ -210,6 +263,156 @@ def _set_body_text(shape: Any, text: str) -> bool:
         return False
 
 
+def _apply_series_colors(chart: Any, chart_type_key: str) -> None:
+    is_pie = chart_type_key in _PIE_CHART_TYPES
+    try:
+        plot = chart.plots[0]
+        if is_pie:
+            for idx, point in enumerate(plot.series[0].points):
+                color = _CHART_COLORS[idx % len(_CHART_COLORS)]
+                point.format.fill.solid()
+                point.format.fill.fore_color.rgb = color
+        else:
+            for idx, series in enumerate(plot.series):
+                color = _CHART_COLORS[idx % len(_CHART_COLORS)]
+                series.format.fill.solid()
+                series.format.fill.fore_color.rgb = color
+                if chart_type_key.startswith("line"):
+                    series.format.line.color.rgb = color
+                    series.format.line.width = Pt(2.5)
+    except Exception as exc:
+        logger.warning("Failed to apply series colors: %s", exc)
+
+
+def _add_chart_to_slide(slide: Any, slide_data: Dict[str, Any]) -> bool:
+    chart_type_key = slide_data.get("chart_type", _CHART_DEFAULT_TYPE)
+    if chart_type_key not in _CHART_TYPE_MAP:
+        logger.warning(
+            "Unknown chart_type '%s', defaulting to '%s'",
+            chart_type_key, _CHART_DEFAULT_TYPE,
+        )
+        chart_type_key = _CHART_DEFAULT_TYPE
+
+    categories = slide_data.get("categories", [])
+    series_list = slide_data.get("series", [])
+
+    if not categories or not series_list:
+        logger.warning(
+            "Chart slide missing categories or series, skipping chart"
+        )
+        return False
+
+    chart_data = CategoryChartData()
+    chart_data.categories = list(categories)
+    for s in series_list:
+        name = s.get("name", "")
+        values = list(s.get("values", []))
+        chart_data.add_series(name, values)
+
+    xl_type = _CHART_TYPE_MAP[chart_type_key]
+    try:
+        graphic_frame = slide.shapes.add_chart(
+            xl_type,
+            _CHART_X, _CHART_Y, _CHART_CX, _CHART_CY,
+            chart_data,
+        )
+    except Exception as exc:
+        logger.error("Failed to create chart: %s", exc)
+        return False
+
+    chart = graphic_frame.chart
+    options = slide_data.get("chart_options", {})
+
+    chart.has_title = False
+    chart.font.name = _CHART_FONT_NAME
+    chart.font.size = Pt(11)
+
+    legend_pos_key = options.get("legend_position", "bottom")
+    if legend_pos_key == "none":
+        chart.has_legend = False
+    else:
+        chart.has_legend = True
+        chart.legend.position = _LEGEND_POSITION_MAP.get(
+            legend_pos_key, XL_LEGEND_POSITION.BOTTOM,
+        )
+        chart.legend.include_in_layout = False
+        chart.legend.font.size = Pt(11)
+        chart.legend.font.name = _CHART_FONT_NAME
+        chart.legend.font.color.rgb = _CHART_TEXT_COLOR
+
+    is_pie = chart_type_key in _PIE_CHART_TYPES
+    is_bar = chart_type_key in _BAR_CHART_TYPES
+
+    try:
+        plot = chart.plots[0]
+        show_labels = options.get("show_data_labels", True)
+        plot.has_data_labels = show_labels
+        if show_labels:
+            labels = plot.data_labels
+            labels.font.size = Pt(10)
+            labels.font.name = _CHART_FONT_NAME
+            labels.font.color.rgb = _CHART_TEXT_COLOR
+            if is_pie:
+                labels.show_percentage = True
+                labels.show_value = False
+                labels.show_category_name = False
+                labels.number_format = "0%"
+            else:
+                labels.show_value = True
+                labels.show_percentage = False
+                labels.number_format = options.get("value_format", "#,##0.0")
+                if is_bar:
+                    labels.position = XL_LABEL_POSITION.OUTSIDE_END
+    except Exception as exc:
+        logger.warning("Failed to set data labels: %s", exc)
+
+    if not is_pie:
+        try:
+            val_axis = chart.value_axis
+            val_axis.has_major_gridlines = True
+            val_axis.major_gridlines.format.line.color.rgb = _CHART_GRIDLINE_COLOR
+            val_axis.major_gridlines.format.line.width = Pt(0.75)
+            val_axis.tick_labels.font.size = Pt(10)
+            val_axis.tick_labels.font.name = _CHART_FONT_NAME
+            val_axis.tick_labels.font.color.rgb = _CHART_AXIS_COLOR
+            val_axis.format.line.color.rgb = _CHART_AXIS_COLOR
+            val_axis.tick_labels.number_format = options.get("y_axis_format", "#,##0.0")
+            if options.get("y_axis_min") is not None:
+                val_axis.minimum_scale = options["y_axis_min"]
+            if options.get("y_axis_max") is not None:
+                val_axis.maximum_scale = options["y_axis_max"]
+            if options.get("y_axis_major_unit") is not None:
+                val_axis.major_unit = options["y_axis_major_unit"]
+            if options.get("y_axis_title"):
+                val_axis.has_title = True
+                val_axis.axis_title.text_frame.text = options["y_axis_title"]
+                val_axis.axis_title.text_frame.paragraphs[0].font.size = Pt(10)
+                val_axis.axis_title.text_frame.paragraphs[0].font.name = _CHART_FONT_NAME
+                val_axis.axis_title.text_frame.paragraphs[0].font.color.rgb = _CHART_AXIS_COLOR
+
+            cat_axis = chart.category_axis
+            cat_axis.tick_labels.font.size = Pt(10)
+            cat_axis.tick_labels.font.name = _CHART_FONT_NAME
+            cat_axis.tick_labels.font.color.rgb = _CHART_AXIS_COLOR
+            cat_axis.format.line.color.rgb = _CHART_AXIS_COLOR
+            if options.get("x_axis_title"):
+                cat_axis.has_title = True
+                cat_axis.axis_title.text_frame.text = options["x_axis_title"]
+                cat_axis.axis_title.text_frame.paragraphs[0].font.size = Pt(10)
+                cat_axis.axis_title.text_frame.paragraphs[0].font.name = _CHART_FONT_NAME
+                cat_axis.axis_title.text_frame.paragraphs[0].font.color.rgb = _CHART_AXIS_COLOR
+        except Exception as exc:
+            logger.warning("Failed to set axis options: %s", exc)
+
+    _apply_series_colors(chart, chart_type_key)
+
+    logger.info(
+        "  Chart: type=%s, categories=%d, series=%d",
+        chart_type_key, len(categories), len(series_list),
+    )
+    return True
+
+
 def generate_ppt_from_data(
     slide_data_list: List[Dict[str, Any]],
     template_path: Optional[str] = None,
@@ -306,6 +509,10 @@ def generate_ppt_from_data(
                         logger.info("  Body-right: %d lines", len([l for l in body_right.split("\n") if l.strip()]))
                 elif len(objects) == 1 and (body_left or body_right):
                     _set_body_text(objects[0], body_left or body_right)
+
+            # Add chart (for chart slides)
+            if slide_type in _LAYOUTS_WITH_CHART:
+                _add_chart_to_slide(slide, slide_data)
 
             # Fill speaker notes (must be English; only visible in Presenter View)
             notes_text = slide_data.get("notes", "")
