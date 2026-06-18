@@ -302,6 +302,44 @@ For LLM-produced JSON, `parse_and_validate(raw_text)` first **repairs** common m
 
 For best quality on longer decks, the agent generates in three stages: **outline → critique/review → detail+JSON**, with each JSON stage schema-validated before continuing. When run as the **primary** agent, it can pause after the outline for the user to approve/edit; as a **subagent** it runs fully autonomously (self-critique). See `docs/DESIGN-multi-stage-generation.md`.
 
+## End-to-End Example: Mixed Text / Image / Chart Deck
+
+A single deck combining text slides, an image slide (via placeholder), and a native chart. Placeholders (`image_prompt`, `data_query`) are resolved before rendering; concrete values (the chart here) are used as-is.
+
+```json
+[
+  {
+    "slide_type": "title_slide",
+    "title": "Construction Tech 2026",
+    "subtitle": "Market & Field Outlook",
+    "notes": "KEY MESSAGE: Construction tech is moving from pilot to mainstream.\n\"Good [morning/afternoon], I'm [Name]...\"\nTRANSITION: \"Let's start with the market.\"\nCOACHING: Confident open. Be ready for: \"Is this hype?\" — lead with the growth number."
+  },
+  {
+    "slide_type": "content_slide",
+    "title": "Why Now",
+    "body": "**Labor gap** - skilled labor shortage accelerates automation\n**Tech maturity** - BIM, IoT, drones now production-ready\n**Cost pressure** - margins demand efficiency",
+    "notes": "KEY MESSAGE: Three forces converging.\n\"Three forces are converging right now.\"\nTRANSITION: \"Here's what that means for the market.\"\nCOACHING: Matter-of-fact. Pause after each driver."
+  },
+  {
+    "slide_type": "content_image_slide",
+    "title": "Drones on Site",
+    "body": "**Aerial surveys** - cut survey time by 60%",
+    "image_prompt": "construction drone surveying site at sunset",
+    "image_position": "full",
+    "notes": "KEY MESSAGE: Drones are already standard on leading sites.\n\"Look at this - one drone flight replaces days of manual surveying.\"\nTRANSITION: \"Now let's see the market numbers.\"\nCOACHING: Let the image land before speaking."
+  },
+  {
+    "slide_type": "chart_slide",
+    "title": "Global Market Growth (USD Billion)",
+    "chart_type": "bar",
+    "categories": ["2022", "2023", "2024", "2025", "2026"],
+    "series": [{"name": "Market Size", "values": [14.8, 19.5, 25.1, 31.7, 39.4]}],
+    "chart_options": {"legend_position": "bottom", "y_axis_min": 0, "y_axis_max": 45},
+    "notes": "KEY MESSAGE: The market nearly triples by 2026.\n\"From fifteen billion to almost forty in four years.\"\nPause. Let the number land.\nTRANSITION: Open for questions.\nCOACHING: Don't over-sell the curve."
+  }
+]
+```
+
 ## Output Path
 
 Output files saved under `<project_root>/output/`.
