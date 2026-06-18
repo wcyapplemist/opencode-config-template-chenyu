@@ -15,6 +15,9 @@ I fill the PowerPoint template (`template.pptx`) with structured content using `
 - Accept a JSON array (`slide_data_list`) and render it into a `.pptx` file
 - Resolve Slide Master layouts **by name** (robust to layout reordering)
 - Add slides from the template's Slide Master layouts, filling placeholders by type
+- Embed **native charts** (editable, not images) and **native pictures**
+- Resolve resource placeholders (`image_prompt`, `icon_query`, `data_query`) into real assets before rendering
+- **Validate** every deck against a JSON schema (with two-layer retry) before it reaches the engine
 - Write English speaker notes to each slide's Notes pane (Presenter View only)
 - Handle missing placeholders gracefully with warnings (never crash)
 
@@ -94,6 +97,14 @@ Layouts are resolved **by name**, not by index. The default mapping (`slide_type
 | `categories` | Yes | `chart_slide` | Array of category labels (X-axis or pie slice labels) |
 | `series` | Yes | `chart_slide` | Array of `{name, values}` objects. Multiple series supported for bar/line. |
 | `chart_options` | No | `chart_slide` | Styling options (see Chart Options below) |
+| `image_path` | No | `content_image_slide` + any | Local file path of an image to embed as a **native, editable picture**. When set, the engine inserts it (#18). |
+| `image_position` | No | any slide with `image_path` | Named placement preset: `full`, `half-left`, `half-right`, `below-title` (default). |
+| `image_size` | No | any slide with `image_path` | `{"width": inches, "height": inches}` override of the preset box. |
+| `image_prompt` / `image_query` | No | any | Resource placeholder — a description/search for an image; the resolver replaces it with `image_path`. |
+| `image_source` | No | any | `auto` / `stock` / `ai` — selects the image resolver provider. |
+| `icon_query` | No | any | Resource placeholder — a semantic keyword; the resolver replaces it with `icon_path`. |
+| `data_query` | No | `chart_slide` | Resource placeholder — asks for real chart statistics; the resolver fills `categories`/`series` with sourced numbers. |
+| `data_hint` | No | `chart_slide` | Optional expected shape for `data_query` (e.g. category/series names). |
 | `notes` | Yes | All | Full English presenter script (**~120–180 words**). Written to the slide's Notes pane (Presenter View only). `\n` = new paragraph. Must be **spoken dialogue** (quoted, speakable sentences tied to the slide's content), **interspersed stage directions**, a `TRANSITION` line, and `COACHING` with delivery + an anticipated Q&A — NOT bullet summaries. Cover/closing use `[Name]` / `[morning/afternoon]` placeholders. |
 
 ### Body Text Parsing
@@ -206,6 +217,91 @@ Charts automatically use the template's theme:
 }
 ```
 
+## Image Slides
+
+Any slide carrying an `image_path` embeds a **native, editable PowerPoint picture** (#18). If the layout has a PICTURE placeholder (e.g. `content_image_slide` → `Picture with Caption`), the picture fills it; otherwise it is placed in the free space using a named preset. Images are **embedded** (not linked), so the PPTX is self-contained.
+
+### Placement presets (`image_position`)
+
+| Preset | Region |
+|--------|--------|
+| `full` | Below title, full width (~11.5" × 4.5") |
+| `below-title` | Same as `full` (default) |
+| `half-left` | Left half (~5.75" × 4.5") |
+| `half-right` | Right half (~5.75" × 4.5") |
+
+Optional `image_size`: `{"width": 6, "height": 3}` (inches) overrides the preset box.
+
+### Example: image slide
+
+```json
+{
+  "slide_type": "content_image_slide",
+  "title": "Drone Surveying in Action",
+  "body": "**Aerial scans** - cut survey time by 60%",
+  "image_path": "output/site_photo.png",
+  "image_position": "full",
+  "notes": "KEY MESSAGE: ..."
+}
+```
+
+## Resource Resolution Pipeline
+
+Instead of fabricating asset URLs or chart numbers, emit **placeholders**; an independent resolver pass replaces them with concrete assets **before** rendering. The agent never touches real URLs — it only describes what it wants.
+
+| Placeholder | Resolved to | Provider |
+|-------------|-------------|----------|
+| `image_prompt` / `image_query` (+ `image_source`) | `image_path` | Stock photo API (Pexels/Unsplash) or AI generation |
+| `icon_query` | `icon_path` | Local icon library (Phosphor) keyword/embedding match |
+| `data_query` (+ `data_hint`) | populated `categories`/`series` | Web search of real statistics; citation added to notes |
+
+**Concrete values always win** — if a slide already has `image_path` or concrete `series`, the resolver does not overwrite them.
+
+### Pipeline order
+
+```
+agent emits placeholders  ->  resolve_slide_data_list()  ->  schema validation  ->  generate_ppt_from_data()
+```
+
+```bash
+python -c "
+import sys; sys.path.insert(0,'scripts')
+from resolvers import resolve_slide_data_list
+resolved = resolve_slide_data_list(<JSON_ARRAY>)   # uses resolver.config.json
+"
+```
+
+Resolution is **non-fatal**: an unconfigured provider or a failed fetch logs a warning and the slide renders without that asset. The build never fails because of a missing resource.
+
+### Configuration
+
+Copy `scripts/resolver.config.example.json` to `scripts/resolver.config.json` (gitignored) and fill in provider keys. An unconfigured provider makes its resolver skip gracefully. Injectable `fetch_fn` / `match_fn` / `search_fn` keys allow custom providers and tests.
+
+## Schema Validation
+
+Every deck is validated against explicit JSON schemas (`scripts/schemas/`, `scripts/schema_validator.py`) for all 8 slide types and `chart_options` (#20). Validation returns **structured, human-readable errors** (slide index + field path + reason) so the agent can self-correct.
+
+```bash
+python -c "
+import sys; sys.path.insert(0,'scripts')
+from schema_validator import validate_slide_data_list
+res = validate_slide_data_list(<JSON_ARRAY>, strict=True)
+print('VALID' if res.is_valid else 'INVALID')
+for m in res.error_messages() + res.warning_messages(): print('-', m)
+"
+```
+
+- **Strict mode** (`strict=True`): missing `notes` and any schema violation block rendering (used by the agent pre-flight gate).
+- **Default mode**: the engine degrades gracefully (skips unknown slide types, defaults bad `chart_type` to `bar`, skips charts missing data) and only aborts on unrecoverable structural breakage (e.g. `slide_data_list` is not an array) with a clear `ValidationError`.
+
+### Two-layer retry (`parse_and_validate`)
+
+For LLM-produced JSON, `parse_and_validate(raw_text)` first **repairs** common mistakes (code fences, trailing commas, single quotes, variable assignments) then **schema-validates** the result — returning clear errors the model can use to self-correct.
+
+## Multi-Stage Generation
+
+For best quality on longer decks, the agent generates in three stages: **outline → critique/review → detail+JSON**, with each JSON stage schema-validated before continuing. When run as the **primary** agent, it can pause after the outline for the user to approve/edit; as a **subagent** it runs fully autonomously (self-critique). See `docs/DESIGN-multi-stage-generation.md`.
+
 ## Output Path
 
 Output files saved under `<project_root>/output/`.
@@ -231,13 +327,18 @@ print(result)
 
 | Scenario | Behavior |
 |----------|----------|
-| Unknown `slide_type` | Log warning, skip, continue |
+| `slide_data_list` not a JSON array | Raise `ValidationError` (fatal, clear message) |
+| Structural schema violation (strict mode) | Raise `ValidationError` with slide index + field path |
+| Unknown `slide_type` | Log warning, skip, continue (graceful) |
 | Missing placeholder | Log warning, skip field, continue |
 | Single slide fails | Log error, skip slide, continue |
 | Template file missing | Raise `FileNotFoundError` (fatal) |
 | Unknown `chart_type` | Default to `bar`, log warning |
 | Missing `categories` or `series` | Skip chart, log warning |
 | Invalid `chart_options` field | Ignore, use default |
+| `image_path` file not found | Skip image, log warning |
+| Unknown `image_position` | Default to `below-title`, log warning |
+| Resolver provider unconfigured / fetch failed | Skip asset, log warning (non-fatal) |
 
 ## Output
 

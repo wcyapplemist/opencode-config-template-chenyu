@@ -34,6 +34,8 @@ from pptx.enum.chart import XL_CHART_TYPE, XL_LABEL_POSITION, XL_LEGEND_POSITION
 from pptx.enum.shapes import PP_PLACEHOLDER
 from pptx.util import Inches, Pt
 
+from schema_validator import ValidationError, validate_slide_data_list
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -50,6 +52,7 @@ _TITLE_TYPES = {PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE}
 _SUBTITLE_TYPE = PP_PLACEHOLDER.SUBTITLE
 _BODY_TYPE = PP_PLACEHOLDER.BODY
 _OBJECT_TYPE = PP_PLACEHOLDER.OBJECT
+_PICTURE_TYPE = PP_PLACEHOLDER.PICTURE
 
 _REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
@@ -122,6 +125,18 @@ _PIE_CHART_TYPES = {"pie", "pie_exploded", "doughnut"}
 _BAR_CHART_TYPES = {
     "bar", "bar_stacked", "bar_horizontal", "bar_horizontal_stacked",
 }
+
+# --- Image placement (#18) -------------------------------------------------
+# Named bounding-box presets (EMU via Inches). The chart area lower-left is
+# reused as the default free-space region (below the title).
+_IMAGE_PRESETS: Dict[str, Dict[str, Any]] = {
+    "full": {"x": Inches(0.92), "y": Inches(2.0), "cx": Inches(11.5), "cy": Inches(4.5)},
+    "below-title": {"x": Inches(0.92), "y": Inches(2.0), "cx": Inches(11.5), "cy": Inches(4.5)},
+    "half-left": {"x": Inches(0.5), "y": Inches(2.0), "cx": Inches(5.75), "cy": Inches(4.5)},
+    "half-right": {"x": Inches(6.75), "y": Inches(2.0), "cx": Inches(5.75), "cy": Inches(4.5)},
+}
+_IMAGE_DEFAULT_PRESET = "below-title"
+_VALID_IMAGE_PRESETS = set(_IMAGE_PRESETS.keys())
 
 
 def _normalize_layout_name(name: str) -> str:
@@ -413,12 +428,105 @@ def _add_chart_to_slide(slide: Any, slide_data: Dict[str, Any]) -> bool:
     return True
 
 
+def _find_picture_placeholder(slide: Any) -> Optional[Any]:
+    for ph in slide.placeholders:
+        if ph.placeholder_format.type == _PICTURE_TYPE:
+            return ph
+    return None
+
+
+def _add_image_to_slide(slide: Any, slide_data: Dict[str, Any]) -> bool:
+    """Embed a native, editable PowerPoint picture from ``image_path`` (#18).
+
+    Placement order:
+      1. If the layout has a PICTURE placeholder, fill it natively.
+      2. Otherwise place using a named preset (``image_position``) or an
+         explicit ``image_size`` override, in the free space below the title.
+
+    Images are embedded (not linked) so the PPTX stays self-contained and the
+    picture remains fully editable in PowerPoint.
+    """
+    image_path = slide_data.get("image_path")
+    if not image_path:
+        return False
+
+    p = Path(image_path)
+    if not p.exists():
+        logger.warning("image_path not found: %s, skipping image", image_path)
+        return False
+
+    preset_key = slide_data.get("image_position", _IMAGE_DEFAULT_PRESET)
+    if preset_key not in _VALID_IMAGE_PRESETS:
+        logger.warning(
+            "Unknown image_position '%s', defaulting to '%s'",
+            preset_key, _IMAGE_DEFAULT_PRESET,
+        )
+        preset_key = _IMAGE_DEFAULT_PRESET
+
+    try:
+        pic_ph = _find_picture_placeholder(slide)
+        if pic_ph is not None:
+            try:
+                pic_ph.insert_picture(str(p))
+                logger.info("  Image (placeholder): %s", p.name)
+                return True
+            except Exception:
+                # Fall back to free placement at the placeholder's frame box.
+                box = {
+                    "x": pic_ph.left, "y": pic_ph.top,
+                    "cx": pic_ph.width, "cy": pic_ph.height,
+                }
+                slide.shapes.add_picture(str(p), box["x"], box["y"], box["cx"], box["cy"])
+                logger.info("  Image (placeholder frame): %s", p.name)
+                return True
+
+        box = _IMAGE_PRESETS[preset_key]
+        cx, cy = box["cx"], box["cy"]
+        size = slide_data.get("image_size")
+        if isinstance(size, dict):
+            if size.get("width"):
+                cx = Inches(size["width"])
+            if size.get("height"):
+                cy = Inches(size["height"])
+        slide.shapes.add_picture(str(p), box["x"], box["y"], cx, cy)
+        logger.info("  Image (%s): %s", preset_key, p.name)
+        return True
+    except Exception as exc:
+        logger.error("Failed to embed image '%s': %s", image_path, exc)
+        return False
+
+
 def generate_ppt_from_data(
     slide_data_list: List[Dict[str, Any]],
     template_path: Optional[str] = None,
     output_path: str = "output.pptx",
     prompt_text: str = "",
+    validate: bool = True,
+    strict: bool = False,
 ) -> str:
+    # Phase 1 Track A: defensive validation. Catches malformed input with a
+    # clear ValidationError instead of a cryptic crash in the render loop.
+    if validate:
+        result = validate_slide_data_list(slide_data_list, strict=strict)
+        for msg in result.warning_messages():
+            logger.warning("Validation: %s", msg)
+        # Strict mode (agent pre-flight gate): any schema error is fatal.
+        if strict and not result.is_valid:
+            raise ValidationError(result.errors)
+        # Non-strict mode: surface per-slide schema errors as warnings for
+        # visibility, but keep the engine's existing graceful-degradation
+        # behaviour (skip slide / default chart / skip chart). Only abort on
+        # unrecoverable top-level structure, which would otherwise crash the
+        # render loop cryptically.
+        if not strict:
+            for msg in result.error_messages():
+                logger.warning("Validation (degraded): %s", msg)
+        if not isinstance(slide_data_list, list):
+            raise ValidationError(
+                result.errors if result.errors
+                else "slide_data_list must be a JSON array"
+            )
+
     template = Path(template_path) if template_path and template_path != "auto" else _TEMPLATE_FILE
     output = Path(output_path)
 
@@ -513,6 +621,10 @@ def generate_ppt_from_data(
             # Add chart (for chart slides)
             if slide_type in _LAYOUTS_WITH_CHART:
                 _add_chart_to_slide(slide, slide_data)
+
+            # Embed image (any slide carrying image_path) — #18
+            if slide_data.get("image_path"):
+                _add_image_to_slide(slide, slide_data)
 
             # Fill speaker notes (must be English; only visible in Presenter View)
             notes_text = slide_data.get("notes", "")

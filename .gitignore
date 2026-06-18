@@ -24,3 +24,10 @@ Thumbs.db
 output/*.pptx
 .opencode/skills/output/
 .opencode/skills/ppt-template-filler/scripts/output/
+
+# Resolver secrets (copy from resolver.config.example.json)
+.opencode/skills/ppt-template-filler/scripts/resolver.config.json
+.opencode/skills/ppt-template-filler/scripts/output/_image_cache/
+
+# Resolver icon library (downloaded asset, not source)
+.opencode/skills/ppt-template-filler/scripts/assets/icons/

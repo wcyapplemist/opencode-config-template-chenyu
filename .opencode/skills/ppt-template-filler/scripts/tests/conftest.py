@@ -1,4 +1,4 @@
-"""Shared fixtures for ppt_builder chart tests."""
+"""Shared fixtures for ppt_builder tests."""
 import sys
 from pathlib import Path
 
@@ -85,3 +85,39 @@ def mixed_deck(bar_chart_data, pie_chart_data, line_chart_data):
         line_chart_data,
         {"slide_type": "closing_slide", "title": "Thanks", "subtitle": "Q&A"},
     ]
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 fixtures — image support (#18) / resolver pipeline (#23)
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def sample_image(tmp_path):
+    """A real small PNG file on disk (native-picture tests need a real file)."""
+    from PIL import Image
+
+    p = tmp_path / "sample.png"
+    Image.new("RGB", (320, 240), (60, 120, 200)).save(p)
+    return str(p)
+
+
+@pytest.fixture
+def image_slide_data(sample_image):
+    return {
+        "slide_type": "content_image_slide",
+        "title": "Field Example",
+        "body": "**Drones** - aerial survey",
+        "image_path": sample_image,
+        "image_position": "full",
+        "notes": "Drones cut survey time.",
+    }
+
+
+@pytest.fixture
+def image_placeholder_slide():
+    return {
+        "slide_type": "content_image_slide",
+        "title": "Needs a photo",
+        "body": "**x** - y",
+        "image_prompt": "sunset over construction site",
+        "notes": "n",
+    }
