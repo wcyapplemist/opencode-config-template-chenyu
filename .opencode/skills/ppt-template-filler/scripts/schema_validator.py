@@ -15,8 +15,8 @@ Layered design (mirrors presenton's ``generate_structured_with_schema_retries``)
 
 Public API
 ----------
-    validate_slide_data_list(data, *, strict=False) -> ValidationResult
-    parse_and_validate(raw_text, *, strict=False)   -> ValidationResult
+    validate_slide_data_list(data, *, strict=False, density_mode=None) -> ValidationResult
+    parse_and_validate(raw_text, *, strict=False, density_mode=None)   -> ValidationResult
     ValidationResult.is_valid / .errors / .warnings
     ValidationError  (raised only by the engine on fatal structural breakage)
 
@@ -24,7 +24,9 @@ Severity model
 --------------
 * ``error``   — a structural/content violation. In ``strict`` mode these abort
   the build; otherwise the engine still degrades gracefully.
-* ``warning`` — e.g. a missing *recommended* field (``notes``). Never fatal.
+* ``warning`` — e.g. a missing *recommended* field (``notes``), or an
+  out-of-budget density finding. Never fatal, **even in strict mode** for
+  density (a word-count budget is a soft guideline, not a structural rule).
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from density_mode import DEFAULT_DENSITY_MODE, validate_density
 from schemas import SLIDE_SCHEMAS, VALID_SLIDE_TYPES
 
 # Allowed scalar python types for each declared field ``type`` string.
@@ -269,6 +272,7 @@ def validate_slide_data_list(
     data: Any,
     *,
     strict: bool = False,
+    density_mode: Optional[str] = None,
 ) -> ValidationResult:
     """Validate an entire ``slide_data_list``.
 
@@ -279,6 +283,13 @@ def validate_slide_data_list(
     strict:
         When ``True``, ``notes`` warnings are also treated as fatal errors so a
         pre-flight gate can refuse to render until every slide has notes.
+    density_mode:
+        Optional deck-wide density mode key (``"concise"`` / ``"standard"`` /
+        ``"text-heavy"``). When set, each slide's visible-text word count is
+        checked against the mode's per-slide budget and out-of-budget slides
+        produce **warnings** (never errors, even in strict mode — a word-count
+        budget is a soft guideline the agent self-tightens, not a structural
+        rule). When ``None`` (default), no density check runs.
     """
     result = ValidationResult()
 
@@ -304,6 +315,30 @@ def validate_slide_data_list(
         for issue in result.issues:
             if not issue.is_error and "missing required field 'notes'" in issue.reason:
                 issue.severity = "error"
+
+    # Density budget check (always non-fatal, even in strict mode). Runs on
+    # whatever slides survived structural validation; unknown slide types and
+    # non-dict entries are skipped inside ``validate_density``.
+    if density_mode is not None:
+        try:
+            findings = validate_density(data, density_mode)
+        except ValueError as exc:
+            # Unknown mode key — surface as a single deck-level warning so the
+            # caller gets a clear hint instead of a crash. Never fatal.
+            result.add(ValidationIssue(
+                str(exc),
+                severity="warning",
+            ))
+        else:
+            for finding in findings:
+                direction = "over" if finding.is_over() else "under"
+                result.add(ValidationIssue(
+                    f"density '{finding.mode}': {finding.words} words is "
+                    f"{direction} budget ({finding.budget_min}-"
+                    f"{finding.budget_max} words/slide visible text)",
+                    slide_index=finding.slide_index,
+                    severity="warning",
+                ))
 
     return result
 
@@ -367,11 +402,22 @@ def parse_and_validate(
     raw_text: str,
     *,
     strict: bool = False,
+    density_mode: Optional[str] = None,
 ) -> Tuple[ValidationResult, Optional[List[Dict[str, Any]]]]:
     """Two-layer entry point for LLM output.
 
     Inner layer: repair + parse the raw text to JSON.
     Outer layer: schema-validate the parsed deck.
+
+    Parameters
+    ----------
+    raw_text:
+        Raw LLM output (possibly fenced / dirty JSON).
+    strict:
+        Forwarded to :func:`validate_slide_data_list`.
+    density_mode:
+        Optional deck-wide density mode forwarded to
+        :func:`validate_slide_data_list` for out-of-budget warning checks.
 
     Returns
     -------
@@ -413,5 +459,5 @@ def parse_and_validate(
         return result, None
 
     # Outer layer: schema validation.
-    result.merge(validate_slide_data_list(parsed, strict=strict))
+    result.merge(validate_slide_data_list(parsed, strict=strict, density_mode=density_mode))
     return result, parsed

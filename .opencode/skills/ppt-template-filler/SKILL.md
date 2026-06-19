@@ -285,22 +285,51 @@ Every deck is validated against explicit JSON schemas (`scripts/schemas/`, `scri
 python -c "
 import sys; sys.path.insert(0,'scripts')
 from schema_validator import validate_slide_data_list
-res = validate_slide_data_list(<JSON_ARRAY>, strict=True)
+res = validate_slide_data_list(<JSON_ARRAY>, strict=True, density_mode='standard')
 print('VALID' if res.is_valid else 'INVALID')
 for m in res.error_messages() + res.warning_messages(): print('-', m)
 "
 ```
 
 - **Strict mode** (`strict=True`): missing `notes` and any schema violation block rendering (used by the agent pre-flight gate).
+- **Density mode** (`density_mode='standard'|'concise'|'text-heavy'`, optional): runs a per-slide visible-text word-count check against the mode's budget and emits **warnings** on out-of-budget slides. Always non-fatal — never blocks, never promoted by `strict=True`. Omit (`None`) to skip the check entirely.
 - **Default mode**: the engine degrades gracefully (skips unknown slide types, defaults bad `chart_type` to `bar`, skips charts missing data) and only aborts on unrecoverable structural breakage (e.g. `slide_data_list` is not an array) with a clear `ValidationError`.
 
 ### Two-layer retry (`parse_and_validate`)
 
-For LLM-produced JSON, `parse_and_validate(raw_text)` first **repairs** common mistakes (code fences, trailing commas, single quotes, variable assignments) then **schema-validates** the result — returning clear errors the model can use to self-correct.
+For LLM-produced JSON, `parse_and_validate(raw_text)` first **repairs** common mistakes (code fences, trailing commas, single quotes, variable assignments) then **schema-validates** the result — returning clear errors the model can use to self-correct. It also accepts an optional `density_mode` forwarded to the validator.
+
+## Density Modes
+
+A deck-wide **density mode** fixes a per-slide visible-text word budget. It is the primary content-side lever for preventing the text-overflow defect (long content exceeding placeholder boundaries and overlapping neighboring shapes). The agent picks the mode with the user at the outline-confirmation checkpoint (see `pptx-subagent` Stage 2); the validator then warns on any slide whose visible text falls outside the budget.
+
+| Mode | Per-slide words | Use when |
+|------|-----------------|----------|
+| `concise` | 0–10 | Minimal text, often image-only; keynote/hero decks |
+| `standard` ⭐ default | 30–50 | Balanced reporting decks — the safe default |
+| `text-heavy` | 75–150 | Dense, document-style decks for self-study/handout |
+
+**What counts toward the budget** — the on-slide visible text only: `title` + `subtitle` + `body` + `body_left` + `body_right`. Markdown emphasis markers (`**`, `_`, backticks) and punctuation-only tokens (the ` — ` / ` - ` / `: ` body-format delimiters) are stripped before counting. Each CJK character counts as one word.
+
+**What is NOT counted** — `notes` (lives in the Notes pane, never renders on the slide), and `chart_slide` `categories`/`series` labels (numeric/temporal, not meaningfully constraining).
+
+**Severity** — out-of-budget slides emit **warnings, never errors**, even in `strict=True` mode. A word-count budget is a soft guideline the agent self-tightens, not a structural rule. `concise` slides at zero words (image-only) are always valid; `title_slide`/`section_header_slide`/`closing_slide` naturally underflow `standard`/`text-heavy` budgets and that underflow is expected/harmless.
+
+```bash
+python -c "
+import sys; sys.path.insert(0,'scripts')
+from density_mode import DENSITY_BUDGETS, DEFAULT_DENSITY_MODE, count_slide_words, validate_density
+print(DENSITY_BUDGETS)           # {'concise': (0, 10), 'standard': (30, 50), 'text-heavy': (75, 150)}
+print(count_slide_words({'title': 'Hi', 'body': '**Point** — desc here'}))  # 4
+print(validate_density(<JSON_ARRAY>, 'standard'))  # [] when all in budget
+"
+```
 
 ## Multi-Stage Generation
 
 For best quality on longer decks, the agent generates in three stages: **outline → critique/review → detail+JSON**, with each JSON stage schema-validated before continuing. When run as the **primary** agent, it can pause after the outline for the user to approve/edit; as a **subagent** it runs fully autonomously (self-critique). See `docs/DESIGN-multi-stage-generation.md`.
+
+**Temp cleanup:** the outline artifact (and any agent-written temp file under `outline_store._TEMP_DIR`, a namespaced system temp dir) is **cleared automatically** after every successful `generate_ppt_from_data` call (default `cleanup_temp=True`). Temp artifacts therefore never pollute the repo or accumulate on disk.
 
 ## End-to-End Example: Mixed Text / Image / Chart Deck
 
@@ -377,6 +406,7 @@ print(result)
 | `image_path` file not found | Skip image, log warning |
 | Unknown `image_position` | Default to `below-title`, log warning |
 | Resolver provider unconfigured / fetch failed | Skip asset, log warning (non-fatal) |
+| Slide over/under density budget (`density_mode` set) | Validation warning (non-fatal, never blocks, even in strict mode) |
 
 ## Output
 

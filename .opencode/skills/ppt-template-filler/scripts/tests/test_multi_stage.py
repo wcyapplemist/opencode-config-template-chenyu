@@ -7,7 +7,13 @@ the outline artifact store and schema-gating between stages.
 import pytest
 from pptx import Presentation
 
-from outline_store import latest_outline, load_outline, save_outline
+from outline_store import (
+    cleanup_all,
+    latest_outline,
+    load_outline,
+    load_outline_mode,
+    save_outline,
+)
 from schema_validator import validate_slide_data_list
 
 import outline_store  # imported for monkeypatching the temp-dir module global
@@ -51,6 +57,51 @@ class TestOutlineStore:
         monkeypatch.setattr(outline_store, "_TEMP_DIR", tmp_path)
         p = save_outline("", deck_id="empty")
         assert load_outline(p) == ""
+
+    def test_cleanup_all_clears_entire_dir(self, tmp_path, monkeypatch):
+        # The whole temp dir is cleared, including agent-written temp JSON
+        # (e.g. slide_data.json), not just outline artifacts.
+        monkeypatch.setattr(outline_store, "_TEMP_DIR", tmp_path)
+        save_outline("first", deck_id="a")
+        save_outline("second", deck_id="b")
+        (tmp_path / "slide_data.json").write_text("[]", encoding="utf-8")
+        assert cleanup_all() == 3
+        assert latest_outline() is None
+        assert not (tmp_path / "slide_data.json").exists()
+
+    def test_cleanup_all_safe_when_empty_or_missing(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(outline_store, "_TEMP_DIR", tmp_path)
+        assert cleanup_all() == 0  # empty dir is a no-op
+        tmp_path.rmdir()
+        assert cleanup_all() == 0  # missing dir is a no-op, never raises
+
+    # ----- density-mode header persistence (Stage 2 → Stage 3 traceability) --
+    def test_save_with_mode_records_header(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(outline_store, "_TEMP_DIR", tmp_path)
+        p = save_outline("1. [title_slide] Hi", deck_id="m1", mode="standard")
+        text = load_outline(p)
+        assert text.startswith("<!-- mode: standard -->")
+        assert "1. [title_slide] Hi" in text
+
+    def test_load_outline_mode_returns_recorded_mode(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(outline_store, "_TEMP_DIR", tmp_path)
+        p = save_outline("outline", deck_id="m2", mode="text-heavy")
+        assert load_outline_mode(p) == "text-heavy"
+
+    def test_load_outline_mode_none_when_no_mode(self, tmp_path, monkeypatch):
+        # Backward compat: artifacts saved without a mode return None.
+        monkeypatch.setattr(outline_store, "_TEMP_DIR", tmp_path)
+        p = save_outline("outline", deck_id="m3")
+        assert load_outline_mode(p) is None
+
+    def test_load_outline_mode_none_on_missing_file(self, tmp_path):
+        assert load_outline_mode(tmp_path / "never_saved.md") is None
+
+    def test_save_with_mode_none_writes_no_header(self, tmp_path, monkeypatch):
+        # Explicit mode=None must behave identically to the old signature.
+        monkeypatch.setattr(outline_store, "_TEMP_DIR", tmp_path)
+        p = save_outline("plain outline", deck_id="m4", mode=None)
+        assert load_outline(p) == "plain outline"
 
 
 # ============================================================
@@ -111,8 +162,9 @@ class TestPipelineOrder:
         # Stage: schema gate (strict)
         gate = validate_slide_data_list(resolved, strict=True)
         assert gate.is_valid, gate.error_messages()
-        # Stage: render
-        generate_ppt_from_data(resolved, output_path=output_path)
+        # Stage: render (cleanup_temp=False isolates this test from the global
+        # temp dir so it only exercises resolve -> validate -> render).
+        generate_ppt_from_data(resolved, output_path=output_path, cleanup_temp=False)
         prs = Presentation(output_path)
         assert len(prs.slides) == 2
         # Chart slide got real data via the resolver.

@@ -503,6 +503,7 @@ def generate_ppt_from_data(
     prompt_text: str = "",
     validate: bool = True,
     strict: bool = False,
+    cleanup_temp: bool = True,
 ) -> str:
     # Phase 1 Track A: defensive validation. Catches malformed input with a
     # clear ValidationError instead of a cryptic crash in the render loop.
@@ -636,6 +637,19 @@ def generate_ppt_from_data(
 
     prs.save(str(output))
     logger.info("Saved: %s (%d slides)", output.resolve(), len(prs.slides))
+
+    # Auto-cleanup pipeline temp artifacts (outline checkpoints, agent-written
+    # temp JSON) so they never accumulate on disk. Lazy import + try/except keeps
+    # cleanup from ever affecting a successful render. Pass cleanup_temp=False to
+    # retain them (e.g. while debugging a failed run).
+    if cleanup_temp:
+        try:
+            from outline_store import cleanup_all
+            removed = cleanup_all()
+            if removed:
+                logger.info("Cleaned up %d temp artifact(s)", removed)
+        except Exception as exc:  # cleanup must never break a successful render
+            logger.debug("Temp cleanup skipped: %s", exc)
     return str(output.resolve())
 
 

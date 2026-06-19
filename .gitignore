@@ -20,6 +20,9 @@ Thumbs.db
 # Office lock files
 ~$*
 
+# Temp artifacts (multi-stage generation outline checkpoints)
+.opencode/tmp/
+
 # Generated output
 output/*.pptx
 .opencode/skills/output/

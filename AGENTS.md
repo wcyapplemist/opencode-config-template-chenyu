@@ -46,7 +46,10 @@ The engine layers content-intelligence on top of the python-pptx renderer (outpu
 
 - **Schema validation (#20, P0)** — `schema_validator.py` validates all 8 slide types + `chart_options`; structured errors; two-layer retry (`parse_and_validate`). The engine raises a clear `ValidationError` on unrecoverable structure and degrades gracefully otherwise; `strict=True` blocks on any schema violation (agent pre-flight gate).
 - **Resource pipeline (#19/#18/#23)** — placeholders (`image_prompt`, `icon_query`, `data_query`) → `resolvers/` (image/icon/chart-data) → concrete assets before render. All resolution is non-fatal.
-- **Multi-stage generation (#21/#24)** — outline → critique → detail, schema-gated per stage; autonomous by default, optional interactive checkpoint in primary-agent mode.
+- **Multi-stage generation (#21/#24)** — outline → critique → detail, schema-gated per stage; autonomous by default for headless subagents.
+- **Density modes (text-overflow prevention)** — `density_mode.py` fixes a per-slide visible-text word budget per mode (`concise` 0–10 / `standard` 30–50 / `text-heavy` 75–150). The validator emits non-fatal warnings on out-of-budget slides (`validate_slide_data_list(..., density_mode=...)` / `parse_and_validate(..., density_mode=...)`); warnings never block, even in strict mode. This is the content-side defense against text overflowing placeholder boundaries.
+
+  **MANDATORY outline + density-mode checkpoint (Stage 1 → confirm → Stage 3+):** When you (the primary conversation agent) handle a PPT task **directly** — i.e. you did not delegate it to a headless subagent via the Task tool — you **MUST** pause after producing the Stage 1 outline. In a **single `question` call**, ask the user BOTH (a) the density mode (`standard` recommended default) AND (b) outline approval/edits, then **wait for both answers before proceeding** to Stage 3 (JSON) or rendering. Never run outline → detail in one shot when a live user turn-loop is available. Only subagents (which cannot pause) run fully autonomously — they default to `standard` and self-apply the budget.
 
 Run the suite from `.opencode/skills/ppt-template-filler/scripts`:
 
