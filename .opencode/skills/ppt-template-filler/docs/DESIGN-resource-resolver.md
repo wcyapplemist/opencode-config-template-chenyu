@@ -1,6 +1,9 @@
 # Design: Placeholder Convention & Resource Resolver Architecture
 
-> **Issue #19** — Phase 1, Track B. This is the **design** document. Implementation lives in `scripts/resolvers/` (#23).
+> **Issue #19** — Phase 1, Track B. Design rationale for the placeholder/resolver
+> decoupling. Implementation lives in `scripts/resolvers/`. The user-facing
+> placeholder table and pipeline order are also documented in `SKILL.md` — this
+> doc adds the interface contract, injectable hooks, and degradation matrix.
 
 ## 1. Problem
 
@@ -83,25 +86,41 @@ If the slide already carries concrete `categories`/`series`, the resolver does
 
 ## 4. Resolver Interface
 
-Every resolver is a plugin with a **uniform signature**:
+Every resolver is a **module-level function** with a uniform signature (not a
+class — the original design proposed a `Resolver` class, but it was simplified
+to plain functions during implementation):
 
 ```python
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-class Resolver:
-    name: str                       # "image" | "icon" | "chart_data"
+def resolve(slide_data: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a NEW slide_data dict with this resolver's placeholders resolved.
 
-    def resolve(self, slide_data: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]:
-        """Return a NEW slide_data dict with placeholders resolved.
-
-        * Non-fatal: on any failure, log a warning and return the slide
-          UNCHANGED (minus nothing). Never raise.
-        * Idempotent: a slide with no placeholders (or already-resolved ones)
-          is returned unchanged.
-        """
+    * Non-fatal: on any failure, log a warning and return the slide
+      UNCHANGED. Never raise.
+    * Idempotent: a slide with no placeholders (or already-resolved ones)
+      is returned unchanged.
+    """
 ```
 
-Resolvers are independent and may be added/removed without touching the others.
+Three resolvers are implemented: `image_resolver.resolve()`,
+`icon_resolver.resolve()`, `chart_data_resolver.resolve()`. They are independent
+and may be added/removed without touching the others.
+
+### 4.1 Injectable hooks (for testability)
+
+Each resolver accepts optional **injectable callable hooks** via the `config`
+dict, so tests can substitute deterministic fakes without monkeypatching:
+
+| Hook          | Used by            | Signature                             |
+|---------------|--------------------|---------------------------------------|
+| `fetch_fn`    | `image_resolver`   | `fetch_fn(query, source) -> bytes`    |
+| `match_fn`    | `icon_resolver`    | `match_fn(query) -> Optional[str]`     |
+| `search_fn`   | `chart_data_resolver` | `search_fn(query, hint) -> dict`   |
+
+When a hook is absent from `config`, the resolver falls back to its real
+provider (stock photo API, local icon library, web search). This makes the
+resolver pipeline fully testable without network access.
 
 ## 5. Pipeline
 
