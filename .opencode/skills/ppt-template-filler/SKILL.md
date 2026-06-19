@@ -90,7 +90,7 @@ Layouts are resolved **by name**, not by index. The default mapping (`slide_type
 |-------|----------|------------|-------------|
 | `slide_type` | Yes | All | One of: `title_slide`, `content_slide`, `section_header_slide`, `two_content_slide`, `comparison_slide`, `content_image_slide`, `chart_slide`, `closing_slide` |
 | `title` | Yes | All | Main heading text |
-| `subtitle` | No | `title_slide`, `closing_slide` | Subheading text |
+| `subtitle` | No | `title_slide`, `closing_slide` | Subheading text. On `closing_slide`, omit this field — the `End` layout's built-in sign-off block shows by default. |
 | `body` | No | `content_slide`, `content_image_slide` | Body content. `\n` = new paragraph. Format: `**Title** — Description` |
 | `body_left` / `body_right` | No | `two_content_slide`, `comparison_slide` | Left/right column body (same body-text format) |
 | `chart_type` | Yes | `chart_slide` | Chart type: `bar`, `bar_stacked`, `bar_horizontal`, `bar_horizontal_stacked`, `pie`, `pie_exploded`, `doughnut`, `line`, `line_markers` |
@@ -328,6 +328,8 @@ print(validate_density(<JSON_ARRAY>, 'standard'))  # [] when all in budget
 ## Multi-Stage Generation
 
 For best quality on longer decks, the agent generates in three stages: **outline → critique/review → detail+JSON**, with each JSON stage schema-validated before continuing. When run as the **primary** agent, it can pause after the outline for the user to approve/edit; as a **subagent** it runs fully autonomously (self-critique). See `docs/DESIGN-multi-stage-generation.md`.
+
+**Slide count convention.** When the user requests "N pages/slides", that number is the **total** deck size including cover and closing: N ≥ 3 → 1 cover + (N−2) content + 1 closing; N = 2 → cover + 1 content; N = 1 → cover only. The closing slide defaults to `"Thank You"` as its title (matching the `End` layout built-in) with no `subtitle` authored.
 
 **Temp cleanup:** the outline artifact (and any agent-written temp file under `outline_store._TEMP_DIR`, a namespaced system temp dir) is **cleared automatically** after every successful `generate_ppt_from_data` call (default `cleanup_temp=True`). Temp artifacts therefore never pollute the repo or accumulate on disk.
 

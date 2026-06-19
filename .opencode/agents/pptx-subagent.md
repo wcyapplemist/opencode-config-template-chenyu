@@ -40,6 +40,8 @@ All output is **100% native, editable PowerPoint objects** (text, charts, pictur
 
 6. **Density mode is a soft guideline.** The Stage 2 mode fixes a per-slide visible-text word budget (standard 30–50 / concise 0–10 / text-heavy 75–150). Out-of-budget slides emit **warnings, never errors** — even in strict mode. Tighten over-budget content prose; ignore underflow on inherently short slide types (title/section/closing).
 
+7. **Closing slide defaults to the template sign-off.** The `closing_slide` `title` MUST be `"Thank You"` (matching the `End` layout's built-in text) unless the user explicitly requests a custom closing. Do **not** author a `subtitle` — leave it unset so the template's default sign-off block shows. The closing slide's role is a clean thank-you, not another content beat.
+
 ## Trigger Phrases
 
 Activate when user mentions:
@@ -65,6 +67,16 @@ Stage 5  Return result
 ### Stage 0: Understand the Request + Calibrate Note Style
 
 Analyze the request: how many slides, what content per slide, language (English only per Constraint #2).
+
+**Slide count convention.** When the user specifies "N pages" / "N slides", that number is the **total** deck size, **including** the cover and closing slides:
+
+| Requested | Deck composition |
+|-----------|------------------|
+| N ≥ 3     | 1 cover + (N−2) content + 1 closing = N total |
+| N = 2     | 1 cover + 1 content (no closing) |
+| N = 1     | cover only |
+
+So "5 pages" → 1 cover + 3 content + 1 closing; "3 pages" → 1 cover + 1 content + 1 closing. Do **not** add a cover/closing on top of the requested number, and do **not** omit the closing when N ≥ 3. When no count is given, include a closing slide by default.
 
 Then **read 2–3 real notes from `template.pptx`** to internalize the house style. Run once:
 
@@ -178,7 +190,7 @@ Available slide types:
 | `comparison_slide` | Comparison | `title`, `body_left`, `body_right`, `notes` |
 | `content_image_slide` | Image + caption | `title`, `body`, `image_path`/`image_prompt`, `notes` |
 | `chart_slide` | Native chart | `title`, `chart_type`, `categories`, `series`, `notes` |
-| `closing_slide` | Closing | `title`, `subtitle`, `notes` |
+| `closing_slide` | Closing | `title` (default `"Thank You"`), `notes` — do NOT set `subtitle` (template default shows) |
 
 **Body text format** — each line becomes a paragraph with bold title + description:
 ```
@@ -289,13 +301,13 @@ COACHING: Matter-of-fact tone, don't over-sell. Be ready for: "Does BIM work wit
 ## Example Interaction
 
 **User**: "Create a 3-page PPT about how AI empowers accounting"
-**Action**: English only → outline (3 slides) → density mode + outline approval → JSON → validate → resolve → render → return path.
+**Action**: English only → outline (3 slides = 1 cover + 1 content + 1 closing) → density mode + outline approval → JSON → validate → resolve → render → return path.
 
-1. Outline:
+1. Outline (3 total per the slide-count convention: N=3 → 1 cover + 1 content + 1 closing):
    ```
    1. [title_slide]   "AI Empowering Accounting" — subtitle: 2026
    2. [content_slide] "Use Cases" — reporting, reconciliation, fraud detection
-   3. [content_slide] "Roadmap" — pilot, scale, full adoption
+   3. [closing_slide] "Thank You"
    ```
 2. **Density mode + outline approval** (single `question` call): user picks `standard` (30–50 words/slide) and approves the outline. Outline artifact re-saved with `mode='standard'` header.
 3. JSON (after critique + validation with `density_mode='standard'`):
@@ -306,12 +318,11 @@ COACHING: Matter-of-fact tone, don't over-sell. Be ready for: "Does BIM work wit
      {"slide_type": "content_slide", "title": "AI Use Cases",
       "body": "**Automated Reporting** — RPA auto-generates reports\n**Smart Reconciliation** — 99.5%\n**Fraud Detection** — real-time alerts",
       "notes": "KEY MESSAGE: ...\nTRANSITION: ...\nCOACHING: ..."},
-     {"slide_type": "content_slide", "title": "Roadmap",
-      "body": "**Phase 1** — Pilot in 2 units\n**Phase 2** — Scale\n**Phase 3** — Full adoption",
+     {"slide_type": "closing_slide", "title": "Thank You",
       "notes": "KEY MESSAGE: ...\nTRANSITION: Open for questions.\nCOACHING: ..."}
    ]
    ```
-   (The two content-slide bodies land at ~40 words each — within the standard 30–50 budget. The title slide underflows standard, which is expected and ignored.)
+   (The content-slide body lands at ~40 words — within the standard 30–50 budget. The title and closing slides underflow standard, which is expected and ignored. Note the closing slide has NO `subtitle` field — the template's default sign-off block shows.)
 4. Validate → resolve → render → return output path.
 
 **User**: "帮我制作一份关于数字化转型的PPT"
