@@ -35,6 +35,7 @@ from pptx.enum.shapes import PP_PLACEHOLDER
 from pptx.util import Inches, Pt
 
 from schema_validator import ValidationError, validate_slide_data_list
+from resolvers import resolve_slide_data_list
 
 logging.basicConfig(
     level=logging.INFO,
@@ -496,6 +497,37 @@ def _add_image_to_slide(slide: Any, slide_data: Dict[str, Any]) -> bool:
         return False
 
 
+_DEFAULT_CLOSING_NOTES = (
+    'KEY MESSAGE: Thank you — close warmly and open the floor for questions.\n'
+    '"Thank you all for your time today."\n'
+    'Pause. Make eye contact across the room.\n'
+    '"I hope this gave you a clear picture of where we are and where we are headed."\n'
+    'TRANSITION: "I would love to take any questions you have."\n'
+    'COACHING: Warm, unhurried close. Be ready for: "Can you share the deck?" '
+    '— yes, I will send it after.'
+)
+
+
+def _ensure_default_closing(
+    slide_data_list: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    # #40 / US-6: append a default Thank-You closing when the deck is large
+    # enough and does not already end on a closing_slide. Non-destructive —
+    # returns a new list, leaving the caller's list untouched.
+    if not isinstance(slide_data_list, list) or len(slide_data_list) < 3:
+        return slide_data_list
+    last_type = (slide_data_list[-1] or {}).get("slide_type", "")
+    if last_type == "closing_slide":
+        return slide_data_list
+    closing = {
+        "slide_type": "closing_slide",
+        "title": "Thank You",
+        "notes": _DEFAULT_CLOSING_NOTES,
+    }
+    logger.info("Auto-appending default closing slide (default_closing=True)")
+    return list(slide_data_list) + [closing]
+
+
 def generate_ppt_from_data(
     slide_data_list: List[Dict[str, Any]],
     template_path: Optional[str] = None,
@@ -504,7 +536,19 @@ def generate_ppt_from_data(
     validate: bool = True,
     strict: bool = False,
     cleanup_temp: bool = True,
+    resolve_placeholders: bool = True,
+    default_closing: bool = True,
 ) -> str:
+    # #37: resolve resource placeholders (data_query) into concrete assets
+    # BEFORE validation, so the validator sees materialized data.
+    # Graceful no-op when resolver.config.json is absent.
+    if resolve_placeholders:
+        slide_data_list = resolve_slide_data_list(slide_data_list)
+
+    # #40 / US-6: guarantee a Thank-You closing slide on decks of N >= 3.
+    if default_closing:
+        slide_data_list = _ensure_default_closing(slide_data_list)
+
     # Phase 1 Track A: defensive validation. Catches malformed input with a
     # clear ValidationError instead of a cryptic crash in the render loop.
     if validate:

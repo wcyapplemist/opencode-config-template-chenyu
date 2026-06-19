@@ -1,0 +1,5 @@
+# Core rendering engine (python-pptx)
+python-pptx>=0.6.21
+
+# Test suite
+pytest>=7.0.0

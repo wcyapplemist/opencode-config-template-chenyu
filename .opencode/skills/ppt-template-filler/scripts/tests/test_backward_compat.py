@@ -85,6 +85,6 @@ class TestBackwardCompat:
             {"slide_type": "totally_unknown", "title": "Skip"},
             {"slide_type": "content_slide", "title": "Also Keep", "body": "**X** - y"},
         ]
-        generate_ppt_from_data(data, output_path=output_path)
+        generate_ppt_from_data(data, output_path=output_path, default_closing=False)
         prs = Presentation(output_path)
         assert len(prs.slides) == 2

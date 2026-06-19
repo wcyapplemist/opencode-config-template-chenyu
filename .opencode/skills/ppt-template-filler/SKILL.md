@@ -16,7 +16,7 @@ I fill the PowerPoint template (`template.pptx`) with structured content using `
 - Resolve Slide Master layouts **by name** (robust to layout reordering)
 - Add slides from the template's Slide Master layouts, filling placeholders by type
 - Embed **native charts** (editable, not images) and **native pictures**
-- Resolve resource placeholders (`image_prompt`, `icon_query`, `data_query`) into real assets before rendering
+- Resolve resource placeholders (`data_query`) into real assets before rendering
 - **Validate** every deck against a JSON schema (with two-layer retry) before it reaches the engine
 - Write English speaker notes to each slide's Notes pane (Presenter View only)
 - Handle missing placeholders gracefully with warnings (never crash)
@@ -100,9 +100,6 @@ Layouts are resolved **by name**, not by index. The default mapping (`slide_type
 | `image_path` | No | `content_image_slide` + any | Local file path of an image to embed as a **native, editable picture**. When set, the engine inserts it (#18). |
 | `image_position` | No | any slide with `image_path` | Named placement preset: `full`, `half-left`, `half-right`, `below-title` (default). |
 | `image_size` | No | any slide with `image_path` | `{"width": inches, "height": inches}` override of the preset box. |
-| `image_prompt` / `image_query` | No | any | Resource placeholder — a description/search for an image; the resolver replaces it with `image_path`. |
-| `image_source` | No | any | `auto` / `stock` / `ai` — selects the image resolver provider. |
-| `icon_query` | No | any | Resource placeholder — a semantic keyword; the resolver replaces it with `icon_path`. |
 | `data_query` | No | `chart_slide` | Resource placeholder — asks for real chart statistics; the resolver fills `categories`/`series` with sourced numbers. |
 | `data_hint` | No | `chart_slide` | Optional expected shape for `data_query` (e.g. category/series names). |
 | `notes` | Yes | All | Full English presenter script (**~120–180 words**). Written to the slide's Notes pane (Presenter View only). `\n` = new paragraph. Must be **spoken dialogue** (quoted, speakable sentences tied to the slide's content), **interspersed stage directions**, a `TRANSITION` line, and `COACHING` with delivery + an anticipated Q&A — NOT bullet summaries. Cover/closing use `[Name]` / `[morning/afternoon]` placeholders. |
@@ -251,11 +248,11 @@ Instead of fabricating asset URLs or chart numbers, emit **placeholders**; an in
 
 | Placeholder | Resolved to | Provider |
 |-------------|-------------|----------|
-| `image_prompt` / `image_query` (+ `image_source`) | `image_path` | Stock photo API (Pexels/Unsplash) or AI generation |
-| `icon_query` | `icon_path` | Local icon library (Phosphor) keyword/embedding match |
-| `data_query` (+ `data_hint`) | populated `categories`/`series` | Web search of real statistics; citation added to notes |
+| `data_query` (+ `data_hint`) | populated `categories`/`series` | Agent `webfetch` pre-flight (resolver does NOT network); citation added to notes |
 
 **Concrete values always win** — if a slide already has `image_path` or concrete `series`, the resolver does not overwrite them.
+
+**`data_query` contract.** The chart-data resolver makes **no** network calls. Real numbers must be sourced by the agent's `webfetch` pre-flight and written as concrete `categories`/`series`; **fabricating chart numbers to pass schema validation is forbidden** — every value must trace to a fetched source.
 
 ### Pipeline order
 
@@ -335,7 +332,7 @@ For best quality on longer decks, the agent generates in three stages: **outline
 
 ## End-to-End Example: Mixed Text / Image / Chart Deck
 
-A single deck combining text slides, an image slide (via placeholder), and a native chart. Placeholders (`image_prompt`, `data_query`) are resolved before rendering; concrete values (the chart here) are used as-is.
+A single deck combining text slides, an image slide (via a local `image_path`), and a native chart with concrete values.
 
 ```json
 [
@@ -355,7 +352,7 @@ A single deck combining text slides, an image slide (via placeholder), and a nat
     "slide_type": "content_image_slide",
     "title": "Drones on Site",
     "body": "**Aerial surveys** - cut survey time by 60%",
-    "image_prompt": "construction drone surveying site at sunset",
+    "image_path": "output/drone_site.png",
     "image_position": "full",
     "notes": "KEY MESSAGE: Drones are already standard on leading sites.\n\"Look at this - one drone flight replaces days of manual surveying.\"\nTRANSITION: \"Now let's see the market numbers.\"\nCOACHING: Let the image land before speaking."
   },

@@ -1,57 +1,191 @@
 # PPTX Subagent Development
 
-Development workspace for the `pptx-subagent` and `ppt-template-filler` skill used with OpenCode.
+Turn a one-line request into a fully editable `.pptx` deck — native text, native
+charts, and embedded pictures, never screenshots — by filling a Slide Master
+template instead of building slides by hand.
 
-## Overview
+## What this project does
 
-This project contains a project-level OpenCode subagent that generates PowerPoint presentations by filling a `template.pptx` Slide Master, rather than building slides from scratch.
+A two-layer system for generating PowerPoint presentations:
 
-## Components
+- A **content strategist** (an OpenCode agent) turns a plain-language request into
+  structured slide content (a JSON array).
+- A **rendering engine** (`ppt_builder.py`) fills a `template.pptx` Slide Master
+  with that content and writes a `.pptx` to `output/`.
 
-### pptx-subagent (`.opencode/agents/pptx-subagent.md`)
+Everything in the output is a native, editable PowerPoint object (text runs,
+charts, pictures) — double-click a chart and it opens live in PowerPoint.
 
-A specialized PPT Content Strategist that:
+## Architecture
 
-- Transforms user requests into structured presentation content
-- Delegates to the `ppt-template-filler` skill for `.pptx` generation
-- Is forbidden from raw `python-pptx` construction
+```
+                       ┌──────────────────────────────────────┐
+   "Make a 5-page      │  pptx-subagent  (content layer)      │   LLM agent
+    deck about X" ───▶ │  Stage 1 outline                      │   Produces JSON,
+                       │  Stage 2 density mode + critique      │   never rendering code
+                       │  Stage 3 detail + schema validation   │
+                       └──────────────────┬───────────────────┘
+                                          │  slide_data_list  (JSON array)
+                                          ▼
+                       ┌──────────────────────────────────────┐
+                       │  ppt-template-filler (render layer)   │   python-pptx engine
+                       │  resolve_slide_data_list()            │   The ONLY entry
+                        │    └─ chart-data resolver              │   point that writes .pptx
+                       │  generate_ppt_from_data()             │
+                       └──────────────────┬───────────────────┘
+                                          │
+                                          ▼
+                              output/<deck>.pptx   (100% native, editable)
+```
 
-### ppt-template-filler (`.opencode/skills/ppt-template-filler/`)
+### Separation of concerns (why the strategist never calls python-pptx directly)
 
-The underlying engine:
+The content layer only emits structured JSON; it does **not** write `python-pptx`
+code such as `Presentation()` or `prs.slides.add_slide()`. Rendering is routed
+exclusively through `ppt_builder.py`. This keeps a mandatory quality pipeline —
+schema validation, resource resolution, and per-slide density control — that the
+content cannot bypass. Skipping the engine would mean losing every safety check
+and producing slides detached from the Slide Master's design.
 
-- Loads `template.pptx` with named Slide Master layouts
-- Removes example slides, adds new slides from layouts
-- Fills placeholders by type (TITLE, SUBTITLE, OBJECT)
-- Embeds **native charts** (editable, not images) and **native pictures**
-- Outputs to `output/` directory
+## Repository layout
 
-### Phase 1: Content Intelligence & Resource Resolution
+```
+pptx-subagent-development/
+├── .opencode/
+│   ├── agents/
+│   │   └── pptx-subagent.md              # Content-strategist agent (Stage 0–5 workflow)
+│   └── skills/ppt-template-filler/
+│       ├── SKILL.md                       # Engine usage contract
+│       ├── docs/                          # DESIGN-*.md architecture deep-dives
+│       └── scripts/
+│           ├── ppt_builder.py            # ← THE renderer (only .pptx writer)
+│           ├── schema_validator.py        # JSON schema validation + retry
+│           ├── density_mode.py            # Per-slide word-budget enforcement
+│           ├── outline_store.py           # Outline checkpoint artifact
+│           ├── templates/
+│           │   ├── template.pptx          # Slide Master with named layouts
+│           │   └── template.config.json   # Layout-name overrides
+│           ├── resolvers/                  # chart-data resolver
+│           ├── schemas/                    # Per-slide-type JSON schemas
+│           └── tests/                      # pytest suite
+├── output/                               # Generated .pptx files (gitignored)
+├── USER-STORY.md                         # Agile user stories (the "why")
+├── requirements.txt                      # Python dependencies
+└── AGENTS.md                             # Agent operating rules
+```
 
-The engine includes a content-intelligence layer on top of the renderer:
+## Prerequisites
 
-- **Schema validation (#20)** — every `slide_data_list` is validated against explicit JSON schemas (8 slide types + `chart_options`) with a two-layer retry wrapper for LLM JSON. Structured errors (slide index + field path) let the agent self-correct.
-- **Resource resolution pipeline (#19/#18/#23)** — emit placeholders (`image_prompt`, `icon_query`, `data_query`); an independent resolver pass replaces them with real assets (stock photos, semantic icons, sourced chart data) before rendering. All resolution is non-fatal.
-- **Native image embedding (#18)** — `image_path` inserts an editable PowerPoint picture (placeholder fill or named presets).
-- **Multi-stage generation (#21/#24)** — outline → critique → detail, schema-gated per stage; autonomous by default with an optional interactive outline checkpoint in primary-agent mode.
+- Python 3.9+
+- Install dependencies:
 
-Design docs live in `.opencode/skills/ppt-template-filler/docs/`.
+  ```bash
+  pip install -r requirements.txt
+  ```
 
-## Usage
+## Quick start
 
-In any conversation, trigger the subagent with phrases like:
+Run the engine directly on a JSON array — the fastest way to verify the install:
 
-- "Create a presentation about..."
-- "Generate a PowerPoint deck for..."
-- "Make a .pptx with..."
+```bash
+python -c "
+import sys; sys.path.insert(0, '.opencode/skills/ppt-template-filler/scripts')
+from ppt_builder import generate_ppt_from_data, DEFAULT_OUTPUT_DIR
 
-## Project-Level vs Global
+slide_data = [
+  {
+    'slide_type': 'title_slide',
+    'title': 'Hello Deck',
+    'subtitle': 'Quick-start demo',
+    'notes': 'KEY MESSAGE: A working deck in one command.\nTRANSITION: That is all.\nCOACHING: Confident open.'
+  },
+  {
+    'slide_type': 'content_slide',
+    'title': 'What you get',
+    'body': '**Native text** - every word editable\n**Live charts** - double-click to edit\n**No screenshots**',
+    'notes': 'KEY MESSAGE: Output is editable, not flattened.\nTRANSITION: Done.\nCOACHING: Keep it brief.'
+  },
+  {
+    'slide_type': 'closing_slide',
+    'title': 'Thank You',
+    'notes': 'KEY MESSAGE: Clean sign-off.\nTRANSITION: Open for questions.\nCOACHING: Smile.'
+  }
+]
 
-This project defines resources scoped to this repository only:
+result = generate_ppt_from_data(slide_data, output_path=str(DEFAULT_OUTPUT_DIR / 'demo.pptx'))
+print(result)
+"
+```
 
-| Resource              | Location            | Global? |
-| --------------------- | ------------------- | ------- |
-| `pptx-subagent`       | `.opencode/agents/` | No      |
-| `ppt-template-filler` | `.opencode/skills/` | No      |
+Open the printed path in PowerPoint. Text and charts are fully editable.
 
-Global agents (30 subagents) and skills (54+) are managed at `C:\Users\LENOVO\.config\opencode\`.
+**Alternative — natural language:** if you use OpenCode, just ask
+`"Create a 5-page PPT about ..."` and the `pptx-subagent` agent runs the full
+multi-stage pipeline (outline → critique → detail → render) for you.
+
+## How it works (pipeline)
+
+```
+Stage 1  Outline        plain-text plan, one line per slide
+Stage 2  Density + gate pick word budget (standard 30–50 / concise 0–10 / text-heavy 75–150);
+                        approve or self-critique the outline
+Stage 3  Detail + JSON  full slide_data_list, schema-validated, density-aware
+Stage 4  Resolve+Render resolvers fill placeholders, then generate_ppt_from_data()
+Stage 5  Return         absolute path to the .pptx
+```
+
+See `.opencode/agents/pptx-subagent.md` for the full stage contract.
+
+## Extending the engine
+
+**Add a new slide type** — three places, all under `scripts/`:
+
+1. `schemas/slide_schemas.py` — define the JSON schema for the new type.
+2. `ppt_builder.py` — add the type to `_LAYOUT_NAME_MAP` and a render branch.
+3. `schemas/__init__.py` — export it from `VALID_SLIDE_TYPES`.
+
+**Add a resource resolver** — implement a function with the
+`(slide_data, config) -> slide_data` signature in `scripts/resolvers/`, then
+register it in `resolvers/pipeline.py`. The existing chart-data resolver
+are the templates to copy. Resolvers must degrade gracefully: a failed fetch logs
+a warning and never aborts the build.
+
+## Supported slide types
+
+| `slide_type` | Purpose | Key fields |
+|---|---|---|
+| `title_slide` | Cover | `title`, `subtitle`, `notes` |
+| `content_slide` | Content | `title`, `body`, `notes` |
+| `section_header_slide` | Divider | `title`, `notes` |
+| `two_content_slide` | Two-column | `title`, `body_left`, `body_right`, `notes` |
+| `comparison_slide` | Comparison | `title`, `body_left`, `body_right`, `notes` |
+| `content_image_slide` | Image + caption | `title`, `body`, `image_path`, `notes` |
+| `chart_slide` | Native chart | `title`, `chart_type`, `categories`, `series`, `notes` |
+| `closing_slide` | Closing | `title` (defaults to `Thank You`), `notes` |
+
+**Chart types:** `bar`, `bar_stacked`, `bar_horizontal`, `bar_horizontal_stacked`,
+`pie`, `pie_exploded`, `doughnut`, `line`, `line_markers`.
+
+**Resource placeholder:** `data_query` (chart data) is resolved by the agent's
+`webfetch` pre-flight, not the resolver (it never networks); fabricating chart
+numbers to pass validation is forbidden. Manual images use `image_path` directly.
+
+## Further reading
+
+| Topic | Document |
+|---|---|
+| Content-strategist workflow (all stages) | `.opencode/agents/pptx-subagent.md` |
+| Engine usage contract & field reference | `.opencode/skills/ppt-template-filler/SKILL.md` |
+| Multi-stage generation design | `.opencode/skills/ppt-template-filler/docs/DESIGN-multi-stage-generation.md` |
+| Resource resolver design | `.opencode/skills/ppt-template-filler/docs/DESIGN-resource-resolver.md` |
+| Why this exists (user stories) | `USER-STORY.md` |
+
+## Scope (project-level resources)
+
+Both resources are scoped to this repository only — they are **not** installed
+globally:
+
+| Resource | Location |
+|---|---|
+| `pptx-subagent` | `.opencode/agents/` |
+| `ppt-template-filler` | `.opencode/skills/` |

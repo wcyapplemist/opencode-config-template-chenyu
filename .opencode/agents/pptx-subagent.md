@@ -94,7 +94,7 @@ Produce a **plain-text outline** (no JSON yet). One line per planned slide, reco
 1. [title_slide]   "AI in Construction" — subtitle: 2026 Outlook
 2. [content_slide] "Why now" — market pressure, labor gap, tech maturity
 3. [chart_slide]   "Market growth" — bar, 2020-2026 (data_query: market size USD B)
-4. [content_image_slide] "Field example" — drone surveying (image_prompt: aerial site)
+4. [content_image_slide] "Field example" — drone surveying (image_path: assets/drone.png)
 ...
 ```
 
@@ -188,7 +188,7 @@ Available slide types:
 | `section_header_slide` | Divider | `title`, `notes` |
 | `two_content_slide` | Two-column | `title`, `body_left`, `body_right`, `notes` |
 | `comparison_slide` | Comparison | `title`, `body_left`, `body_right`, `notes` |
-| `content_image_slide` | Image + caption | `title`, `body`, `image_path`/`image_prompt`, `notes` |
+| `content_image_slide` | Image + caption | `title`, `body`, `image_path`, `notes` |
 | `chart_slide` | Native chart | `title`, `chart_type`, `categories`, `series`, `notes` |
 | `closing_slide` | Closing | `title` (default `"Thank You"`), `notes` — do NOT set `subtitle` (template default shows) |
 
@@ -215,7 +215,7 @@ If `INVALID`, re-author only the offending slides using the returned error feedb
 
 ### Stage 4: Resolve + Render
 
-First, resolve placeholders into concrete assets (images/icons/real chart data):
+First, resolve placeholders into concrete assets (real chart data):
 
 ```bash
 python -c "
@@ -227,7 +227,7 @@ print(json.dumps(resolved, ensure_ascii=False))
 "
 ```
 
-Use the resolved JSON for the next step. Resolvers degrade gracefully — unresolved placeholders just render without that asset; the build never fails. (To source real chart numbers yourself, you have `webfetch`; put concrete `categories`/`series` directly and skip `data_query`.)
+Use the resolved JSON for the next step. Resolvers degrade gracefully — unresolved placeholders just render without that asset; the build never fails. **Chart data sourcing contract:** the `data_query` resolver does NOT network — real numbers must be sourced by YOUR `webfetch` in Stage 3, then written as concrete `categories`/`series` (you may then drop `data_query`). **Fabricating chart numbers to pass schema validation is forbidden** — every figure must trace to a fetched source.
 
 Then render (this is the **only** allowed way to produce the file):
 
@@ -262,11 +262,11 @@ Emit placeholders instead of fabricating assets; the resolver replaces them:
 
 | Placeholder | Used on | Resolved to | Notes |
 |-------------|---------|-------------|-------|
-| `image_prompt` / `image_query` (+ `image_source`: `auto`/`stock`/`ai`) | any slide | `image_path` | Stock photo / AI generation |
-| `icon_query` | any slide | `icon_path` | Semantic icon match |
 | `data_query` (+ `data_hint`) | `chart_slide` | populated `categories`/`series` | Real, sourced numbers; citation added to notes |
 
 You may also provide concrete values directly (`image_path`, `categories`/`series`). Concrete values always win — the resolver never overwrites them.
+
+**`data_query` is agent-resolved, not resolver-resolved.** The chart-data resolver does NOT make network calls — you MUST source real numbers via your own `webfetch` in Stage 3 and write concrete `categories`/`series`. **Fabricating chart numbers to pass schema validation is forbidden**; every value must trace to a fetched source.
 
 ### Image placement presets (when `image_path` is set)
 

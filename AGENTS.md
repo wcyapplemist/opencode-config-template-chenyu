@@ -45,7 +45,7 @@ Global subagents and skills are managed at `~/.config/opencode/` and are availab
 The engine layers content-intelligence on top of the python-pptx renderer (output stays 100% native/editable):
 
 - **Schema validation (#20, P0)** — `schema_validator.py` validates all 8 slide types + `chart_options`; structured errors; two-layer retry (`parse_and_validate`). The engine raises a clear `ValidationError` on unrecoverable structure and degrades gracefully otherwise; `strict=True` blocks on any schema violation (agent pre-flight gate).
-- **Resource pipeline (#19/#18/#23)** — placeholders (`image_prompt`, `icon_query`, `data_query`) → `resolvers/` (image/icon/chart-data) → concrete assets before render. All resolution is non-fatal.
+- **Resource pipeline (#19/#18/#23)** — placeholders (`data_query`) → `resolvers/` (chart-data) → concrete assets before render. All resolution is non-fatal.
 - **Multi-stage generation (#21/#24)** — outline → critique → detail, schema-gated per stage; autonomous by default for headless subagents.
 - **Density modes (text-overflow prevention)** — `density_mode.py` fixes a per-slide visible-text word budget per mode (`concise` 0–10 / `standard` 30–50 / `text-heavy` 75–150). The validator emits non-fatal warnings on out-of-budget slides (`validate_slide_data_list(..., density_mode=...)` / `parse_and_validate(..., density_mode=...)`); warnings never block, even in strict mode. This is the content-side defense against text overflowing placeholder boundaries.
 

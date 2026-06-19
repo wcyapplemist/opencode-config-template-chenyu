@@ -110,14 +110,3 @@ def image_slide_data(sample_image):
         "image_position": "full",
         "notes": "Drones cut survey time.",
     }
-
-
-@pytest.fixture
-def image_placeholder_slide():
-    return {
-        "slide_type": "content_image_slide",
-        "title": "Needs a photo",
-        "body": "**x** - y",
-        "image_prompt": "sunset over construction site",
-        "notes": "n",
-    }
