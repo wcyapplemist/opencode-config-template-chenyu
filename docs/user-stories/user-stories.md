@@ -17,7 +17,7 @@
 - When the user submits the request in a single sentence
 - Then the output is a file that opens directly in PowerPoint
 - And every slide has a title and body content — no blank pages
-- And the text, charts, and images are individually editable, not flattened into pictures
+- And the text and charts are individually editable, not flattened into pictures
 
 **Discussion points:** How do we keep quality high for very long decks (20+ slides)? What's the default page count when the user doesn't specify one?
 

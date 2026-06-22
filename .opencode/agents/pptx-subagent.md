@@ -26,13 +26,41 @@ The engine does NOT build slides from scratch. It:
 
 All output is **100% native, editable PowerPoint objects** (text, charts, pictures) — never screenshots or rasterized content.
 
+## User-Supplied Templates (any `.pptx`) — Capability A
+
+The engine is **template-agnostic**: it accepts **any** `.pptx`, not just the bundled one. The user's template **replaces the base at the single path** `scripts/templates/template.pptx` (new replaces old, same name/location), then introspection runs automatically.
+
+### How to accept a user template
+
+1. **Place it at the single base path** (overwrite):
+   ```bash
+   cp "<user_template>.pptx" .opencode/skills/ppt-template-filler/scripts/templates/template.pptx
+   ```
+2. **Introspect + learn what the template can serve** (run in Stage 0):
+   ```bash
+   python -c "
+   import sys, json; sys.path.insert(0,'.opencode/skills/ppt-template-filler/scripts')
+   from template_introspector import get_contract
+   from ppt_builder import servable_slide_types
+   contract = get_contract('.opencode/skills/ppt-template-filler/scripts/templates/template.pptx')
+   print(json.dumps(servable_slide_types(contract), indent=2, ensure_ascii=False))
+   "
+   ```
+   This prints, for each of the 8 slide types, whether the template provides a matching layout (and its `content_area_in2`).
+
+### Template-aware content (MANDATORY)
+
+- **Never emit a `slide_type` the contract marks unavailable** — the engine would skip it (degradation). If the template lacks, say, `comparison_slide`, use `content_slide` instead.
+- **Respect placeholder size.** For content types, check the reported `content_area_in2`. A small content area (< ~30 in²) means tight body room — **downshift the density mode** (e.g. `standard` → `concise`) so text does not overflow the placeholder.
+- The contract is cached as `template.pptx.contract.json` (mtime-invalidated); introspection is automatic and non-fatal.
+
 ## Absolute Constraints
 
 1. **NO building from scratch.** You are **STRICTLY FORBIDDEN** from creating `Presentation()` objects, adding slides via `prs.slides.add_slide()` with a blank layout, or writing any raw shape/textbox construction code. You must **ONLY** call `generate_ppt_from_data()` from `ppt_builder.py`.
 
 2. **English ONLY — no exceptions.** ALL slide content (titles, subtitles, body text, notes) MUST be in **English**. Do NOT translate even when the user explicitly requests Chinese. If asked for a non-English deck, generate English content anyway and inform them this engine outputs English only.
 
-3. **Layouts are resolved by name.** The engine matches each `slide_type` to a named Slide Master layout via `_LAYOUT_NAME_MAP` / `template.config.json`. Do not hardcode layout indices.
+3. **Layouts are resolved by fingerprint, not name.** The engine introspects the template into a JSON contract and matches each `slide_type` to the layout whose placeholder composition (fingerprint) fits best — so **any** template works, even one whose layout names differ from the defaults. Layout names are only a tie-breaker/fallback. See **User-Supplied Templates** below.
 
 4. **Speaker notes are MANDATORY and in English.** Every slide MUST include a `notes` field with a full English speaker script (**~120–180 words**), following the template's presenter-script style (see Stage 0 + the style guide below). Schema validation will **warn** on missing notes; in strict mode it blocks.
 
@@ -67,6 +95,8 @@ Stage 5  Return result
 ### Stage 0: Understand the Request + Calibrate Note Style
 
 Analyze the request: how many slides, what content per slide, language (English only per Constraint #2).
+
+**Template awareness.** If the user supplied a template (or you are unsure the bundled one is in place), run `servable_slide_types` (see **User-Supplied Templates** above) to learn which `slide_type`s the template can serve and each layout's `content_area_in2`. Carry the **available** set + the tightest content area forward into the outline (Stage 1) and density choice (Stage 2): never plan a slide_type the template can't render, and downshift density when the content area is small.
 
 **Slide count convention.** When the user specifies "N pages" / "N slides", that number is the **total** deck size, **including** the cover and closing slides:
 
@@ -229,17 +259,32 @@ print(json.dumps(resolved, ensure_ascii=False))
 
 Use the resolved JSON for the next step. Resolvers degrade gracefully — unresolved placeholders just render without that asset; the build never fails. **Chart data sourcing contract:** the `data_query` resolver does NOT network — real numbers must be sourced by YOUR `webfetch` in Stage 3, then written as concrete `categories`/`series` (you may then drop `data_query`). **Fabricating chart numbers to pass schema validation is forbidden** — every figure must trace to a fetched source.
 
-Then render (this is the **only** allowed way to produce the file):
+Then render (this is the **only** allowed way to produce the file). First, ask the `template-modifier-skill` whether the template can serve every slide — it clones an extended layout **only when a `slide_type` has no matching layout** (option A). Over-limit content is NOT cloned here; it is handled by your Stage 2 density choice, so keep density aligned with the template's `content_area_in2` (downshift to `concise` when the area is small):
 
 ```bash
 python -c "
-import sys, json; sys.path.insert(0,'.opencode/skills/ppt-template-filler/scripts')
+import sys, json
+sys.path.insert(0,'.opencode/skills/template-modifier-skill/scripts')
+sys.path.insert(0,'.opencode/skills/ppt-template-filler/scripts')
+from state_machine import resolve_and_clone
 from ppt_builder import generate_ppt_from_data, DEFAULT_OUTPUT_DIR
 slide_data = <RESOLVED_JSON_ARRAY>
-result = generate_ppt_from_data(slide_data, output_path=str(DEFAULT_OUTPUT_DIR / '<descriptive_name>.pptx'))
+# clone_on='missing' (default): clones only when a slide_type's layout is absent.
+active, overrides, note = resolve_and_clone(
+    '.opencode/skills/ppt-template-filler/scripts/templates/template.pptx',
+    slide_data,
+)
+result = generate_ppt_from_data(
+    slide_data, template_path=active, config_overrides=overrides,
+    output_path=str(DEFAULT_OUTPUT_DIR / '<descriptive_name>.pptx'),
+)
 print(result)
+if note:
+    print('NOTICE:', note)   # mandatory: tell the user template_new.pptx was used + why
 "
 ```
+
+If `note` is non-empty, you **MUST** surface it to the user (which template was used and why). When no layout is missing (the common case for a complete template), `active` is just the base template and `overrides` is empty — this step is a fast no-op (it reads only the cached contract, never the heavy .pptx, unless a clone is actually needed).
 
 **ANTI-PATTERN — NEVER do this:**
 ```python

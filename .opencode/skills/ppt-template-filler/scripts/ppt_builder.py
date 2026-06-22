@@ -36,6 +36,7 @@ from pptx.util import Inches, Pt
 
 from schema_validator import ValidationError, validate_slide_data_list
 from resolvers import resolve_slide_data_list
+from template_introspector import get_contract
 
 logging.basicConfig(
     level=logging.INFO,
@@ -81,6 +82,42 @@ _LAYOUTS_WITH_CHART = {
     "chart_slide",
 }
 
+# Issue #44 (P1): ideal placeholder-composition fingerprint per slide_type.
+# Derived from _LAYOUT_NAME_MAP + _LAYOUTS_WITH_* sets. Used by
+# _resolve_layout_by_fingerprint() so the engine fills ANY template by
+# placeholder composition — layout NAMES become a tie-breaker / fallback, not
+# the primary key (DESIGN §6 A2/A3).
+_SLIDE_TYPE_FINGERPRINT: Dict[str, List[str]] = {
+    "title_slide": ["TITLE", "SUBTITLE"],
+    "closing_slide": ["TITLE", "SUBTITLE"],
+    "section_header_slide": ["TITLE", "SUBTITLE"],
+    "content_slide": ["TITLE", "OBJECT"],
+    "two_content_slide": ["TITLE", "OBJECT", "OBJECT"],
+    "comparison_slide": ["TITLE", "OBJECT", "OBJECT"],
+    "content_image_slide": ["TITLE", "PICTURE"],
+    "chart_slide": ["TITLE"],
+}
+
+# Slide types whose body/content area is the primary selection concern
+# (used for the content_area_in2 tie-break).
+_CONTENT_SLIDE_TYPES = {
+    "content_slide", "two_content_slide", "comparison_slide", "content_image_slide",
+}
+
+# Type-satisfaction relation: which layout placeholder types can SERVE a given
+# ideal fingerprint type. A content/body (OBJECT) placeholder is versatile — it
+# can host text, pictures, tables or charts — so it satisfies several ideal
+# types. This lets e.g. a [TITLE, OBJECT] layout serve a [TITLE, PICTURE] ideal.
+_SERVES_LAYOUT: Dict[str, Tuple[str, ...]] = {
+    "TITLE": ("TITLE",),
+    "SUBTITLE": ("SUBTITLE",),
+    "PICTURE": ("PICTURE", "OBJECT"),
+    "CHART": ("CHART", "OBJECT"),
+    "TABLE": ("TABLE", "OBJECT"),
+    "MEDIA": ("MEDIA", "OBJECT"),
+    "OBJECT": ("OBJECT",),
+}
+
 _CHART_TYPE_MAP: Dict[str, Any] = {
     "bar":                    XL_CHART_TYPE.COLUMN_CLUSTERED,
     "bar_stacked":            XL_CHART_TYPE.COLUMN_STACKED,
@@ -117,27 +154,54 @@ _CHART_AXIS_COLOR = RGBColor(0x44, 0x54, 0x6A)
 _CHART_TEXT_COLOR = RGBColor(0x44, 0x54, 0x6A)
 
 _CHART_DEFAULT_TYPE = "bar"
-_CHART_X = Inches(0.92)
-_CHART_Y = Inches(2.0)
-_CHART_CX = Inches(11.5)
-_CHART_CY = Inches(4.5)
 
 _PIE_CHART_TYPES = {"pie", "pie_exploded", "doughnut"}
 _BAR_CHART_TYPES = {
     "bar", "bar_stacked", "bar_horizontal", "bar_horizontal_stacked",
 }
 
+
+def _slide_dims_emu(slide: Any) -> Tuple[int, int]:
+    """Return ``(width_emu, height_emu)`` of the presentation's slide size."""
+    prs = slide.part.package.presentation_part.presentation
+    return int(prs.slide_width), int(prs.slide_height)
+
+
+def _chart_bbox(slide: Any) -> Tuple[int, int, int, int]:
+    """Compute a chart bounding box responsive to the slide's actual size.
+
+    The former hard-coded ``_CHART_X/Y/CX/CY`` constants were sized for
+    13.33x7.5in widescreen but overflowed on smaller 16:9 templates (e.g.
+    10x5.625in).  Margins are proportional so the chart fits any slide size.
+    """
+    sw, sh = _slide_dims_emu(slide)
+    margin_x = max(int(sw * 0.07), int(Inches(0.5)))
+    y = max(int(sh * 0.25), int(Inches(1.4)))
+    bottom_margin = int(Inches(0.3))
+    cx = sw - 2 * margin_x
+    cy = sh - y - bottom_margin
+    return margin_x, y, cx, cy
+
+
 # --- Image placement (#18) -------------------------------------------------
-# Named bounding-box presets (EMU via Inches). The chart area lower-left is
-# reused as the default free-space region (below the title).
-_IMAGE_PRESETS: Dict[str, Dict[str, Any]] = {
-    "full": {"x": Inches(0.92), "y": Inches(2.0), "cx": Inches(11.5), "cy": Inches(4.5)},
-    "below-title": {"x": Inches(0.92), "y": Inches(2.0), "cx": Inches(11.5), "cy": Inches(4.5)},
-    "half-left": {"x": Inches(0.5), "y": Inches(2.0), "cx": Inches(5.75), "cy": Inches(4.5)},
-    "half-right": {"x": Inches(6.75), "y": Inches(2.0), "cx": Inches(5.75), "cy": Inches(4.5)},
-}
 _IMAGE_DEFAULT_PRESET = "below-title"
-_VALID_IMAGE_PRESETS = set(_IMAGE_PRESETS.keys())
+_VALID_IMAGE_PRESETS = {"full", "below-title", "half-left", "half-right"}
+
+
+def _image_bbox(slide: Any, preset_key: str) -> Dict[str, int]:
+    """Compute an image bounding box responsive to the slide's actual size."""
+    sw, sh = _slide_dims_emu(slide)
+    y = max(int(sh * 0.25), int(Inches(1.4)))
+    bottom_margin = int(Inches(0.3))
+    cy = sh - y - bottom_margin
+    if preset_key in ("half-left", "half-right"):
+        margin = int(Inches(0.5))
+        half_w = (sw - 3 * margin) // 2
+        if preset_key == "half-left":
+            return {"x": margin, "y": y, "cx": half_w, "cy": cy}
+        return {"x": 2 * margin + half_w, "y": y, "cx": half_w, "cy": cy}
+    margin_x = max(int(sw * 0.07), int(Inches(0.5)))
+    return {"x": margin_x, "y": y, "cx": sw - 2 * margin_x, "cy": cy}
 
 
 def _normalize_layout_name(name: str) -> str:
@@ -168,6 +232,186 @@ def _resolve_layout(
         if key in normalized:
             return normalized[key]
     return None
+
+
+# ---------------------------------------------------------------------------
+# Issue #44 (P1): fingerprint-based layout resolution
+# ---------------------------------------------------------------------------
+def _composition_diff(ideal: List[str], layout_fp: List[str]) -> Tuple[int, int]:
+    """Return ``(missing, extra)`` between an ideal fingerprint and a layout's.
+
+    ``missing`` = ideal types that no layout placeholder can serve (each ideal
+    type consumes one distinct *serving* placeholder). ``extra`` = layout
+    placeholders left unconsumed after satisfying the ideal. A content/body
+    (OBJECT) placeholder is versatile — it can also serve PICTURE/TABLE/CHART.
+    """
+    avail: Dict[str, int] = {}
+    for t in layout_fp:
+        avail[t] = avail.get(t, 0) + 1
+    matched = 0
+    # Satisfy non-OBJECT ideal types first so OBJECT placeholders are reserved.
+    for it in ideal:
+        if it == "OBJECT":
+            continue
+        for lt in _SERVES_LAYOUT.get(it, (it,)):
+            if avail.get(lt, 0) > 0:
+                avail[lt] -= 1
+                matched += 1
+                break
+    object_need = sum(1 for it in ideal if it == "OBJECT")
+    served = min(object_need, avail.get("OBJECT", 0))
+    matched += served
+    missing = len(ideal) - matched
+    extra = len(layout_fp) - matched
+    return missing, extra
+
+
+def _name_affinity(layout_name: str, candidate_names: List[str]) -> int:
+    """``2`` = exact (case-insensitive) name match, ``1`` = normalized, ``0`` = none."""
+    cname = layout_name.lower()
+    if any(cname == c.lower() for c in candidate_names):
+        return 2
+    norm = _normalize_layout_name(layout_name)
+    if any(norm == _normalize_layout_name(c) for c in candidate_names):
+        return 1
+    return 0
+
+
+_LAYOUT_TYPES_NEEDING_SIDEBYSIDE = {"two_content_slide", "comparison_slide"}
+
+
+def _content_placeholders_stacked(layout_contract: Dict[str, Any]) -> int:
+    """Return 1 if this layout's content placeholders are vertically stacked,
+    0 if horizontally separated (side-by-side).
+
+    Used as a geometric tie-breaker so two_content/comparison slides prefer
+    side-by-side layouts over vertically stacked ones.
+    """
+    phs = [p for p in layout_contract.get("placeholders", [])
+           if p.get("type") == "OBJECT"]
+    if len(phs) < 2:
+        return 0
+    lefts = sorted(p.get("left_in", 0) for p in phs[:2])
+    return 0 if (lefts[1] - lefts[0]) > 1.0 else 1
+
+
+def _resolve_layout_by_fingerprint(
+    slide_type: str,
+    contract: Dict[str, Any],
+) -> Tuple[Optional[int], Optional[str]]:
+    """Match ``slide_type`` to the best contract layout by composition.
+
+    Returns ``(layout_index, None)`` on success, or ``(None, reason)`` on
+    degradation (no layout can satisfy the ideal composition). Among
+    composition-compatible layouts, ranking is: name affinity (highest) → fewest
+    surplus placeholders → largest content area → lowest index. Names are a
+    tie-breaker, not the primary key (DESIGN §6 A2, issue #44).
+    """
+    ideal = _SLIDE_TYPE_FINGERPRINT.get(slide_type)
+    layouts = (contract or {}).get("layouts", [])
+    if ideal is None:
+        return None, f"no fingerprint defined for slide_type '{slide_type}'"
+    if not layouts:
+        return None, "contract has no layouts"
+
+    candidate_names = _LAYOUT_NAME_MAP.get(slide_type, [])
+    need_side_by_side = slide_type in _LAYOUT_TYPES_NEEDING_SIDEBYSIDE
+    scored: List[Tuple[int, int, int, int, float, int, str]] = []
+    for L in layouts:
+        missing, extra = _composition_diff(ideal, L.get("fingerprint", []))
+        affinity = _name_affinity(L.get("name", ""), candidate_names)
+        stacked = _content_placeholders_stacked(L) if need_side_by_side else 0
+        # sort key: (missing, -affinity, extra, stacked, -area, index)
+        # — min() picks the lowest missing, then highest affinity, fewest
+        # extras, side-by-side over stacked, largest area, lowest index.
+        scored.append((
+            missing, -affinity, extra, stacked,
+            -float(L.get("content_area_in2", 0)), L["index"], L.get("name", ""),
+        ))
+
+    full = [s for s in scored if s[0] == 0]
+    if not full:
+        best = min(scored)
+        return None, (
+            f"no layout satisfies fingerprint {ideal} "
+            f"(closest: '{best[6]}' missing {best[0]})"
+        )
+    best = min(full)
+    return best[5], None
+
+
+def _select_layout(
+    slide_type: str,
+    contract: Optional[Dict[str, Any]],
+    config: Dict[str, Any],
+    prs: Presentation,
+    exact_idx: Dict[str, Any],
+    norm_idx: Dict[str, Any],
+    page_num: int,
+) -> Optional[Any]:
+    """Resolve a slide_type to a concrete ``SlideLayout`` (issue #44).
+
+    Precedence: config pin (``<slide_type>_layout``) → fingerprint match →
+    name-based fallback → degradation (skip + warn). Without a contract the path
+    is the original name-based matching, so behaviour is backward compatible.
+    """
+    if slide_type not in _SLIDE_TYPE_FINGERPRINT and slide_type not in _LAYOUT_NAME_MAP:
+        logger.warning("Page %d: unknown slide_type '%s', skipped", page_num, slide_type)
+        return None
+
+    # 1. Config pin — explicit layout name (highest precedence; all 8 types).
+    pinned = config.get(f"{slide_type}_layout")
+    if pinned:
+        layout = _resolve_layout([pinned], exact_idx, norm_idx)
+        if layout is not None:
+            return layout
+        logger.warning(
+            "Page %d: config pin '%s' not found; falling back", page_num, pinned)
+
+    # 2. Fingerprint match (contract-aware; names are a tie-breaker).
+    if contract:
+        idx, reason = _resolve_layout_by_fingerprint(slide_type, contract)
+        if idx is not None:
+            return prs.slide_layouts[idx]
+        logger.warning(
+            "Page %d: fingerprint degradation for '%s': %s",
+            page_num, slide_type, reason)
+
+    # 3. Name-based fallback (backward-compatible safety net).
+    candidates = _LAYOUT_NAME_MAP.get(slide_type)
+    if candidates:
+        layout = _resolve_layout(candidates, exact_idx, norm_idx)
+        if layout is not None:
+            return layout
+
+    # 4. Degradation: nothing usable.
+    logger.warning(
+        "Page %d: no layout matched for slide_type '%s', skipped", page_num, slide_type)
+    return None
+
+
+def servable_slide_types(contract: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Report which engine slide_types a template's contract can serve (#45).
+
+    Used by the content/outline stage to constrain itself to layouts the
+    template actually provides (never emit a ``slide_type`` that would degrade).
+    For each of the 8 slide types, returns ``{"available": bool, ...}`` — when
+    available, the selected layout name/index; when not, the degradation reason.
+    """
+    layouts = (contract or {}).get("layouts", [])
+    report: Dict[str, Dict[str, Any]] = {}
+    for slide_type in _SLIDE_TYPE_FINGERPRINT:
+        idx, reason = _resolve_layout_by_fingerprint(slide_type, contract)
+        if idx is not None and 0 <= idx < len(layouts):
+            report[slide_type] = {
+                "available": True,
+                "layout": layouts[idx].get("name", ""),
+                "index": idx,
+                "content_area_in2": layouts[idx].get("content_area_in2", 0),
+            }
+        else:
+            report[slide_type] = {"available": False, "reason": reason}
+    return report
 
 
 def _load_config() -> Dict[str, Any]:
@@ -327,9 +571,10 @@ def _add_chart_to_slide(slide: Any, slide_data: Dict[str, Any]) -> bool:
 
     xl_type = _CHART_TYPE_MAP[chart_type_key]
     try:
+        cx_chart_x, cx_chart_y, cx_chart_cx, cx_chart_cy = _chart_bbox(slide)
         graphic_frame = slide.shapes.add_chart(
             xl_type,
-            _CHART_X, _CHART_Y, _CHART_CX, _CHART_CY,
+            cx_chart_x, cx_chart_y, cx_chart_cx, cx_chart_cy,
             chart_data,
         )
     except Exception as exc:
@@ -481,7 +726,7 @@ def _add_image_to_slide(slide: Any, slide_data: Dict[str, Any]) -> bool:
                 logger.info("  Image (placeholder frame): %s", p.name)
                 return True
 
-        box = _IMAGE_PRESETS[preset_key]
+        box = _image_bbox(slide, preset_key)
         cx, cy = box["cx"], box["cy"]
         size = slide_data.get("image_size")
         if isinstance(size, dict):
@@ -538,6 +783,7 @@ def generate_ppt_from_data(
     cleanup_temp: bool = True,
     resolve_placeholders: bool = True,
     default_closing: bool = True,
+    config_overrides: Optional[Dict[str, str]] = None,
 ) -> str:
     # #37: resolve resource placeholders (data_query) into concrete assets
     # BEFORE validation, so the validator sees materialized data.
@@ -578,15 +824,46 @@ def generate_ppt_from_data(
     if not template.exists():
         raise FileNotFoundError(f"Template not found: {template}")
 
+    # #46 (P3): state machine ① — discard any derived template_new.pptx left
+    # from a prior run so the base template.pptx is re-evaluated fresh each
+    # request. Inline (no cross-skill import); the full lifecycle lives in the
+    # template-modifier-skill and is wired by P4 when cloning is implemented.
+    _derived = template.with_name(template.stem + "_new" + template.suffix)
+    if _derived.exists():
+        try:
+            _derived.unlink()
+            logger.info("Discarded leftover derived template: %s", _derived.name)
+        except OSError as exc:  # pragma: no cover - defensive
+            logger.debug("Could not delete leftover %s: %s", _derived, exc)
+
     if not output.is_absolute():
         output = DEFAULT_OUTPUT_DIR / output
     output.parent.mkdir(parents=True, exist_ok=True)
 
     config = _load_config()
+    # #47 (P4): merge caller-supplied layout overrides (e.g. cloned-layout pins
+    # from template-modifier-skill's resolve_and_clone). Caller overrides win.
+    if config_overrides:
+        config = {**config, **config_overrides}
 
     logger.info("Loading template: %s", template.name)
     prs = Presentation(str(template))
     logger.info("Template: %d slides, %d layouts", len(prs.slides), len(prs.slide_layouts))
+
+    # #43 (P0): auto-introspect the template into a JSON contract before render.
+    # Produces a mtime-cached contract next to the template. Non-fatal: on any
+    # failure the engine falls back to name-based layout matching (backward
+    # compatible). Full *consumption* of the contract is P1 (#44).
+    contract = None
+    try:
+        contract = get_contract(str(template))
+        logger.info(
+            "Introspected contract: %d layouts, ratio %s",
+            len(contract.get("layouts", [])),
+            contract.get("slide_size", {}).get("ratio", "?"),
+        )
+    except Exception as exc:  # pragma: no cover - defensive; never block render
+        logger.warning("Template introspection skipped (%s); using name matching", exc)
 
     removed = _remove_all_slides(prs)
     logger.info("Cleared %d example slides", removed)
@@ -596,25 +873,12 @@ def generate_ppt_from_data(
     for page_num, slide_data in enumerate(slide_data_list, start=1):
         slide_type = slide_data.get("slide_type", "")
 
-        # Resolve layout by name (config overrides take precedence)
-        if slide_type == "title_slide" and config.get("title_slide_layout"):
-            candidates = [config["title_slide_layout"]]
-        elif slide_type == "content_slide" and config.get("content_slide_layout"):
-            candidates = [config["content_slide_layout"]]
-        else:
-            candidates = _LAYOUT_NAME_MAP.get(slide_type)
-
-        if not candidates:
-            logger.warning("Page %d: unknown slide_type '%s', skipped", page_num, slide_type)
-            continue
-
-        layout = _resolve_layout(candidates, exact_idx, norm_idx)
+        # Resolve layout: config pin → fingerprint match → name fallback (#44).
+        layout = _select_layout(
+            slide_type, contract, config, prs, exact_idx, norm_idx, page_num
+        )
         if layout is None:
-            logger.warning(
-                "Page %d: no layout matched %s for slide_type '%s', skipped",
-                page_num, candidates, slide_type,
-            )
-            continue
+            continue  # degradation warning already logged
 
         layout_idx = prs.slide_layouts.index(layout)
         try:
@@ -653,6 +917,14 @@ def generate_ppt_from_data(
                 body_left = slide_data.get("body_left", "")
                 body_right = slide_data.get("body_right", "")
                 objects = _find_placeholders(slide, _OBJECT_TYPE)
+                # BODY placeholders serve the same role as OBJECT (the
+                # introspector normalizes BODY→OBJECT in the contract, but
+                # _find_placeholders uses the raw python-pptx type). Fall
+                # back so BODY-based templates fill correctly.
+                if len(objects) < 2:
+                    body_phs = _find_placeholders(slide, _BODY_TYPE)
+                    if len(body_phs) > len(objects):
+                        objects = body_phs
                 if len(objects) >= 2:
                     if body_left:
                         _set_body_text(objects[0], body_left)
@@ -662,6 +934,13 @@ def generate_ppt_from_data(
                         logger.info("  Body-right: %d lines", len([l for l in body_right.split("\n") if l.strip()]))
                 elif len(objects) == 1 and (body_left or body_right):
                     _set_body_text(objects[0], body_left or body_right)
+                    logger.warning(
+                        "  Two-content slide has only 1 content placeholder; "
+                        "body_left/body_right merged into one")
+                elif body_left or body_right:
+                    logger.warning(
+                        "  Two-content slide has no content placeholders; "
+                        "body_left/body_right dropped")
 
             # Add chart (for chart slides)
             if slide_type in _LAYOUTS_WITH_CHART:

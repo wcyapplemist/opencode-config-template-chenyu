@@ -27,7 +27,9 @@ def test_auto_closing_appended_when_missing(output_path):
     generate_ppt_from_data(data, output_path=output_path)
     prs = Presentation(output_path)
     assert len(prs.slides) == 4  # 3 input + 1 auto-closing
-    assert prs.slides[-1].slide_layout.name == "End"
+    # The auto-appended closing carries the default "Thank You" title
+    # (template-agnostic: the layout name varies by template source).
+    assert prs.slides[-1].shapes.title.text == "Thank You"
 
 
 def test_auto_closing_skipped_when_already_closing(output_path):

@@ -34,34 +34,46 @@ Do NOT use for:
 
 ## Template
 
-The engine uses a single template:
+The engine is **template-agnostic** (Capability A, issues #43/#44/#45): it accepts **any** `.pptx`, introspects it into a JSON contract, and fills it using that template's own layouts — matched by **placeholder-composition fingerprint**, not hardcoded names.
 
 | File | Description |
 |------|-------------|
-| `scripts/templates/template.pptx` | Slide Master template with named layouts and placeholders |
-| `scripts/templates/template.config.json` | Layout index mapping (`title_slide_layout`, `content_slide_layout`) |
+| `scripts/templates/template.pptx` | Slide Master template. A user-supplied template **replaces this file at the same path** (new overwrites old). |
+| `scripts/templates/template.config.json` | Optional layout-name pins (`<slide_type>_layout` for any of the 8 types). |
+| `scripts/templates/template.pptx.contract.json` | Auto-generated introspection contract (mtime-cached, gitignored). |
 
-### Layout Mapping
+### User-supplied template (same-path replacement)
 
-Layouts are resolved **by name**, not by index. The default mapping (`slide_type` → layout name) lives in `_LAYOUT_NAME_MAP` inside `ppt_builder.py`; `template.config.json` overrides the name for `title_slide` / `content_slide`.
+To render from a user's own template, **overwrite the base at the single path**, then render normally — introspection runs automatically before every render:
 
-| Slide Type | Layout Name (template.pptx) | Placeholders Used |
-|------------|-----------------------------|-------------------|
-| `title_slide` | `Title Slide` | CENTER_TITLE + SUBTITLE |
-| `content_slide` | `Title and Content` | TITLE + OBJECT |
-| `section_header_slide` | `Section Header` | TITLE + BODY |
-| `two_content_slide` | `7_Two Content` | TITLE + OBJECT×2 |
-| `comparison_slide` | `Comparison` | TITLE + OBJECT×2 |
-| `content_image_slide` | `Picture with Caption` | TITLE + BODY |
-| `chart_slide` | `Blank` | TITLE + native chart |
-| `closing_slide` | `End` | CENTER_TITLE + SUBTITLE |
-
-```json
-{
-  "title_slide_layout": "Title Slide",
-  "content_slide_layout": "Title and Content"
-}
+```bash
+cp "<user_template>.pptx" scripts/templates/template.pptx
+# then call generate_ppt_from_data(...) as usual
 ```
+
+### Template introspection + capability report
+
+`template_introspector.py` produces the contract (slide size, theme, every layout's placeholders + fingerprint + content area). `servable_slide_types(contract)` reports which of the 8 slide types the template can serve — use it to constrain content to layouts the template actually provides:
+
+```bash
+python -c "
+import sys, json; sys.path.insert(0,'scripts')
+from template_introspector import get_contract
+from ppt_builder import servable_slide_types
+print(json.dumps(servable_slide_types(get_contract('scripts/templates/template.pptx')), indent=2))
+"
+```
+
+### Layout resolution (fingerprint-first)
+
+Layouts are resolved **by placeholder-composition fingerprint**, not by index. For each `slide_type` the engine has an ideal placeholder composition (a built-in constant); it matches that to the template layout whose composition fits best. **Layout names are only a tie-breaker / fallback.** Resolution precedence:
+
+1. `template.config.json` pin (`<slide_type>_layout`) — explicit layout name, highest precedence.
+2. **Fingerprint match** — composition-closest layout (the template-agnostic path).
+3. Name-based fallback (`_LAYOUT_NAME_MAP`) — backward-compatible safety net.
+4. Degradation — skip the slide + clear warning (never silent).
+
+Among composition-compatible layouts, ranking is: name affinity → fewest surplus placeholders → largest `content_area_in2` → index. Without a contract the path is the original name-based matching (byte-for-byte backward compatible).
 
 ## Input Data Format
 
@@ -367,6 +379,41 @@ A single deck combining text slides, an image slide (via a local `image_path`), 
   }
 ]
 ```
+
+## End-to-End Example: User-Supplied Template (any `.pptx`)
+
+Fill a deck from a template the user brings — no matter its layout names.
+
+```bash
+# 1. Replace the base template at the single path.
+cp ~/my_company_template.pptx scripts/templates/template.pptx
+
+# 2. Learn what the template can serve (which slide_types, content areas).
+python -c "
+import sys, json; sys.path.insert(0,'scripts')
+from template_introspector import get_contract
+from ppt_builder import servable_slide_types
+print(json.dumps(servable_slide_types(get_contract('scripts/templates/template.pptx')), indent=2))
+"
+# → e.g. {"content_slide": {"available": true, "layout": "Content Page", "content_area_in2": 42.1}, ...}
+#   Note the layout NAME differs from the default ("Title and Content") — fingerprint
+#   matching still resolves it. Author only available slide_types; downshift density
+#   if a content_area_in2 is small.
+
+# 3. Render normally — introspection + fingerprint matching happen automatically.
+python -c "
+import sys, json; sys.path.insert(0,'scripts')
+from ppt_builder import generate_ppt_from_data, DEFAULT_OUTPUT_DIR
+slide_data = [
+  {'slide_type': 'title_slide', 'title': 'Q2 Review', 'subtitle': '2026', 'notes': '...'},
+  {'slide_type': 'content_slide', 'title': 'Highlights', 'body': '**A** — x\n**B** — y', 'notes': '...'},
+  {'slide_type': 'closing_slide', 'title': 'Thank You', 'notes': '...'},
+]
+print(generate_ppt_from_data(slide_data, output_path=str(DEFAULT_OUTPUT_DIR / 'from_user_template.pptx')))
+"
+```
+
+The output deck uses the user template's own layouts, theme, and master — fully native and editable.
 
 ## Output Path
 

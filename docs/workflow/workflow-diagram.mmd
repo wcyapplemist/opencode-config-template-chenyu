@@ -1,0 +1,48 @@
+%% PPTX Subagent System — Workflow Diagram (swimlane / cross-functional flowchart)
+%% Render at https://mermaid.live (paste everything below the line)
+%% Lanes = participants; cross-lane arrows = responsibility handoffs.
+flowchart LR
+    subgraph User["👤 User"]
+        U0([Start: Request — topic + page count])
+        U1["Review outline + select density + approve/edits"]
+        Uend([End: Receive .pptx])
+    end
+
+    subgraph Subagent["🤖 PPT Subagent"]
+        direction TB
+        A0["Stage 0: Understand request + introspect template"]
+        A1["Stage 1: Generate outline + save artifact"]
+        A2{"Stage 2: execution context?"}
+        A3["Stage 3: Author JSON + webfetch real chart data"]
+        A4["Stage 3: Validate JSON before render (schema + density)"]
+        A4d{"Valid?"}
+        A5["Stage 4: Hand off — template check + render"]
+        A6["Stage 5: Return .pptx path"]
+    end
+
+    subgraph Modifier["🧩 template-modifier-skill"]
+        direction TB
+        T0{"Does template serve every slide?"}
+        T1["Clone extended layout<br/>template_new.pptx + notify user"]
+    end
+
+    subgraph Engine["⚙️ ppt-template-filler Engine"]
+        E0["Render — generate_ppt_from_data<br/>validate → introspect → render → save → cleanup"]
+    end
+
+    U0 --> A0
+    A0 --> A1
+    A1 --> A2
+    A2 -->|"interactive"| U1
+    U1 --> A3
+    A2 -->|"autonomous — self-critique + standard"| A3
+    A3 --> A4
+    A4 --> A4d
+    A4d -->|"invalid — re-author"| A3
+    A4d -->|"valid"| A5
+    A5 --> T0
+    T0 -->|"missing layout / over-limit"| T1
+    T1 --> E0
+    T0 -->|"serves all"| E0
+    E0 --> A6
+    A6 --> Uend
