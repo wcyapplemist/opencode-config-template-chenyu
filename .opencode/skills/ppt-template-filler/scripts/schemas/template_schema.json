@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opencode.ai/pptx-subagent/template_schema.json",
+  "title": "PPTX Template Schema",
+  "description": "Normalized JSON representation of a PPTX slide master and its layouts (US-1.1). This schema is the conformance target for the output of schema_extractor.extract_schema(). It mirrors the Reference JSON Schema in docs/user-stories/chenyu-user-stories.md, with the US-1.1 relaxation that font sub-properties are optional (populated in US-1.4).",
+  "type": "object",
+  "required": [
+    "template_metadata",
+    "slide_master",
+    "slide_layouts",
+    "component_type_enum",
+    "placeholder_type_enum"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "template_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "schema_version",
+        "generated_by",
+        "generated_at",
+        "slide_dimensions"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Inferred from docProps/core.xml title, then first slide title, then filename."
+        },
+        "schema_version": {
+          "type": "string",
+          "description": "Semantic version of this schema (e.g. 1.0.0)."
+        },
+        "generated_by": {
+          "type": "string",
+          "description": "Identifier of the tool that produced this schema (e.g. opencode-pptx-subagent/schema_extractor)."
+        },
+        "generated_at": {
+          "type": "string",
+          "description": "ISO-8601 timestamp of extraction."
+        },
+        "slide_dimensions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "width_emu",
+            "height_emu",
+            "width_inches",
+            "height_inches",
+            "aspect_ratio"
+          ],
+          "properties": {
+            "width_emu": { "type": "integer", "minimum": 0 },
+            "height_emu": { "type": "integer", "minimum": 0 },
+            "width_inches": { "type": "number", "minimum": 0 },
+            "height_inches": { "type": "number", "minimum": 0 },
+            "aspect_ratio": { "type": "string", "description": "e.g. 16:9" }
+          }
+        },
+        "missing_fonts": {
+          "type": "array",
+          "description": "Non-builtin fonts the template depends on. Empty in US-1.1 (populated in US-1.4).",
+          "items": { "type": "object" }
+        },
+        "header_footer": {
+          "type": "object",
+          "description": "Header/footer detection metadata. Empty/stub in US-1.1 (populated in US-2.1).",
+          "additionalProperties": true
+        },
+        "common_practices": {
+          "type": "object",
+          "description": "Best-practice suggestions. Empty/stub in US-1.1 (populated in US-2.2).",
+          "additionalProperties": true
+        }
+      }
+    },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Color theme and font palette mapped from ppt/theme/theme1.xml. Semantic role mapping is an initial heuristic (refined in US-3.4).",
+      "properties": {
+        "primary_color": { "type": "string", "description": "Hex string, e.g. #1A1A2E" },
+        "secondary_color": { "type": "string" },
+        "accent_color": { "type": "string" },
+        "background_color": { "type": "string" },
+        "text_color": { "type": "string" },
+        "font_palette": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "heading": { "type": "string" },
+            "body": { "type": "string" },
+            "accent": { "type": "string" }
+          }
+        }
+      }
+    },
+    "slide_master": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The slide master parsed explicitly (AC#2). Components are master-level shapes (may be empty for a master with zero shapes).",
+      "required": ["name", "components"],
+      "properties": {
+        "name": { "type": "string" },
+        "components": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/component" }
+        }
+      }
+    },
+    "slide_layouts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "layout_id",
+          "layout_name",
+          "layout_index",
+          "components"
+        ],
+        "properties": {
+          "layout_id": {
+            "type": "string",
+            "description": "Stable identifier derived from the layout name (slug)."
+          },
+          "layout_name": { "type": "string" },
+          "layout_index": { "type": "integer", "minimum": 0 },
+          "components": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/component" }
+          }
+        }
+      }
+    },
+    "component_type_enum": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Self-documenting list of valid component type values."
+    },
+    "placeholder_type_enum": {
+      "type": "array",
+      "items": { "type": ["string", "null"] },
+      "description": "Self-documenting list of valid placeholder type values."
+    }
+  },
+  "$defs": {
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "name",
+        "polygon",
+        "z_order"
+      ],
+      "$comment": "Font cardinality rule (architecture review C1): the 'font' property is present ONLY on text-bearing components (type in [textbox, placeholder]) and ABSENT on all other component types. This cross-field constraint is enforced by validate_template_schema(); non-text components carrying 'font' are a validation error.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^comp_\\d{3,}$",
+          "description": "Globally unique id across master + all layouts (comp_NNN, zero-padded)."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "textbox",
+            "image",
+            "table",
+            "video",
+            "shape",
+            "chart",
+            "group",
+            "smartart",
+            "placeholder",
+            "audio"
+          ]
+        },
+        "name": { "type": "string" },
+        "placeholder_type": {
+          "type": ["string", "null"],
+          "enum": [
+            "title",
+            "subtitle",
+            "body",
+            "picture",
+            "chart",
+            "table",
+            "media",
+            "date",
+            "slide_number",
+            "footer",
+            "header",
+            null
+          ]
+        },
+        "polygon": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "description": "Exactly 4 {x,y} points in TL->TR->BR->BL order, normalized to 0.0-1.0 relative to slide dimensions. Rectangular only in US-1.1 (non-rectangular vertices in US-1.2).",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["x", "y"],
+            "properties": {
+              "x": { "type": "number", "minimum": 0, "maximum": 1 },
+              "y": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
+        "font": {
+          "type": "object",
+          "description": "Present ONLY on text-bearing components (textbox/placeholder). All sub-properties optional in US-1.1; populated in US-1.4. May be {} in US-1.1.",
+          "additionalProperties": false,
+          "properties": {
+            "family": { "type": "string" },
+            "size_pt": { "type": "number" },
+            "weight": { "type": "string" },
+            "color": { "type": "string" },
+            "alignment": { "type": "string" },
+            "is_available": { "type": "boolean" },
+            "fallback": { "type": ["string", "null"] }
+          }
+        },
+        "runs": {
+          "type": "array",
+          "description": "Mixed-formatting runs within a textbox. Empty in US-1.1 (populated in US-1.4).",
+          "items": { "type": "object" }
+        },
+        "z_order": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Stacking order; 0 is the backmost element."
+        },
+        "content_template": {
+          "type": ["string", "null"],
+          "description": "Placeholder pattern like {{slide_title}} for simple substitution. null for non-content elements."
+        },
+        "image_properties": {
+          "type": "object",
+          "description": "Present on image components.",
+          "additionalProperties": true
+        },
+        "shape_properties": {
+          "type": "object",
+          "description": "Present on shape components.",
+          "additionalProperties": true
+        },
+        "text_properties": {
+          "type": "object",
+          "description": "Present on text-bearing components.",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

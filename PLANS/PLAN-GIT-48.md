@@ -3,7 +3,7 @@
 **Issue**: #48
 **Branch**: GIT-48 (base: dev)
 **Priority**: Must Have (P0)
-**Status**: Planning (v2 — architecture review findings incorporated)
+**Status**: Implementation complete (v2 — architecture review findings incorporated)
 
 ## Strategic Context
 
@@ -73,7 +73,7 @@ guessing.
 
 ### Phase 1: Schema Definition
 
-- [ ] Task 1: Author `template_schema.json` (draft 2020-12) capturing
+- [x] Task 1: Author `template_schema.json` (draft 2020-12) capturing
       `template_metadata` / `theme` / `slide_layouts[].components[]` /
       `component_type_enum` / `placeholder_type_enum` per the Reference schema.
       Each component object defines `id`, `type` (enum), `name`,
@@ -86,15 +86,15 @@ guessing.
 
 ### Phase 2: Extraction Engine (`schema_extractor.py`)
 
-- [ ] Task 2: Element type mapper — `MSO_SHAPE_TYPE` -> proposed 10-value enum
+- [x] Task 2: Element type mapper — `MSO_SHAPE_TYPE` -> proposed 10-value enum
       (`AUTO_SHAPE`/`FREEFORM` -> `shape`, `PICTURE` -> `image`, `CHART` ->
       `chart`, `TABLE` -> `table`, `GROUP` -> `group`, `TEXT_BOX` -> `textbox`,
       `PLACEHOLDER` -> `placeholder`, `MEDIA` -> `video`/`audio`, else ->
       `shape`). Map `placeholder_format.type` -> `placeholder_type` enum.
-- [ ] Task 3: Polygon normalizer (basic) — `left/top/width/height` (EMU) divided
+- [x] Task 3: Polygon normalizer (basic) — `left/top/width/height` (EMU) divided
       by slide dimensions -> 4 normalized `{x,y}` points (TL->TR->BR->BL, 0-1).
       Rectangular only; winding validation deferred to US-1.2.
-- [ ] Task 4: `extract_schema(pptx_path) -> dict` main function — parse
+- [x] Task 4: `extract_schema(pptx_path) -> dict` main function — parse
       `prs.slide_masters[0].shapes` (master components) + each
       `prs.slide_layouts[i].shapes` (all elements, GROUP recurses into
       children). Component `id` is **globally unique** `comp_NNN` (zero-padded 3
@@ -110,14 +110,14 @@ guessing.
 
 ### Phase 3: Validation
 
-- [ ] Task 5: `validate_template_schema(schema_dict) -> ValidationResult` —
+- [x] Task 5: `validate_template_schema(schema_dict) -> ValidationResult` —
       structural conformance check (top-level keys, component field types,
       polygon value ranges [0,1], enum legality, font-cardinality rule: non-text
       components must NOT carry `font`) without the `jsonschema` dependency.
 
 ### Phase 4: Testing
 
-- [ ] Task 6: `test_schema_extractor.py`:
+- [x] Task 6: `test_schema_extractor.py`:
       - bundled `template.pptx` extract -> `validate_template_schema` passes;
       - **count invariant**: `len(result['slide_layouts']) == 63` and every
         layout has a `components` array;
@@ -137,7 +137,7 @@ guessing.
 
 ### Phase 5: CLI & Docs
 
-- [ ] Task 7 (optional): CLI entry `python schema_extractor.py --input X.pptx
+- [x] Task 7 (optional): CLI entry `python schema_extractor.py --input X.pptx
       --output schema.json` for standalone invocation (bridges to US-5.1).
 
 ## Out of Scope (deferred to sibling stories)
