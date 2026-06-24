@@ -26,9 +26,9 @@ flowchart TD
     S4["Stage 4: Resolve placeholders + template check + render"]
     S4 --> S4c["Template check<br/>resolve_and_clone"]
     S4c --> S4d{"Template serves every slide?"}
-    S4d -->|"No — missing layout / over-limit"| S4k["Clone extended layout<br/>template_new.pptx + notify user"]
-    S4d -->|"Yes"| S4b["Use base template"]
-    S4k --> S4r["Render — generate_ppt_from_data"]
+    S4d -->|"No — missing layout / over-limit"| S4k["Persistently extend:<br/>① backup template.pptx→template.original.pptx (first time only)<br/>② inject extended-layout OOXML parts + relationship entries into template.pptx zip<br/>③ notify user"]
+    S4d -->|"Yes"| S4b["Use working template.pptx"]
+    S4k --> S4r["Render — generate_ppt_from_data<br/>(against upgraded template.pptx)"]
     S4b --> S4r
     S4r --> S5
 

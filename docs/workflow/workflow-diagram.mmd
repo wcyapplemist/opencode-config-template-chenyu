@@ -23,7 +23,7 @@ flowchart LR
     subgraph Modifier["🧩 template-modifier-skill"]
         direction TB
         T0{"Does template serve every slide?"}
-        T1["Clone extended layout<br/>template_new.pptx + notify user"]
+        T1["Persistently extend template.pptx:<br/>① backup→template.original.pptx (first time)<br/>② inject extended-layout OOXML parts + relationships<br/>③ notify user"]
     end
 
     subgraph Engine["⚙️ ppt-template-filler Engine"]

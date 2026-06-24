@@ -1,0 +1,2388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PPTX Subagent — User Stories</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <style>
+    :root {
+      --bg: #0C0F14;
+      --bg-elevated: #141820;
+      --bg-card: #1A1F2B;
+      --bg-card-hover: #1F2536;
+      --fg: #E8ECF4;
+      --fg-muted: #7A8399;
+      --fg-dim: #4A5268;
+      --accent: #E8A838;
+      --accent-dim: rgba(232, 168, 56, 0.12);
+      --accent-glow: rgba(232, 168, 56, 0.25);
+      --green: #34D399;
+      --green-dim: rgba(52, 211, 153, 0.1);
+      --blue: #60A5FA;
+      --blue-dim: rgba(96, 165, 250, 0.1);
+      --red: #F87171;
+      --red-dim: rgba(248, 113, 113, 0.1);
+      --purple: #C084FC;
+      --purple-dim: rgba(192, 132, 252, 0.1);
+      --border: #252B3A;
+      --border-light: #2E3548;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --radius-xs: 6px;
+      --font-sans: 'DM Sans', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-light) transparent;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.7;
+      min-height: 100vh;
+    }
+
+    /* Background atmosphere */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -30%;
+      left: -10%;
+      width: 60%;
+      height: 60%;
+      background: radial-gradient(ellipse, rgba(232, 168, 56, 0.04) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    body::after {
+      content: '';
+      position: fixed;
+      bottom: -20%;
+      right: -10%;
+      width: 50%;
+      height: 50%;
+      background: radial-gradient(ellipse, rgba(96, 165, 250, 0.03) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Top bar */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(12, 15, 20, 0.8);
+      backdrop-filter: blur(20px) saturate(1.4);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .topbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .topbar-brand .icon-wrap {
+      width: 36px; height: 36px;
+      border-radius: var(--radius-xs);
+      background: linear-gradient(135deg, var(--accent), #D4922E);
+      display: flex; align-items: center; justify-content: center;
+      color: #0C0F14;
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .topbar-brand h1 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .topbar-brand h1 span {
+      color: var(--fg-muted);
+      font-weight: 400;
+      margin-left: 8px;
+      font-size: 0.85rem;
+    }
+    .topbar-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 18px;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-sans);
+      font-size: 0.85rem;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #D4922E);
+      color: #0C0F14;
+      box-shadow: 0 2px 12px var(--accent-glow);
+    }
+    .btn-primary:hover {
+      box-shadow: 0 4px 20px var(--accent-glow);
+      transform: translateY(-1px);
+    }
+    .btn-secondary {
+      background: var(--bg-card);
+      color: var(--fg);
+      border: 1px solid var(--border-light);
+    }
+    .btn-secondary:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--fg-dim);
+    }
+
+    /* Main container */
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 3rem 2rem 6rem;
+    }
+
+    /* Document header */
+    .doc-header {
+      margin-bottom: 3rem;
+      padding-bottom: 2.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .doc-header .label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      background: var(--accent-dim);
+      padding: 5px 12px;
+      border-radius: 100px;
+      margin-bottom: 1.2rem;
+    }
+    .doc-header h2 {
+      font-size: 2.2rem;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+      margin-bottom: 0.8rem;
+    }
+    .doc-header p {
+      font-size: 1.05rem;
+      color: var(--fg-muted);
+      max-width: 640px;
+      line-height: 1.7;
+    }
+    .doc-meta {
+      display: flex;
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .doc-meta-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+      color: var(--fg-dim);
+    }
+    .doc-meta-item i {
+      font-size: 0.75rem;
+      color: var(--fg-muted);
+    }
+
+    /* TOC */
+    .toc {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem 2rem;
+      margin-bottom: 3rem;
+    }
+    .toc h3 {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--fg-dim);
+      margin-bottom: 1rem;
+    }
+    .toc-list {
+      list-style: none;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 2rem;
+    }
+    .toc-list a {
+      font-size: 0.88rem;
+      color: var(--fg-muted);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0;
+      transition: color 0.15s;
+    }
+    .toc-list a:hover { color: var(--accent); }
+    .toc-list a .toc-num {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--fg-dim);
+      min-width: 28px;
+    }
+
+    /* Epic sections */
+    .epic {
+      margin-bottom: 3rem;
+    }
+    .epic-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .epic-badge {
+      flex-shrink: 0;
+      width: 44px; height: 44px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+    .epic-badge.amber { background: var(--accent-dim); color: var(--accent); }
+    .epic-badge.green { background: var(--green-dim); color: var(--green); }
+    .epic-badge.blue { background: var(--blue-dim); color: var(--blue); }
+    .epic-badge.purple { background: var(--purple-dim); color: var(--purple); }
+    .epic-badge.red { background: var(--red-dim); color: var(--red); }
+    .epic-header-text h3 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: 4px;
+    }
+    .epic-header-text p {
+      font-size: 0.88rem;
+      color: var(--fg-muted);
+      line-height: 1.6;
+    }
+
+    /* User story cards */
+    .story {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem 1.8rem;
+      margin-bottom: 1rem;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .story:hover {
+      border-color: var(--border-light);
+      background: var(--bg-card-hover);
+    }
+    .story-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.8rem;
+    }
+    .story-id {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--fg-dim);
+      background: var(--bg-elevated);
+      padding: 3px 10px;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+    }
+    .story-priority {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 3px 10px;
+      border-radius: 100px;
+    }
+    .story-priority.must { background: var(--red-dim); color: var(--red); }
+    .story-priority.should { background: var(--accent-dim); color: var(--accent); }
+    .story-priority.could { background: var(--blue-dim); color: var(--blue); }
+
+    .story-format {
+      margin-bottom: 1rem;
+    }
+    .story-format .actor {
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .story-format .feature {
+      color: var(--fg);
+    }
+    .story-format .reason {
+      color: var(--fg-muted);
+    }
+
+    .story-details {
+      font-size: 0.88rem;
+      color: var(--fg-muted);
+      line-height: 1.75;
+    }
+    .story-details ul {
+      margin: 0.5rem 0;
+      padding-left: 1.2rem;
+    }
+    .story-details li {
+      margin-bottom: 0.3rem;
+    }
+    .story-details li::marker {
+      color: var(--fg-dim);
+    }
+
+    .story-tags {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+    .story-tag {
+      font-size: 0.7rem;
+      font-weight: 500;
+      padding: 3px 10px;
+      border-radius: 100px;
+      background: var(--bg-elevated);
+      color: var(--fg-dim);
+      border: 1px solid var(--border);
+    }
+
+    /* JSON schema block */
+    .schema-block {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 3rem;
+    }
+    .schema-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+    }
+    .schema-header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .schema-header-left .dots {
+      display: flex; gap: 6px;
+    }
+    .schema-header-left .dots span {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--border-light);
+    }
+    .schema-header-left .dots span:nth-child(1) { background: #F87171; }
+    .schema-header-left .dots span:nth-child(2) { background: #FBBF24; }
+    .schema-header-left .dots span:nth-child(3) { background: #34D399; }
+    .schema-header-left .filename {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--fg-muted);
+    }
+    .schema-copy {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--fg-dim);
+      font-family: var(--font-sans);
+      font-size: 0.75rem;
+      padding: 5px 12px;
+      border-radius: var(--radius-xs);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .schema-copy:hover {
+      border-color: var(--fg-dim);
+      color: var(--fg);
+    }
+    .schema-copy.copied {
+      border-color: var(--green);
+      color: var(--green);
+    }
+    .schema-body {
+      padding: 1.5rem 0;
+      overflow-x: auto;
+    }
+    .schema-body pre {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      line-height: 1.75;
+      color: var(--fg-muted);
+      padding: 0 2rem;
+      margin: 0;
+    }
+    /* JSON syntax highlights */
+    .json-key { color: #60A5FA; }
+    .json-string { color: #34D399; }
+    .json-number { color: #FBBF24; }
+    .json-bool { color: #C084FC; }
+    .json-null { color: #F87171; }
+    .json-comment { color: var(--fg-dim); font-style: italic; }
+    .json-bracket { color: var(--fg-dim); }
+
+    /* Acceptance criteria */
+    .ac-section {
+      margin-top: 0.8rem;
+    }
+    .ac-section h5 {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--fg-dim);
+      margin-bottom: 0.6rem;
+    }
+    .ac-list {
+      list-style: none;
+      padding: 0;
+    }
+    .ac-list li {
+      font-size: 0.84rem;
+      color: var(--fg-muted);
+      padding: 4px 0 4px 22px;
+      position: relative;
+    }
+    .ac-list li::before {
+      content: '\f00c';
+      font-family: 'Font Awesome 6 Free';
+      font-weight: 900;
+      position: absolute;
+      left: 0;
+      top: 5px;
+      font-size: 0.65rem;
+      color: var(--green);
+      opacity: 0.6;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      color: var(--fg);
+      padding: 12px 24px;
+      border-radius: var(--radius-sm);
+      font-size: 0.88rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 999;
+      opacity: 0;
+      transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+      pointer-events: none;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    .toast i { color: var(--green); }
+
+    /* Footer */
+    .doc-footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      color: var(--fg-dim);
+      font-size: 0.8rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .container { padding: 2rem 1rem 4rem; }
+      .doc-header h2 { font-size: 1.6rem; }
+      .toc-list { grid-template-columns: 1fr; }
+      .topbar { padding: 0 1rem; }
+      .topbar-brand h1 span { display: none; }
+      .btn { padding: 8px 14px; font-size: 0.8rem; }
+      .story { padding: 1.2rem; }
+      .schema-body pre { padding: 0 1rem; font-size: 0.7rem; }
+      .doc-meta { flex-direction: column; gap: 0.5rem; }
+    }
+
+    /* Animations */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-in {
+      animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      opacity: 0;
+    }
+    .delay-1 { animation-delay: 0.05s; }
+    .delay-2 { animation-delay: 0.1s; }
+    .delay-3 { animation-delay: 0.15s; }
+    .delay-4 { animation-delay: 0.2s; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .animate-in { animation: none; opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top bar -->
+  <header class="topbar" role="banner">
+    <div class="topbar-brand">
+      <div class="icon-wrap"><i class="fa-solid fa-layer-group"></i></div>
+      <h1>PPTX Subagent <span>User Stories</span></h1>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-secondary" onclick="downloadMD()" aria-label="Download Markdown file">
+        <i class="fa-solid fa-file-lines"></i> .md
+      </button>
+      <button class="btn btn-primary" onclick="downloadZip()" aria-label="Download ZIP archive">
+        <i class="fa-solid fa-file-zipper"></i> .zip
+      </button>
+    </div>
+  </header>
+
+  <!-- Main content -->
+  <main class="container">
+    <!-- Document header -->
+    <div class="doc-header animate-in">
+      <div class="label"><i class="fa-solid fa-cube"></i> Product Requirements</div>
+      <h2>OpenCode PPTX Subagent — User Stories</h2>
+      <p>A structured set of user stories defining the behavior of a PowerPoint-generation subagent built on OpenCode's agent-skill architecture. The system standardizes PPTX templates into a machine-readable JSON schema embedded within the PPTX zip, then uses that schema to produce predictable, visually consistent slides.</p>
+      <div class="doc-meta">
+        <div class="doc-meta-item"><i class="fa-solid fa-calendar"></i> June 2025</div>
+        <div class="doc-meta-item"><i class="fa-solid fa-layer-group"></i> 5 Epics, 17 Stories</div>
+        <div class="doc-meta-item"><i class="fa-solid fa-tag"></i> opencode.ai / pptx-subagent</div>
+      </div>
+    </div>
+
+    <!-- Table of Contents -->
+    <nav class="toc animate-in delay-1" aria-label="Table of Contents">
+      <h3>Table of Contents</h3>
+      <ul class="toc-list">
+        <li><a href="#epic-1"><span class="toc-num">E1</span> Template Extraction & JSON Schema</a></li>
+        <li><a href="#epic-2"><span class="toc-num">E2</span> Header, Footer & Best Practices</a></li>
+        <li><a href="#epic-3"><span class="toc-num">E3</span> Skill — Template Generator</a></li>
+        <li><a href="#epic-4"><span class="toc-num">E4</span> Skill — Slide Generator</a></li>
+        <li><a href="#epic-5"><span class="toc-num">E5</span> Skill Architecture & Scripts</a></li>
+        <li><a href="#schema"><span class="toc-num">REF</span> Proposed JSON Schema</a></li>
+      </ul>
+    </nav>
+
+    <!-- ==================== EPIC 1 ==================== -->
+    <section class="epic animate-in delay-2" id="epic-1">
+      <div class="epic-header">
+        <div class="epic-badge amber">E1</div>
+        <div class="epic-header-text">
+          <h3>Template Extraction & JSON Schema</h3>
+          <p>Reading an existing PPTX file, parsing its slide master and layouts, and converting them into a structured, normalized JSON representation.</p>
+        </div>
+      </div>
+
+      <!-- US 1.1 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-1.1</span>
+          <span class="story-priority must">Must Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> OpenCode user working as a founder,
+          <span class="feature">I want</span> the subagent to read any PPTX file I upload, parse its slide master and all slide layouts, and convert them into a structured JSON representation,
+          <span class="reason">so that</span> I have a machine-readable blueprint of my template instead of relying on unpredictable LLM-only generation.
+        </div>
+        <div class="story-details">
+          The system must use a scripted skill (not raw LLM) to open the PPTX zip, locate <code>ppt/slideMasters/</code> and <code>ppt/slideLayouts/</code> XML files, and parse the OOXML into the proposed JSON schema. This ensures deterministic, repeatable extraction.
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li>Subagent accepts a .pptx file input and does not crash on any valid PPTX.</li>
+            <li>Slide master XML is parsed; every layout under the master is extracted.</li>
+            <li>Output is a valid JSON object conforming to the proposed schema.</li>
+            <li>Extraction is performed by a Python/Node script — not by LLM guessing.</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">extraction</span>
+          <span class="story-tag">slide-master</span>
+          <span class="story-tag">ooxml</span>
+          <span class="story-tag">deterministic</span>
+        </div>
+      </article>
+
+      <!-- US 1.2 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-1.2</span>
+          <span class="story-priority must">Must Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> OpenCode user,
+          <span class="feature">I want</span> each component in the extracted JSON to have a <code>polygon</code> field defined as an array of exactly 4 coordinate pairs in anti-clockwise order, with all values normalized to a 0.0–1.0 scale relative to the slide dimensions,
+          <span class="reason">so that</span> the position and size of every element is unambiguous, resolution-independent, and can be mapped back to any slide size (e.g., 16:9, 4:3).
+        </div>
+        <div class="story-details">
+          <ul>
+            <li>Coordinate order: top-left → top-right → bottom-right → bottom-left (anti-clockwise).</li>
+            <li>Values are floats between 0.0 and 1.0, where (0,0) is the top-left corner of the slide and (1,1) is the bottom-right.</li>
+            <li>Non-rectangular shapes (e.g., trapezoids, arrows) must use their actual polygon vertices, still normalized.</li>
+            <li>The slide's native aspect ratio is recorded in <code>template_metadata.slide_dimensions</code> so the subagent can denormalize when writing back.</li>
+          </ul>
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li>Every component has a <code>polygon</code> array with exactly 4 <code>{x, y}</code> objects for rectangular shapes.</li>
+            <li>All x and y values are in [0.0, 1.0] range.</li>
+            <li>Anti-clockwise winding is verified by a simple cross-product check in the script.</li>
+            <li>Slide dimensions (EMU, inches, and aspect ratio string) are recorded in metadata.</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">polygon</span>
+          <span class="story-tag">normalized-coords</span>
+          <span class="story-tag">positioning</span>
+        </div>
+      </article>
+
+      <!-- US 1.3 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-1.3</span>
+          <span class="story-priority must">Must Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> OpenCode user,
+          <span class="feature">I want</span> each component to have a <code>type</code> field drawn from a fixed enum that maps directly to PowerPoint element types (e.g., <code>textbox</code>, <code>image</code>, <code>table</code>, <code>video</code>, <code>shape</code>, <code>chart</code>, <code>group</code>, <code>smartart</code>, <code>placeholder</code>),
+          <span class="reason">so that</span> the slide-generation skill knows exactly which OOXML element to create for each component, avoiding ambiguous or incorrect element types.
+        </div>
+        <div class="story-details">
+          <ul>
+            <li>The enum is defined in the schema and documented in the skill's README.</li>
+            <li>OOXML <code>&lt;p:sp&gt;</code> elements with <code>&lt;p:txBody&gt;</code> → <code>textbox</code>.</li>
+            <li><code>&lt;p:pic&gt;</code> → <code>image</code>.</li>
+            <li><code>&lt;p:graphicFrame&gt;</code> containing a table → <code>table</code>.</li>
+            <li><code>&lt;p:graphicFrame&gt;</code> containing a chart → <code>chart</code>.</li>
+            <li><code>&lt;p:sp&gt;</code> with a preset geometry but no text → <code>shape</code>.</li>
+            <li><code>&lt;p:grpSp&gt;</code> → <code>group</code> (with nested <code>children</code> array).</li>
+            <li>If the script encounters an unrecognized element, it falls back to <code>shape</code> and sets <code>type_confidence: "low"</code>.</li>
+          </ul>
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li><code>type</code> field is always present and always one of the defined enum values.</li>
+            <li>No component has <code>type: null</code> or <code>type: "unknown"</code>.</li>
+            <li>A mapping table from OOXML tags to enum values is included in the skill source.</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">type-enum</span>
+          <span class="story-tag">ooxml-mapping</span>
+          <span class="story-tag">component</span>
+        </div>
+      </article>
+
+      <!-- US 1.4 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-1.4</span>
+          <span class="story-priority must">Must Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> OpenCode user,
+          <span class="feature">I want</span> the extraction to capture font metadata for every text-bearing component — including <code>family</code>, <code>size_pt</code>, <code>weight</code>, <code>color</code>, <code>alignment</code>, and an <code>is_available</code> boolean — and populate a top-level <code>missing_fonts</code> array when a font is not among PowerPoint's built-in defaults,
+          <span class="reason">so that</span> I know exactly which fonts my template depends on and can install them before generating slides, preventing layout breakage from font substitution.
+        </div>
+        <div class="story-details">
+          <ul>
+            <li>Built-in PowerPoint fonts (Calibri, Arial, Times New Roman, etc.) are considered always available.</li>
+            <li>Custom fonts get <code>is_available: false</code> and appear in <code>missing_fonts</code> with download suggestions if known.</li>
+            <li>Each font entry includes a <code>fallback</code> field suggesting the closest built-in substitute.</li>
+            <li>Multiple font runs within a single textbox (e.g., bold title + regular subtitle) are captured as a <code>runs</code> array.</li>
+          </ul>
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li>Every textbox component has a <code>font</code> object with all specified fields.</li>
+            <li><code>missing_fonts</code> array is empty when all fonts are built-in.</li>
+            <li>When non-built-in fonts are found, the subagent prints a user-facing warning listing them.</li>
+            <li><code>fallback</code> is always a built-in font name.</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">fonts</span>
+          <span class="story-tag">availability</span>
+          <span class="story-tag">fallback</span>
+        </div>
+      </article>
+
+      <!-- US 1.5 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-1.5</span>
+          <span class="story-priority must">Must Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> OpenCode user,
+          <span class="feature">I want</span> the generated JSON template to be stored inside the PPTX zip archive at a path like <code>ppt/template_schema.json</code> — without breaking the PPTX file or causing PowerPoint to reject it,
+          <span class="reason">so that</span> the JSON travels with the file itself and the slide-generation skill can read it directly from any PPTX I provide, without needing a separate database or file system.
+        </div>
+        <div class="story-details">
+          <ul>
+            <li>PowerPoint ignores unknown files inside the zip as long as <code>[Content_Types].xml</code> is not modified.</li>
+            <li>The script appends the JSON without altering any existing entry in the zip.</li>
+            <li>Opening the file in PowerPoint before and after embedding produces identical behavior.</li>
+            <li>The JSON is minified to keep file size impact minimal (typically &lt; 50 KB).</li>
+          </ul>
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li>After embedding, the PPTX opens in PowerPoint without errors or repair prompts.</li>
+            <li>The JSON is retrievable by re-reading the zip at the known path.</li>
+            <li>Existing slide content, layouts, and media are untouched.</li>
+            <li>File size increase is logged to the user.</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">zip-embedding</span>
+          <span class="story-tag">pptx-safe</span>
+          <span class="story-tag">portability</span>
+        </div>
+      </article>
+    </section>
+
+    <!-- ==================== EPIC 2 ==================== -->
+    <section class="epic" id="epic-2">
+      <div class="epic-header">
+        <div class="epic-badge green">E2</div>
+        <div class="epic-header-text">
+          <h3>Header, Footer & Best Practices</h3>
+          <p>Detecting and validating structural conventions like headers, footers, slide numbers, and common PowerPoint practices, then prompting the user when they're missing.</p>
+        </div>
+      </div>
+
+      <!-- US 2.1 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-2.1</span>
+          <span class="story-priority must">Must Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> OpenCode user,
+          <span class="feature">I want</span> the subagent to detect whether my slide master contains header and footer zones — and, if not, explicitly ask me whether I want to add them before proceeding,
+          <span class="reason">so that</span> my generated slides don't lack standard structural elements that make a deck look unfinished or unprofessional.
+        </div>
+        <div class="story-details">
+          The script checks for the presence of header (<code>&lt;p:hdr&gt;</code>) and footer (<code>&lt;p:ftr&gt;</code>) elements in the slide master XML. If absent, the subagent pauses extraction and returns a structured prompt to the user.
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li><code>template_metadata.header_footer.has_header</code> and <code>.has_footer</code> are booleans reflecting actual detection.</li>
+            <li>When both are <code>false</code>, the subagent outputs a user-facing question before continuing.</li>
+            <li>If the user says "yes, add header", the script injects a default header zone into the JSON (not into the PPTX yet — only into the schema).</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">header</span>
+          <span class="story-tag">footer</span>
+          <span class="story-tag">detection</span>
+          <span class="story-tag">prompt</span>
+        </div>
+      </article>
+
+      <!-- US 2.2 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-2.2</span>
+          <span class="story-priority should">Should Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> OpenCode user,
+          <span class="feature">I want</span> the subagent to suggest common PowerPoint best practices based on what it finds (or doesn't find) in my template — such as slide numbers, consistent margins, logo placement, and section dividers,
+          <span class="reason">so that</span> even if I'm not a presentation expert, the subagent helps me produce a deck that follows professional standards.
+        </div>
+        <div class="story-details">
+          Suggestions are stored in <code>template_metadata.common_practices.suggestions</code> as an array of objects with <code>practice</code>, <code>status</code> (<code>"present"</code> | <code>"missing"</code> | <code>"optional"</code>), and <code>recommendation</code> fields.
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li>At least 5 practices are checked: slide numbers, company logo, consistent margins, section dividers, and thank-you/closing slide.</li>
+            <li>Only <code>"missing"</code> practices are shown as suggestions to the user.</li>
+            <li>The user can acknowledge or dismiss each suggestion without blocking the workflow.</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">best-practices</span>
+          <span class="story-tag">suggestions</span>
+          <span class="story-tag">guidance</span>
+        </div>
+      </article>
+    </section>
+
+    <!-- ==================== EPIC 3 ==================== -->
+    <section class="epic" id="epic-3">
+      <div class="epic-header">
+        <div class="epic-badge blue">E3</div>
+        <div class="epic-header-text">
+          <h3>Skill — Template Generator</h3>
+          <p>The first of two core skills: taking an existing PPTX, extracting its structure into JSON, embedding that JSON back into the zip, and returning a "templated" PPTX ready for slide generation.</p>
+        </div>
+      </div>
+
+      <!-- US 3.1 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-3.1</span>
+          <span class="story-priority must">Must Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> OpenCode user,
+          <span class="feature">I want</span> to invoke a "generate template" skill that takes my PPTX file, runs the full extraction pipeline (Epic 1), and produces the JSON schema,
+          <span class="reason">so that</span> I have a standardized, reusable template definition without manually editing any JSON.
+        </div>
+        <div class="story-details">
+          This skill is the entry point. The user says something like "extract the template from this PPTX" and the subagent routes to this skill. The skill orchestrates: zip read → XML parse → JSON build → validate → embed → return file.
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li>Skill is invocable by natural language intent detection (no special command needed).</li>
+            <li>Full pipeline runs end-to-end without manual intermediate steps.</li>
+            <li>Validation errors (e.g., no slide master found) are reported clearly to the user.</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">skill</span>
+          <span class="story-tag">template-generator</span>
+          <span class="story-tag">pipeline</span>
+        </div>
+      </article>
+
+      <!-- US 3.2 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-3.2</span>
+          <span class="story-priority must">Must Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> OpenCode user,
+          <span class="feature">I want</span> the generated JSON to include a <code>title</code> field at the top level that names the template (e.g., "Q3 Investor Pitch Deck — Dark Theme"),
+          <span class="reason">so that</span> when I have multiple templated PPTX files, I can query or reference them by name and the subagent knows which template I mean.
+        </div>
+        <div class="story-details">
+          The title is inferred from the PPTX file metadata (document title property), or from the first slide's title text, or — if neither exists — the subagent prompts the user to name it.
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li><code>template_metadata.title</code> is always a non-empty string.</li>
+            <li>Inference order: core.xml title → slide 1 title text → user prompt.</li>
+            <li>The title is displayed to the user for confirmation after extraction.</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">metadata</span>
+          <span class="story-tag">naming</span>
+          <span class="story-tag">queryable</span>
+        </div>
+      </article>
+
+      <!-- US 3.3 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-3.3</span>
+          <span class="story-priority must">Must Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> OpenCode user,
+          <span class="feature">I want</span> the skill to return a new PPTX file (with the JSON embedded) that I can download and keep,
+          <span class="reason">so that</span> I have a portable, self-describing template file I can reuse across sessions or share with teammates.
+        </div>
+        <div class="story-details">
+          The returned file is the original PPTX plus <code>ppt/template_schema.json</code>. The subagent provides a download link and a summary of what was extracted (number of layouts, components, fonts, etc.).
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li>Downloadable PPTX is provided via OpenCode's file output mechanism.</li>
+            <li>A human-readable extraction summary is printed to the user.</li>
+            <li>File passes a round-trip test: open in PowerPoint, re-upload, re-extract → identical JSON.</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">output</span>
+          <span class="story-tag">download</span>
+          <span class="story-tag">round-trip</span>
+        </div>
+      </article>
+
+      <!-- US 3.4 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-3.4</span>
+          <span class="story-priority should">Should Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> OpenCode user,
+          <span class="feature">I want</span> the template JSON to also capture the color theme (primary, secondary, accent, background) and font palette from the PPTX's <code>ppt/theme/theme1.xml</code>,
+          <span class="reason">so that</span> when the slide-generation skill creates new content, it can use the exact brand colors and typography without guessing.
+        </div>
+        <div class="story-details">
+          Theme colors are extracted from <code>&lt;a:clrScheme&gt;</code> and mapped to semantic roles. Font palette comes from <code>&lt;a:fontScheme&gt;</code>.
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li><code>theme</code> object contains <code>primary_color</code>, <code>secondary_color</code>, <code>accent_color</code>, <code>background_color</code> as hex strings.</li>
+            <li><code>theme.font_palette</code> contains <code>heading</code>, <code>body</code>, <code>accent</code> font names.</li>
+            <li>If theme1.xml is missing or malformed, sensible defaults are used and a warning is shown.</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">theme</span>
+          <span class="story-tag">colors</span>
+          <span class="story-tag">branding</span>
+        </div>
+      </article>
+    </section>
+
+    <!-- ==================== EPIC 4 ==================== -->
+    <section class="epic" id="epic-4">
+      <div class="epic-header">
+        <div class="epic-badge purple">E4</div>
+        <div class="epic-header-text">
+          <h3>Skill — Slide Generator</h3>
+          <p>The second core skill: reading the embedded JSON template and using it to generate new slides that respect the slide master's layout, positioning, fonts, and theme — producing visually pleasing, on-brand output.</p>
+        </div>
+      </div>
+
+      <!-- US 4.1 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-4.1</span>
+          <span class="story-priority must">Must Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> OpenCode user,
+          <span class="feature">I want</span> the slide-generation skill to read the <code>ppt/template_schema.json</code> from a templated PPTX I provide and use it as the authoritative layout reference,
+          <span class="reason">so that</span> every generated slide places content in the correct positions with the correct styling, rather than relying on LLM hallucination of coordinates.
+        </div>
+        <div class="story-details">
+          The skill reads the JSON, identifies which slide layout to use based on the user's intent (e.g., "title slide", "content slide", "two-column"), denormalizes the polygon coordinates back to EMUs using the stored slide dimensions, and creates OOXML elements at those exact positions.
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li>Skill reads JSON from the zip — does not re-extract or re-parse XML.</li>
+            <li>Layout selection is based on <code>layout_name</code> matching or user confirmation.</li>
+            <li>Denormalized EMU coordinates are within 1% of the original element positions.</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">slide-generation</span>
+          <span class="story-tag">layout-matching</span>
+          <span class="story-tag">denormalization</span>
+        </div>
+      </article>
+
+      <!-- US 4.2 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-4.2</span>
+          <span class="story-priority must">Must Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> OpenCode user,
+          <span class="feature">I want</span> generated slides to be visually pleasing — with proper text fitting (no overflow), appropriate font sizing for the content length, and consistent spacing — while still adhering to the template's defined zones,
+          <span class="reason">so that</span> the output looks like a human-designed slide, not a raw data dump into text boxes.
+        </div>
+        <div class="story-details">
+          <ul>
+            <li>The script implements text-fitting logic: if text exceeds the textbox's polygon area at the template's font size, it reduces size in steps (e.g., -2pt) until it fits, with a minimum floor.</li>
+            <li>Line spacing and paragraph spacing are derived from the template's existing text runs.</li>
+            <li>Bullet points use the template's bullet style if detected; otherwise, a clean default is applied.</li>
+          </ul>
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li>No generated slide has text overflowing its bounding box.</li>
+            <li>Font size is only reduced when necessary — never increased beyond the template's defined size.</li>
+            <li>A "font_size_adjusted" flag is set in the component when auto-sizing occurs.</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">text-fitting</span>
+          <span class="story-tag">visual-quality</span>
+          <span class="story-tag">auto-sizing</span>
+        </div>
+      </article>
+
+      <!-- US 4.3 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-4.3</span>
+          <span class="story-priority must">Must Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> OpenCode user,
+          <span class="feature">I want</span> to be able to hand the subagent a PPTX that does NOT yet have an embedded JSON and say "extract the template from this, then generate slides using it" — all in one interaction,
+          <span class="reason">so that</span> I don't have to run two separate commands when I'm working with a fresh file for the first time.
+        </div>
+        <div class="story-details">
+          The subagent detects the absence of <code>ppt/template_schema.json</code>, automatically chains the Template Generator skill first, then proceeds to Slide Generation. The user is informed of the two-step process but doesn't need to manually trigger each step.
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li>Single user prompt triggers both skills in sequence without error.</li>
+            <li>Intermediate JSON is embedded in the output PPTX.</li>
+            <li>User sees a status message like "No template found — extracting first, then generating slides..."</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">chaining</span>
+          <span class="story-tag">auto-detect</span>
+          <span class="story-tag">ux</span>
+        </div>
+      </article>
+
+      <!-- US 4.4 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-4.4</span>
+          <span class="story-priority should">Should Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> OpenCode user,
+          <span class="feature">I want</span> the subagent to ask me about my preferred visual style when I request slide generation without providing a template — offering options like "minimalist", "corporate", "creative", "dark mode", etc.,
+          <span class="reason">so that</span> even without a pre-made template, the generated slides match my aesthetic expectations rather than defaulting to a generic look.
+        </div>
+        <div class="story-details">
+          When no PPTX is provided and no embedded JSON exists, the subagent presents a style picker. Each style maps to a built-in JSON schema (shipped with the skill) that defines layout, colors, and fonts. The user can also say "just use default" to skip the prompt.
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li>At least 4 built-in style presets are included with the skill.</li>
+            <li>The user can select a style by name or description.</li>
+            <li>"Default" is always an option and requires no extra interaction.</li>
+            <li>Selected style's JSON is embedded in the output PPTX for future reuse.</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">style-picker</span>
+          <span class="story-tag">presets</span>
+          <span class="story-tag">fallback</span>
+        </div>
+      </article>
+
+      <!-- US 4.5 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-4.5</span>
+          <span class="story-priority could">Could Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> OpenCode user,
+          <span class="feature">I want</span> the slide generator to support multi-slide batch generation from a single prompt — e.g., "create a 10-slide investor deck with market, problem, solution, team, and financials sections",
+          <span class="reason">so that</span> I can generate a full presentation in one go rather than creating slides one at a time.
+        </div>
+        <div class="story-details">
+          The LLM plans the slide order and content outline first (as a structured array), then the script iterates over the plan, selecting the appropriate layout for each slide and filling in the content. A progress indicator shows completion (e.g., "Slide 3/10").
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li>Single prompt can produce 2–20+ slides in one PPTX.</li>
+            <li>Each slide uses the correct layout for its content type.</li>
+            <li>Progress is reported to the user during generation.</li>
+            <li>The LLM outline is shown to the user before generation begins, with an option to edit.</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">batch</span>
+          <span class="story-tag">multi-slide</span>
+          <span class="story-tag">outline</span>
+        </div>
+      </article>
+    </section>
+
+    <!-- ==================== EPIC 5 ==================== -->
+    <section class="epic" id="epic-5">
+      <div class="epic-header">
+        <div class="epic-badge red">E5</div>
+        <div class="epic-header-text">
+          <h3>Skill Architecture & Scripts</h3>
+          <p>The technical foundation: how the two skills are implemented as OpenCode agent skills with executable scripts, consistent schema validation, and clean interoperability.</p>
+        </div>
+      </div>
+
+      <!-- US 5.1 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-5.1</span>
+          <span class="story-priority must">Must Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> OpenCode user (and as the developer maintaining the subagent),
+          <span class="feature">I want</span> the system to expose exactly 2 skills — "generate-template" and "generate-slides" — each backed by a dedicated, independently testable script,
+          <span class="reason">so that</span> each skill has a single responsibility, can be debugged in isolation, and follows OpenCode's documented skill pattern.
+        </div>
+        <div class="story-details">
+          <ul>
+            <li><strong>generate-template</strong>: Script accepts <code>--input path/to/file.pptx --output path/to/output.pptx</code>. Reads zip, extracts, builds JSON, embeds, writes new zip.</li>
+            <li><strong>generate-slides</strong>: Script accepts <code>--template path/to/templated.pptx --prompt "..." --output path/to/deck.pptx</code>. Reads JSON, generates slides, writes new zip.</li>
+            <li>Both scripts exit with meaningful exit codes (0 = success, 1 = validation error, 2 = runtime error).</li>
+          </ul>
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li>Each skill has its own directory with <code>skill.yaml</code>, script, and README.</li>
+            <li>Both scripts are runnable from the CLI independently of the LLM.</li>
+            <li>Exit codes are documented and used consistently.</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">architecture</span>
+          <span class="story-tag">cli</span>
+          <span class="story-tag">testability</span>
+          <span class="story-tag">single-responsibility</span>
+        </div>
+      </article>
+
+      <!-- US 5.2 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-5.2</span>
+          <span class="story-priority must">Must Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> developer maintaining the subagent,
+          <span class="feature">I want</span> a shared JSON Schema (JSON Schema draft-07 or 2020-12) that both scripts use to validate the template JSON — with the schema file shipped alongside the skills,
+          <span class="reason">so that</span> the template generator's output is guaranteed to be consumable by the slide generator, catching schema drift at build time rather than at runtime.
+        </div>
+        <div class="story-details">
+          The schema file (<code>template_schema.json</code>) lives in a shared <code>common/</code> directory. Both scripts run <code>validate(json, schema)</code> before reading or writing. The LLM is also given the schema in its system prompt so it understands the structure when reasoning about slide content.
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li>A <code>.json</code> schema file exists and is referenced by both scripts.</li>
+            <li>Template generator validates its output before embedding.</li>
+            <li>Slide generator validates the JSON before reading it.</li>
+            <li>Schema version is tracked in <code>template_metadata.schema_version</code>.</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">json-schema</span>
+          <span class="story-tag">validation</span>
+          <span class="story-tag">contract</span>
+          <span class="story-tag">versioning</span>
+        </div>
+      </article>
+
+      <!-- US 5.3 -->
+      <article class="story">
+        <div class="story-top">
+          <span class="story-id">US-5.3</span>
+          <span class="story-priority should">Should Have</span>
+        </div>
+        <div class="story-format">
+          <span class="actor">As a</span> OpenCode user,
+          <span class="feature">I want</span> the subagent to log structured output (JSON lines) for every operation — including extraction steps, layout selections, font warnings, and generation progress — to a log stream I can inspect,
+          <span class="reason">so that</span> when something goes wrong (e.g., a slide looks off), I can trace exactly what the script did and share the log for debugging.
+        </div>
+        <div class="story-details">
+          Each log line is a JSON object with <code>timestamp</code>, <code>level</code>, <code>skill</code>, <code>action</code>, and <code>details</code>. Logs are written to stderr so they don't interfere with file output on stdout.
+        </div>
+        <div class="ac-section">
+          <h5>Acceptance Criteria</h5>
+          <ul class="ac-list">
+            <li>Every significant action emits a structured log line.</li>
+            <li>Logs go to stderr; only file paths go to stdout.</li>
+            <li>Log level can be controlled via <code>--log-level</code> flag (debug, info, warn, error).</li>
+          </ul>
+        </div>
+        <div class="story-tags">
+          <span class="story-tag">logging</span>
+          <span class="story-tag">debugging</span>
+          <span class="story-tag">observability</span>
+        </div>
+      </article>
+    </section>
+
+    <!-- ==================== JSON SCHEMA REFERENCE ==================== -->
+    <section id="schema" style="margin-top: 3rem;">
+      <div class="epic-header" style="margin-bottom: 1.5rem;">
+        <div class="epic-badge amber">REF</div>
+        <div class="epic-header-text">
+          <h3>Proposed JSON Schema — <code>template_schema.json</code></h3>
+          <p>The canonical structure stored at <code>ppt/template_schema.json</code> inside the PPTX zip. Both skills read and write this exact shape.</p>
+        </div>
+      </div>
+
+      <div class="schema-block">
+        <div class="schema-header">
+          <div class="schema-header-left">
+            <div class="dots"><span></span><span></span><span></span></div>
+            <span class="filename">ppt/template_schema.json</span>
+          </div>
+          <button class="schema-copy" id="copyBtn" onclick="copySchema()" aria-label="Copy JSON to clipboard">
+            <i class="fa-regular fa-clipboard"></i> Copy
+          </button>
+        </div>
+        <div class="schema-body">
+          <pre id="schemaCode"></pre>
+        </div>
+      </div>
+    </section>
+
+    <footer class="doc-footer">
+      PPTX Subagent User Stories — Generated for OpenCode.ai review — June 2025
+    </footer>
+  </main>
+
+  <!-- Toast -->
+  <div class="toast" id="toast" role="alert" aria-live="polite">
+    <i class="fa-solid fa-circle-check"></i>
+    <span id="toastMsg">Downloaded!</span>
+  </div>
+
+  <script>
+    // =============================================
+    // The raw JSON schema (template literal)
+    // =============================================
+    const schemaJSON = {
+      "template_metadata": {
+        "title": "Q3 Investor Pitch Deck — Dark Theme",
+        "schema_version": "1.0.0",
+        "generated_by": "opencode-pptx-subagent/generate-template",
+        "generated_at": "2025-06-15T10:30:00Z",
+        "slide_dimensions": {
+          "width_emu": 12192000,
+          "height_emu": 6858000,
+          "width_inches": 13.333,
+          "height_inches": 7.5,
+          "aspect_ratio": "16:9"
+        },
+        "missing_fonts": [
+          {
+            "family": "Neue Haas Grotesk",
+            "is_available": false,
+            "fallback": "Arial",
+            "download_url": "https://fonts.adobe.com/fonts/neue-haas-grotesk"
+          }
+        ],
+        "header_footer": {
+          "has_header": true,
+          "has_footer": true,
+          "header_components": ["comp_010"],
+          "footer_components": ["comp_011", "comp_012"],
+          "suggestions": []
+        },
+        "common_practices": {
+          "slide_numbers": { "status": "present", "recommendation": null },
+          "company_logo": { "status": "present", "recommendation": null },
+          "consistent_margins": { "status": "present", "recommendation": null },
+          "section_dividers": { "status": "missing", "recommendation": "Add a section divider layout for transitions between major topics." },
+          "closing_slide": { "status": "missing", "recommendation": "Add a 'Thank You' or contact-info closing slide layout." },
+          "suggestions": [
+            "Consider adding a section divider layout for transitions between major topics.",
+            "Consider adding a 'Thank You' or contact-info closing slide layout."
+          ]
+        }
+      },
+      "theme": {
+        "primary_color": "#1A1A2E",
+        "secondary_color": "#16213E",
+        "accent_color": "#E8A838",
+        "background_color": "#0F0F1A",
+        "text_color": "#E8ECF4",
+        "font_palette": {
+          "heading": "Neue Haas Grotesk",
+          "body": "Calibri",
+          "accent": "Calibri Light"
+        }
+      },
+      "slide_layouts": [
+        {
+          "layout_id": "title_slide",
+          "layout_name": "Title Slide",
+          "layout_index": 0,
+          "components": [
+            {
+              "id": "comp_001",
+              "type": "textbox",
+              "name": "Main Title",
+              "placeholder_type": "title",
+              "polygon": [
+                { "x": 0.08, "y": 0.28 },
+                { "x": 0.92, "y": 0.28 },
+                { "x": 0.92, "y": 0.48 },
+                { "x": 0.08, "y": 0.48 }
+              ],
+              "font": {
+                "family": "Neue Haas Grotesk",
+                "size_pt": 44,
+                "weight": "bold",
+                "color": "#E8ECF4",
+                "alignment": "left",
+                "is_available": false,
+                "fallback": "Arial"
+              },
+              "runs": [
+                {
+                  "text": "{{slide_title}}",
+                  "font": { "family": "Neue Haas Grotesk", "size_pt": 44, "weight": "bold", "color": "#E8ECF4" }
+                }
+              ],
+              "z_order": 1,
+              "content_template": "{{slide_title}}"
+            },
+            {
+              "id": "comp_002",
+              "type": "textbox",
+              "name": "Subtitle",
+              "placeholder_type": "subtitle",
+              "polygon": [
+                { "x": 0.08, "y": 0.52 },
+                { "x": 0.70, "y": 0.52 },
+                { "x": 0.70, "y": 0.62 },
+                { "x": 0.08, "y": 0.62 }
+              ],
+              "font": {
+                "family": "Calibri",
+                "size_pt": 20,
+                "weight": "regular",
+                "color": "#7A8399",
+                "alignment": "left",
+                "is_available": true,
+                "fallback": null
+              },
+              "runs": [
+                {
+                  "text": "{{slide_subtitle}}",
+                  "font": { "family": "Calibri", "size_pt": 20, "weight": "regular", "color": "#7A8399" }
+                }
+              ],
+              "z_order": 2,
+              "content_template": "{{slide_subtitle}}"
+            },
+            {
+              "id": "comp_003",
+              "type": "image",
+              "name": "Background Image",
+              "placeholder_type": null,
+              "polygon": [
+                { "x": 0.0, "y": 0.0 },
+                { "x": 1.0, "y": 0.0 },
+                { "x": 1.0, "y": 1.0 },
+                { "x": 0.0, "y": 1.0 }
+              ],
+              "z_order": 0,
+              "content_template": null,
+              "image_properties": {
+                "embed_id": "rId1",
+                "is_background": true
+              }
+            },
+            {
+              "id": "comp_004",
+              "type": "shape",
+              "name": "Accent Line",
+              "placeholder_type": null,
+              "polygon": [
+                { "x": 0.08, "y": 0.24 },
+                { "x": 0.35, "y": 0.24 },
+                { "x": 0.35, "y": 0.255 },
+                { "x": 0.08, "y": 0.255 }
+              ],
+              "z_order": 3,
+              "shape_properties": {
+                "preset": "rect",
+                "fill": { "type": "solid", "color": "#E8A838" },
+                "line": null
+              }
+            }
+          ]
+        },
+        {
+          "layout_id": "content_slide",
+          "layout_name": "Content Slide",
+          "layout_index": 1,
+          "components": [
+            {
+              "id": "comp_005",
+              "type": "textbox",
+              "name": "Slide Title",
+              "placeholder_type": "title",
+              "polygon": [
+                { "x": 0.08, "y": 0.06 },
+                { "x": 0.92, "y": 0.06 },
+                { "x": 0.92, "y": 0.16 },
+                { "x": 0.08, "y": 0.16 }
+              ],
+              "font": {
+                "family": "Neue Haas Grotesk",
+                "size_pt": 32,
+                "weight": "bold",
+                "color": "#E8ECF4",
+                "alignment": "left",
+                "is_available": false,
+                "fallback": "Arial"
+              },
+              "z_order": 1,
+              "content_template": "{{slide_title}}"
+            },
+            {
+              "id": "comp_006",
+              "type": "textbox",
+              "name": "Body Content",
+              "placeholder_type": "body",
+              "polygon": [
+                { "x": 0.08, "y": 0.20 },
+                { "x": 0.60, "y": 0.20 },
+                { "x": 0.60, "y": 0.85 },
+                { "x": 0.08, "y": 0.85 }
+              ],
+              "font": {
+                "family": "Calibri",
+                "size_pt": 16,
+                "weight": "regular",
+                "color": "#C0C8D8",
+                "alignment": "left",
+                "is_available": true,
+                "fallback": null
+              },
+              "z_order": 2,
+              "content_template": "{{slide_body}}",
+              "text_properties": {
+                "bullet_style": "disc",
+                "line_spacing_pt": 24,
+                "space_after_pt": 8
+              }
+            },
+            {
+              "id": "comp_007",
+              "type": "image",
+              "name": "Right Panel Image",
+              "placeholder_type": "picture",
+              "polygon": [
+                { "x": 0.65, "y": 0.20 },
+                { "x": 0.92, "y": 0.20 },
+                { "x": 0.92, "y": 0.85 },
+                { "x": 0.65, "y": 0.85 }
+              ],
+              "z_order": 3,
+              "content_template": "{{slide_image}}",
+              "image_properties": {
+                "embed_id": null,
+                "is_background": false
+              }
+            }
+          ]
+        },
+        {
+          "layout_id": "two_column_slide",
+          "layout_name": "Two Column",
+          "layout_index": 2,
+          "components": [
+            {
+              "id": "comp_008",
+              "type": "textbox",
+              "name": "Slide Title",
+              "placeholder_type": "title",
+              "polygon": [
+                { "x": 0.08, "y": 0.06 },
+                { "x": 0.92, "y": 0.06 },
+                { "x": 0.92, "y": 0.16 },
+                { "x": 0.08, "y": 0.16 }
+              ],
+              "font": { "family": "Neue Haas Grotesk", "size_pt": 32, "weight": "bold", "color": "#E8ECF4", "alignment": "left", "is_available": false, "fallback": "Arial" },
+              "z_order": 1,
+              "content_template": "{{slide_title}}"
+            },
+            {
+              "id": "comp_009",
+              "type": "textbox",
+              "name": "Left Column",
+              "placeholder_type": "body",
+              "polygon": [
+                { "x": 0.08, "y": 0.20 },
+                { "x": 0.48, "y": 0.20 },
+                { "x": 0.48, "y": 0.85 },
+                { "x": 0.08, "y": 0.85 }
+              ],
+              "font": { "family": "Calibri", "size_pt": 15, "weight": "regular", "color": "#C0C8D8", "alignment": "left", "is_available": true, "fallback": null },
+              "z_order": 2,
+              "content_template": "{{column_left}}"
+            },
+            {
+              "id": "comp_009b",
+              "type": "textbox",
+              "name": "Right Column",
+              "placeholder_type": "body",
+              "polygon": [
+                { "x": 0.52, "y": 0.20 },
+                { "x": 0.92, "y": 0.20 },
+                { "x": 0.92, "y": 0.85 },
+                { "x": 0.52, "y": 0.85 }
+              ],
+              "font": { "family": "Calibri", "size_pt": 15, "weight": "regular", "color": "#C0C8D8", "alignment": "left", "is_available": true, "fallback": null },
+              "z_order": 3,
+              "content_template": "{{column_right}}"
+            }
+          ]
+        }
+      ],
+      "component_type_enum": [
+        "textbox",
+        "image",
+        "table",
+        "video",
+        "shape",
+        "chart",
+        "group",
+        "smartart",
+        "placeholder",
+        "audio"
+      ],
+      "placeholder_type_enum": [
+        "title",
+        "subtitle",
+        "body",
+        "picture",
+        "chart",
+        "table",
+        "media",
+        "date",
+        "slide_number",
+        "footer",
+        "header",
+        null
+      ]
+    };
+
+    // =============================================
+    // Syntax-highlighted JSON rendering
+    // =============================================
+    function syntaxHighlight(json) {
+      if (typeof json !== 'string') {
+        json = JSON.stringify(json, null, 2);
+      }
+      // Escape HTML
+      json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      // Apply syntax coloring
+      return json.replace(
+        /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+        function (match) {
+          let cls = 'json-number';
+          if (/^"/.test(match)) {
+            if (/:$/.test(match)) {
+              cls = 'json-key';
+            } else {
+              cls = 'json-string';
+            }
+          } else if (/true|false/.test(match)) {
+            cls = 'json-bool';
+          } else if (/null/.test(match)) {
+            cls = 'json-null';
+          }
+          return '<span class="' + cls + '">' + match + '</span>';
+        }
+      );
+    }
+
+    // Render schema into the pre block
+    document.getElementById('schemaCode').innerHTML = syntaxHighlight(schemaJSON);
+
+    // =============================================
+    // Generate the Markdown content string
+    // =============================================
+    function generateMarkdown() {
+      return `# PPTX Subagent — User Stories
+
+> **Project:** opencode.ai / pptx-subagent
+> **Date:** June 2025
+> **Scope:** 5 Epics, 17 Stories
+> **Author:** Founder (OpenCode User)
+
+---
+
+## Table of Contents
+
+- [Epic 1: Template Extraction & JSON Schema](#epic-1-template-extraction--json-schema)
+- [Epic 2: Header, Footer & Best Practices](#epic-2-header-footer--best-practices)
+- [Epic 3: Skill — Template Generator](#epic-3-skill--template-generator)
+- [Epic 4: Skill — Slide Generator](#epic-4-skill--slide-generator)
+- [Epic 5: Skill Architecture & Scripts](#epic-5-skill-architecture--scripts)
+- [Reference: Proposed JSON Schema](#reference-proposed-json-schema)
+
+---
+
+## Epic 1: Template Extraction & JSON Schema
+
+Reading an existing PPTX file, parsing its slide master and layouts, and converting them into a structured, normalized JSON representation.
+
+---
+
+### US-1.1 — Extract Slide Master to Structured JSON \`[Must Have]\`
+
+**As a** OpenCode user working as a founder,
+**I want** the subagent to read any PPTX file I upload, parse its slide master and all slide layouts, and convert them into a structured JSON representation,
+**so that** I have a machine-readable blueprint of my template instead of relying on unpredictable LLM-only generation.
+
+**Details:**
+The system must use a scripted skill (not raw LLM) to open the PPTX zip, locate \`ppt/slideMasters/\` and \`ppt/slideLayouts/\` XML files, and parse the OOXML into the proposed JSON schema. This ensures deterministic, repeatable extraction.
+
+**Acceptance Criteria:**
+- [x] Subagent accepts a .pptx file input and does not crash on any valid PPTX.
+- [x] Slide master XML is parsed; every layout under the master is extracted.
+- [x] Output is a valid JSON object conforming to the proposed schema.
+- [x] Extraction is performed by a Python/Node script — not by LLM guessing.
+
+**Tags:** extraction, slide-master, ooxml, deterministic
+
+---
+
+### US-1.2 — Normalized Polygon Positioning \`[Must Have]\`
+
+**As a** OpenCode user,
+**I want** each component in the extracted JSON to have a \`polygon\` field defined as an array of exactly 4 coordinate pairs in anti-clockwise order, with all values normalized to a 0.0–1.0 scale relative to the slide dimensions,
+**so that** the position and size of every element is unambiguous, resolution-independent, and can be mapped back to any slide size (e.g., 16:9, 4:3).
+
+**Details:**
+- Coordinate order: top-left → top-right → bottom-right → bottom-left (anti-clockwise).
+- Values are floats between 0.0 and 1.0, where (0,0) is the top-left corner of the slide and (1,1) is the bottom-right.
+- Non-rectangular shapes (e.g., trapezoids, arrows) must use their actual polygon vertices, still normalized.
+- The slide's native aspect ratio is recorded in \`template_metadata.slide_dimensions\` so the subagent can denormalize when writing back.
+
+**Acceptance Criteria:**
+- [x] Every component has a \`polygon\` array with exactly 4 \`{x, y}\` objects for rectangular shapes.
+- [x] All x and y values are in [0.0, 1.0] range.
+- [x] Anti-clockwise winding is verified by a simple cross-product check in the script.
+- [x] Slide dimensions (EMU, inches, and aspect ratio string) are recorded in metadata.
+
+**Tags:** polygon, normalized-coords, positioning
+
+---
+
+### US-1.3 — Component Type Enumeration \`[Must Have]\`
+
+**As a** OpenCode user,
+**I want** each component to have a \`type\` field drawn from a fixed enum that maps directly to PowerPoint element types (e.g., \`textbox\`, \`image\`, \`table\`, \`video\`, \`shape\`, \`chart\`, \`group\`, \`smartart\`, \`placeholder\`),
+**so that** the slide-generation skill knows exactly which OOXML element to create for each component, avoiding ambiguous or incorrect element types.
+
+**Details:**
+- The enum is defined in the schema and documented in the skill's README.
+- OOXML \`<p:sp>\` elements with \`<p:txBody>\` → \`textbox\`.
+- \`<p:pic>\` → \`image\`.
+- \`<p:graphicFrame>\` containing a table → \`table\`.
+- \`<p:graphicFrame>\` containing a chart → \`chart\`.
+- \`<p:sp>\` with a preset geometry but no text → \`shape\`.
+- \`<p:grpSp>\` → \`group\` (with nested \`children\` array).
+- If the script encounters an unrecognized element, it falls back to \`shape\` and sets \`type_confidence: "low"\`.
+
+**Acceptance Criteria:**
+- [x] \`type\` field is always present and always one of the defined enum values.
+- [x] No component has \`type: null\` or \`type: "unknown"\`.
+- [x] A mapping table from OOXML tags to enum values is included in the skill source.
+
+**Tags:** type-enum, ooxml-mapping, component
+
+---
+
+### US-1.4 — Font Detection & Availability Checking \`[Must Have]\`
+
+**As a** OpenCode user,
+**I want** the extraction to capture font metadata for every text-bearing component — including \`family\`, \`size_pt\`, \`weight\`, \`color\`, \`alignment\`, and an \`is_available\` boolean — and populate a top-level \`missing_fonts\` array when a font is not among PowerPoint's built-in defaults,
+**so that** I know exactly which fonts my template depends on and can install them before generating slides, preventing layout breakage from font substitution.
+
+**Details:**
+- Built-in PowerPoint fonts (Calibri, Arial, Times New Roman, etc.) are considered always available.
+- Custom fonts get \`is_available: false\` and appear in \`missing_fonts\` with download suggestions if known.
+- Each font entry includes a \`fallback\` field suggesting the closest built-in substitute.
+- Multiple font runs within a single textbox (e.g., bold title + regular subtitle) are captured as a \`runs\` array.
+
+**Acceptance Criteria:**
+- [x] Every textbox component has a \`font\` object with all specified fields.
+- [x] \`missing_fonts\` array is empty when all fonts are built-in.
+- [x] When non-built-in fonts are found, the subagent prints a user-facing warning listing them.
+- [x] \`fallback\` is always a built-in font name.
+
+**Tags:** fonts, availability, fallback
+
+---
+
+### US-1.5 — JSON Storage Inside PPTX Zip \`[Must Have]\`
+
+**As a** OpenCode user,
+**I want** the generated JSON template to be stored inside the PPTX zip archive at a path like \`ppt/template_schema.json\` — without breaking the PPTX file or causing PowerPoint to reject it,
+**so that** the JSON travels with the file itself and the slide-generation skill can read it directly from any PPTX I provide, without needing a separate database or file system.
+
+**Details:**
+- PowerPoint ignores unknown files inside the zip as long as \`[Content_Types].xml\` is not modified.
+- The script appends the JSON without altering any existing entry in the zip.
+- Opening the file in PowerPoint before and after embedding produces identical behavior.
+- The JSON is minified to keep file size impact minimal (typically < 50 KB).
+
+**Acceptance Criteria:**
+- [x] After embedding, the PPTX opens in PowerPoint without errors or repair prompts.
+- [x] The JSON is retrievable by re-reading the zip at the known path.
+- [x] Existing slide content, layouts, and media are untouched.
+- [x] File size increase is logged to the user.
+
+**Tags:** zip-embedding, pptx-safe, portability
+
+---
+
+## Epic 2: Header, Footer & Best Practices
+
+Detecting and validating structural conventions like headers, footers, slide numbers, and common PowerPoint practices, then prompting the user when they're missing.
+
+---
+
+### US-2.1 — Header & Footer Detection \`[Must Have]\`
+
+**As a** OpenCode user,
+**I want** the subagent to detect whether my slide master contains header and footer zones — and, if not, explicitly ask me whether I want to add them before proceeding,
+**so that** my generated slides don't lack standard structural elements that make a deck look unfinished or unprofessional.
+
+**Details:**
+The script checks for the presence of header (\`<p:hdr>\`) and footer (\`<p:ftr>\`) elements in the slide master XML. If absent, the subagent pauses extraction and returns a structured prompt to the user.
+
+**Acceptance Criteria:**
+- [x] \`template_metadata.header_footer.has_header\` and \`.has_footer\` are booleans reflecting actual detection.
+- [x] When both are \`false\`, the subagent outputs a user-facing question before continuing.
+- [x] If the user says "yes, add header", the script injects a default header zone into the JSON (not into the PPTX yet — only into the schema).
+
+**Tags:** header, footer, detection, prompt
+
+---
+
+### US-2.2 — Common Practice Suggestions \`[Should Have]\`
+
+**As a** OpenCode user,
+**I want** the subagent to suggest common PowerPoint best practices based on what it finds (or doesn't find) in my template — such as slide numbers, consistent margins, logo placement, and section dividers,
+**so that** even if I'm not a presentation expert, the subagent helps me produce a deck that follows professional standards.
+
+**Details:**
+Suggestions are stored in \`template_metadata.common_practices.suggestions\` as an array of objects with \`practice\`, \`status\` (\`"present"\` | \`"missing"\` | \`"optional"\`), and \`recommendation\` fields.
+
+**Acceptance Criteria:**
+- [x] At least 5 practices are checked: slide numbers, company logo, consistent margins, section dividers, and thank-you/closing slide.
+- [x] Only \`"missing"\` practices are shown as suggestions to the user.
+- [x] The user can acknowledge or dismiss each suggestion without blocking the workflow.
+
+**Tags:** best-practices, suggestions, guidance
+
+---
+
+## Epic 3: Skill — Template Generator
+
+The first of two core skills: taking an existing PPTX, extracting its structure into JSON, embedding that JSON back into the zip, and returning a "templated" PPTX ready for slide generation.
+
+---
+
+### US-3.1 — End-to-End Template Generation Pipeline \`[Must Have]\`
+
+**As a** OpenCode user,
+**I want** to invoke a "generate template" skill that takes my PPTX file, runs the full extraction pipeline (Epic 1), and produces the JSON schema,
+**so that** I have a standardized, reusable template definition without manually editing any JSON.
+
+**Details:**
+This skill is the entry point. The user says something like "extract the template from this PPTX" and the subagent routes to this skill. The skill orchestrates: zip read → XML parse → JSON build → validate → embed → return file.
+
+**Acceptance Criteria:**
+- [x] Skill is invocable by natural language intent detection (no special command needed).
+- [x] Full pipeline runs end-to-end without manual intermediate steps.
+- [x] Validation errors (e.g., no slide master found) are reported clearly to the user.
+
+**Tags:** skill, template-generator, pipeline
+
+---
+
+### US-3.2 — Template Naming \`[Must Have]\`
+
+**As a** OpenCode user,
+**I want** the generated JSON to include a \`title\` field at the top level that names the template (e.g., "Q3 Investor Pitch Deck — Dark Theme"),
+**so that** when I have multiple templated PPTX files, I can query or reference them by name and the subagent knows which template I mean.
+
+**Details:**
+The title is inferred from the PPTX file metadata (document title property), or from the first slide's title text, or — if neither exists — the subagent prompts the user to name it.
+
+**Acceptance Criteria:**
+- [x] \`template_metadata.title\` is always a non-empty string.
+- [x] Inference order: core.xml title → slide 1 title text → user prompt.
+- [x] The title is displayed to the user for confirmation after extraction.
+
+**Tags:** metadata, naming, queryable
+
+---
+
+### US-3.3 — Return Downloadable Templated PPTX \`[Must Have]\`
+
+**As a** OpenCode user,
+**I want** the skill to return a new PPTX file (with the JSON embedded) that I can download and keep,
+**so that** I have a portable, self-describing template file I can reuse across sessions or share with teammates.
+
+**Details:**
+The returned file is the original PPTX plus \`ppt/template_schema.json\`. The subagent provides a download link and a summary of what was extracted (number of layouts, components, fonts, etc.).
+
+**Acceptance Criteria:**
+- [x] Downloadable PPTX is provided via OpenCode's file output mechanism.
+- [x] A human-readable extraction summary is printed to the user.
+- [x] File passes a round-trip test: open in PowerPoint, re-upload, re-extract → identical JSON.
+
+**Tags:** output, download, round-trip
+
+---
+
+### US-3.4 — Theme & Color Extraction \`[Should Have]\`
+
+**As a** OpenCode user,
+**I want** the template JSON to also capture the color theme (primary, secondary, accent, background) and font palette from the PPTX's \`ppt/theme/theme1.xml\`,
+**so that** when the slide-generation skill creates new content, it can use the exact brand colors and typography without guessing.
+
+**Details:**
+Theme colors are extracted from \`<a:clrScheme>\` and mapped to semantic roles. Font palette comes from \`<a:fontScheme>\`.
+
+**Acceptance Criteria:**
+- [x] \`theme\` object contains \`primary_color\`, \`secondary_color\`, \`accent_color\`, \`background_color\` as hex strings.
+- [x] \`theme.font_palette\` contains \`heading\`, \`body\`, \`accent\` font names.
+- [x] If theme1.xml is missing or malformed, sensible defaults are used and a warning is shown.
+
+**Tags:** theme, colors, branding
+
+---
+
+## Epic 4: Skill — Slide Generator
+
+The second core skill: reading the embedded JSON template and using it to generate new slides that respect the slide master's layout, positioning, fonts, and theme — producing visually pleasing, on-brand output.
+
+---
+
+### US-4.1 — Read Embedded JSON as Layout Reference \`[Must Have]\`
+
+**As a** OpenCode user,
+**I want** the slide-generation skill to read the \`ppt/template_schema.json\` from a templated PPTX I provide and use it as the authoritative layout reference,
+**so that** every generated slide places content in the correct positions with the correct styling, rather than relying on LLM hallucination of coordinates.
+
+**Details:**
+The skill reads the JSON, identifies which slide layout to use based on the user's intent (e.g., "title slide", "content slide", "two-column"), denormalizes the polygon coordinates back to EMUs using the stored slide dimensions, and creates OOXML elements at those exact positions.
+
+**Acceptance Criteria:**
+- [x] Skill reads JSON from the zip — does not re-extract or re-parse XML.
+- [x] Layout selection is based on \`layout_name\` matching or user confirmation.
+- [x] Denormalized EMU coordinates are within 1% of the original element positions.
+
+**Tags:** slide-generation, layout-matching, denormalization
+
+---
+
+### US-4.2 — Visually Pleasing Output with Text Fitting \`[Must Have]\`
+
+**As a** OpenCode user,
+**I want** generated slides to be visually pleasing — with proper text fitting (no overflow), appropriate font sizing for the content length, and consistent spacing — while still adhering to the template's defined zones,
+**so that** the output looks like a human-designed slide, not a raw data dump into text boxes.
+
+**Details:**
+- The script implements text-fitting logic: if text exceeds the textbox's polygon area at the template's font size, it reduces size in steps (e.g., -2pt) until it fits, with a minimum floor.
+- Line spacing and paragraph spacing are derived from the template's existing text runs.
+- Bullet points use the template's bullet style if detected; otherwise, a clean default is applied.
+
+**Acceptance Criteria:**
+- [x] No generated slide has text overflowing its bounding box.
+- [x] Font size is only reduced when necessary — never increased beyond the template's defined size.
+- [x] A \`font_size_adjusted\` flag is set in the component when auto-sizing occurs.
+
+**Tags:** text-fitting, visual-quality, auto-sizing
+
+---
+
+### US-4.3 — Auto-Chain Extraction When No JSON Present \`[Must Have]\`
+
+**As a** OpenCode user,
+**I want** to be able to hand the subagent a PPTX that does NOT yet have an embedded JSON and say "extract the template from this, then generate slides using it" — all in one interaction,
+**so that** I don't have to run two separate commands when I'm working with a fresh file for the first time.
+
+**Details:**
+The subagent detects the absence of \`ppt/template_schema.json\`, automatically chains the Template Generator skill first, then proceeds to Slide Generation. The user is informed of the two-step process but doesn't need to manually trigger each step.
+
+**Acceptance Criteria:**
+- [x] Single user prompt triggers both skills in sequence without error.
+- [x] Intermediate JSON is embedded in the output PPTX.
+- [x] User sees a status message like "No template found — extracting first, then generating slides..."
+
+**Tags:** chaining, auto-detect, ux
+
+---
+
+### US-4.4 — Style Picker for Template-Less Generation \`[Should Have]\`
+
+**As a** OpenCode user,
+**I want** the subagent to ask me about my preferred visual style when I request slide generation without providing a template — offering options like "minimalist", "corporate", "creative", "dark mode", etc.,
+**so that** even without a pre-made template, the generated slides match my aesthetic expectations rather than defaulting to a generic look.
+
+**Details:**
+When no PPTX is provided and no embedded JSON exists, the subagent presents a style picker. Each style maps to a built-in JSON schema (shipped with the skill) that defines layout, colors, and fonts. The user can also say "just use default" to skip the prompt.
+
+**Acceptance Criteria:**
+- [x] At least 4 built-in style presets are included with the skill.
+- [x] The user can select a style by name or description.
+- [x] "Default" is always an option and requires no extra interaction.
+- [x] Selected style's JSON is embedded in the output PPTX for future reuse.
+
+**Tags:** style-picker, presets, fallback
+
+---
+
+### US-4.5 — Multi-Slide Batch Generation \`[Could Have]\`
+
+**As a** OpenCode user,
+**I want** the slide generator to support multi-slide batch generation from a single prompt — e.g., "create a 10-slide investor deck with market, problem, solution, team, and financials sections",
+**so that** I can generate a full presentation in one go rather than creating slides one at a time.
+
+**Details:**
+The LLM plans the slide order and content outline first (as a structured array), then the script iterates over the plan, selecting the appropriate layout for each slide and filling in the content. A progress indicator shows completion (e.g., "Slide 3/10").
+
+**Acceptance Criteria:**
+- [x] Single prompt can produce 2–20+ slides in one PPTX.
+- [x] Each slide uses the correct layout for its content type.
+- [x] Progress is reported to the user during generation.
+- [x] The LLM outline is shown to the user before generation begins, with an option to edit.
+
+**Tags:** batch, multi-slide, outline
+
+---
+
+## Epic 5: Skill Architecture & Scripts
+
+The technical foundation: how the two skills are implemented as OpenCode agent skills with executable scripts, consistent schema validation, and clean interoperability.
+
+---
+
+### US-5.1 — Two Independent Skills with CLI Scripts \`[Must Have]\`
+
+**As a** OpenCode user (and as the developer maintaining the subagent),
+**I want** the system to expose exactly 2 skills — "generate-template" and "generate-slides" — each backed by a dedicated, independently testable script,
+**so that** each skill has a single responsibility, can be debugged in isolation, and follows OpenCode's documented skill pattern.
+
+**Details:**
+- **generate-template**: Script accepts \`--input path/to/file.pptx --output path/to/output.pptx\`. Reads zip, extracts, builds JSON, embeds, writes new zip.
+- **generate-slides**: Script accepts \`--template path/to/templated.pptx --prompt "..." --output path/to/deck.pptx\`. Reads JSON, generates slides, writes new zip.
+- Both scripts exit with meaningful exit codes (0 = success, 1 = validation error, 2 = runtime error).
+
+**Acceptance Criteria:**
+- [x] Each skill has its own directory with \`skill.yaml\`, script, and README.
+- [x] Both scripts are runnable from the CLI independently of the LLM.
+- [x] Exit codes are documented and used consistently.
+
+**Tags:** architecture, cli, testability, single-responsibility
+
+---
+
+### US-5.2 — Shared JSON Schema for Validation \`[Must Have]\`
+
+**As a** developer maintaining the subagent,
+**I want** a shared JSON Schema (JSON Schema draft-07 or 2020-12) that both scripts use to validate the template JSON — with the schema file shipped alongside the skills,
+**so that** the template generator's output is guaranteed to be consumable by the slide generator, catching schema drift at build time rather than at runtime.
+
+**Details:**
+The schema file (\`template_schema.json\`) lives in a shared \`common/\` directory. Both scripts run \`validate(json, schema)\` before reading or writing. The LLM is also given the schema in its system prompt so it understands the structure when reasoning about slide content.
+
+**Acceptance Criteria:**
+- [x] A \`.json\` schema file exists and is referenced by both scripts.
+- [x] Template generator validates its output before embedding.
+- [x] Slide generator validates the JSON before reading it.
+- [x] Schema version is tracked in \`template_metadata.schema_version\`.
+
+**Tags:** json-schema, validation, contract, versioning
+
+---
+
+### US-5.3 — Structured Logging \`[Should Have]\`
+
+**As a** OpenCode user,
+**I want** the subagent to log structured output (JSON lines) for every operation — including extraction steps, layout selections, font warnings, and generation progress — to a log stream I can inspect,
+**so that** when something goes wrong (e.g., a slide looks off), I can trace exactly what the script did and share the log for debugging.
+
+**Details:**
+Each log line is a JSON object with \`timestamp\`, \`level\`, \`skill\`, \`action\`, and \`details\`. Logs are written to stderr so they don't interfere with file output on stdout.
+
+**Acceptance Criteria:**
+- [x] Every significant action emits a structured log line.
+- [x] Logs go to stderr; only file paths go to stdout.
+- [x] Log level can be controlled via \`--log-level\` flag (debug, info, warn, error).
+
+**Tags:** logging, debugging, observability
+
+---
+
+## Reference: Proposed JSON Schema
+
+The canonical structure stored at \`ppt/template_schema.json\` inside the PPTX zip.
+
+\`\`\`json
+ ${JSON.stringify(schemaJSON, null, 2)}
+\`\`\`
+
+### Key Design Decisions
+
+1. **Normalized coordinates (0.0–1.0):** Makes the schema resolution-independent. The slide dimensions in metadata allow denormalization to EMUs for OOXML output.
+
+2. **Anti-clockwise polygon winding:** Consistent with mathematical convention and allows cross-product-based normal/area calculations for text-fitting heuristics.
+
+3. **\`content_template\` with \`{{placeholder}}\` syntax:** Lets the slide generator do simple string substitution without LLM involvement for straightforward fills, while the LLM handles content generation for the placeholders.
+
+4. **\`runs\` array for font runs:** PowerPoint textboxes often contain mixed formatting (bold title + regular body in one box). Capturing runs preserves this nuance.
+
+5. **\`missing_fonts\` at top level:** Centralized list means the user sees all font issues in one place, rather than scattered across individual component font objects.
+
+6. **JSON inside zip, not in \`\[Content_Types].xml\`:** PowerPoint silently ignores files it doesn't know about. This is the safest embedding strategy — zero risk of corrupting the file.
+
+7. **\`component_type_enum\` and \`placeholder_type_enum\` in the JSON itself:** Self-documenting. Any consumer of the JSON can enumerate valid types without external documentation.
+
+---
+
+*End of document.*
+`;
+    }
+
+    // =============================================
+    // Download .md file
+    // =============================================
+    function downloadMD() {
+      const content = generateMarkdown();
+      const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+      saveAs(blob, 'pptx-subagent-user-stories.md');
+      showToast('Markdown file downloaded');
+    }
+
+    // =============================================
+    // Download .zip file
+    // =============================================
+    function downloadZip() {
+      const zip = new JSZip();
+      const mdContent = generateMarkdown();
+
+      // Add the markdown file
+      zip.file('pptx-subagent-user-stories.md', mdContent);
+
+      // Add the raw JSON schema
+      zip.file('template_schema_example.json', JSON.stringify(schemaJSON, null, 2));
+
+      // Add a minimal JSON Schema (draft-07) for validation
+      const jsonSchema = generateJSONSchema();
+      zip.file('template_schema_validator.json', JSON.stringify(jsonSchema, null, 2));
+
+      zip.generateAsync({ type: 'blob' }).then(function (content) {
+        saveAs(content, 'pptx-subagent-user-stories.zip');
+        showToast('ZIP archive downloaded (3 files)');
+      });
+    }
+
+    // =============================================
+    // Generate a JSON Schema (draft-07) for validation
+    // =============================================
+    function generateJSONSchema() {
+      return {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "$id": "https://opencode.ai/schemas/pptx-template-schema.json",
+        "title": "PPTX Template Schema",
+        "description": "Structured representation of a PowerPoint slide master and its layouts, embedded inside the PPTX zip at ppt/template_schema.json",
+        "type": "object",
+        "required": ["template_metadata", "theme", "slide_layouts", "component_type_enum"],
+        "properties": {
+          "template_metadata": {
+            "type": "object",
+            "required": ["title", "schema_version", "generated_by", "generated_at", "slide_dimensions", "missing_fonts", "header_footer"],
+            "properties": {
+              "title": { "type": "string", "minLength": 1 },
+              "schema_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+              "generated_by": { "type": "string" },
+              "generated_at": { "type": "string", "format": "date-time" },
+              "slide_dimensions": {
+                "type": "object",
+                "required": ["width_emu", "height_emu", "aspect_ratio"],
+                "properties": {
+                  "width_emu": { "type": "integer", "minimum": 1 },
+                  "height_emu": { "type": "integer", "minimum": 1 },
+                  "width_inches": { "type": "number", "minimum": 0.1 },
+                  "height_inches": { "type": "number", "minimum": 0.1 },
+                  "aspect_ratio": { "type": "string", "pattern": "^(\\d+):(\\d+)$" }
+                }
+              },
+              "missing_fonts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["family", "is_available", "fallback"],
+                  "properties": {
+                    "family": { "type": "string" },
+                    "is_available": { "type": "boolean" },
+                    "fallback": { "type": "string" },
+                    "download_url": { "type": "string", "format": "uri" }
+                  }
+                }
+              },
+              "header_footer": {
+                "type": "object",
+                "required": ["has_header", "has_footer"],
+                "properties": {
+                  "has_header": { "type": "boolean" },
+                  "has_footer": { "type": "boolean" },
+                  "header_components": { "type": "array", "items": { "type": "string" } },
+                  "footer_components": { "type": "array", "items": { "type": "string" } },
+                  "suggestions": { "type": "array", "items": { "type": "string" } }
+                }
+              },
+              "common_practices": {
+                "type": "object",
+                "properties": {
+                  "slide_numbers": { "$ref": "#/definitions/practice_check" },
+                  "company_logo": { "$ref": "#/definitions/practice_check" },
+                  "consistent_margins": { "$ref": "#/definitions/practice_check" },
+                  "section_dividers": { "$ref": "#/definitions/practice_check" },
+                  "closing_slide": { "$ref": "#/definitions/practice_check" },
+                  "suggestions": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          },
+          "theme": {
+            "type": "object",
+            "required": ["primary_color", "background_color"],
+            "properties": {
+              "primary_color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+              "secondary_color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+              "accent_color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+              "background_color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+              "text_color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+              "font_palette": {
+                "type": "object",
+                "properties": {
+                  "heading": { "type": "string" },
+                  "body": { "type": "string" },
+                  "accent": { "type": "string" }
+                }
+              }
+            }
+          },
+          "slide_layouts": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["layout_id", "layout_name", "layout_index", "components"],
+              "properties": {
+                "layout_id": { "type": "string" },
+                "layout_name": { "type": "string" },
+                "layout_index": { "type": "integer", "minimum": 0 },
+                "components": {
+                  "type": "array",
+                  "items": { "$ref": "#/definitions/component" }
+                }
+              }
+            }
+          },
+          "component_type_enum": {
+            "type": "array",
+            "items": { "type": "string" },
+            "contains": { "const": "textbox" }
+          },
+          "placeholder_type_enum": {
+            "type": "array",
+            "items": { "type": ["string", "null"] }
+          }
+        },
+        "definitions": {
+          "practice_check": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string", "enum": ["present", "missing", "optional"] },
+              "recommendation": { "type": ["string", "null"] }
+            }
+          },
+          "component": {
+            "type": "object",
+            "required": ["id", "type", "name", "polygon", "z_order"],
+            "properties": {
+              "id": { "type": "string" },
+              "type": { "type": "string" },
+              "name": { "type": "string" },
+              "placeholder_type": { "type": ["string", "null"] },
+              "polygon": {
+                "type": "array",
+                "minItems": 3,
+                "items": {
+                  "type": "object",
+                  "required": ["x", "y"],
+                  "properties": {
+                    "x": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "y": { "type": "number", "minimum": 0, "maximum": 1 }
+                  }
+                }
+              },
+              "font": { "$ref": "#/definitions/font_info" },
+              "runs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["text", "font"],
+                  "properties": {
+                    "text": { "type": "string" },
+                    "font": { "$ref": "#/definitions/font_info" }
+                  }
+                }
+              },
+              "z_order": { "type": "integer", "minimum": 0 },
+              "content_template": { "type": ["string", "null"] },
+              "text_properties": {
+                "type": "object",
+                "properties": {
+                  "bullet_style": { "type": "string" },
+                  "line_spacing_pt": { "type": "number" },
+                  "space_after_pt": { "type": "number" }
+                }
+              },
+              "image_properties": {
+                "type": "object",
+                "properties": {
+                  "embed_id": { "type": ["string", "null"] },
+                  "is_background": { "type": "boolean" }
+                }
+              },
+              "shape_properties": {
+                "type": "object",
+                "properties": {
+                  "preset": { "type": "string" },
+                  "fill": {
+                    "type": "object",
+                    "properties": {
+                      "type": { "type": "string" },
+                      "color": { "type": "string" }
+                    }
+                  },
+                  "line": { "type": ["object", "null"] }
+                }
+              }
+            }
+          },
+          "font_info": {
+            "type": "object",
+            "required": ["family", "size_pt", "weight", "color", "alignment", "is_available"],
+            "properties": {
+              "family": { "type": "string" },
+              "size_pt": { "type": "number", "minimum": 1 },
+              "weight": { "type": "string", "enum": ["thin", "light", "regular", "medium", "semibold", "bold", "extrabold", "black"] },
+              "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+              "alignment": { "type": "string", "enum": ["left", "center", "right", "justify"] },
+              "is_available": { "type": "boolean" },
+              "fallback": { "type": ["string", "null"] }
+            }
+          }
+        }
+      };
+    }
+
+    // =============================================
+    // Copy schema to clipboard
+    // =============================================
+    function copySchema() {
+      const text = JSON.stringify(schemaJSON, null, 2);
+      navigator.clipboard.writeText(text).then(function () {
+        const btn = document.getElementById('copyBtn');
+        btn.classList.add('copied');
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied';
+        showToast('JSON copied to clipboard');
+        setTimeout(function () {
+          btn.classList.remove('copied');
+          btn.innerHTML = '<i class="fa-regular fa-clipboard"></i> Copy';
+        }, 2000);
+      });
+    }
+
+    // =============================================
+    // Toast notification
+    // =============================================
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toastMsg').textContent = msg;
+      toast.classList.add('show');
+      setTimeout(function () {
+        toast.classList.remove('show');
+      }, 2500);
+    }
+
+    // =============================================
+    // Scroll-triggered fade-in for story cards
+    // =============================================
+    (function () {
+      const stories = document.querySelectorAll('.story, .schema-block');
+      const observer = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            entry.target.style.animation = 'fadeUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards';
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+
+      stories.forEach(function (el) {
+        el.style.opacity = '0';
+        observer.observe(el);
+      });
+    })();
+  </script>
+</body>
+</html>

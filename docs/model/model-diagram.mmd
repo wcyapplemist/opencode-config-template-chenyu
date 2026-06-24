@@ -95,8 +95,10 @@ classDiagram
     }
 
     class TemplateContract {
-        +str source_file
-        +float source_mtime
+        +str working_file
+        +str backup_file [0..1]
+        +float working_mtime
+        +TemplateRole role
         +SlideSize slide_size
         +Theme theme
         +List~Layout~ layouts
@@ -115,8 +117,28 @@ classDiagram
         +str name
         +list fingerprint
         +float content_area_in2
+        +LayoutOrigin origin
+        +str added_at [0..1]
+    }
+    class TemplateBackup {
+        +str original_path
+        +str backup_path
+        +datetime backed_up_at
+    }
+    class TemplateRole {
+        <<enumeration>>
+        original_backup
+        working
+    }
+    class LayoutOrigin {
+        <<enumeration>>
+        native
+        extended
     }
     TemplateContract "1" *-- "1" SlideSize
     TemplateContract "1" *-- "1" Theme
     TemplateContract "1" *-- "0..*" Layout
+    TemplateContract "1" o-- "0..1" TemplateBackup : one-time snapshot
     Slide ..> Layout : matched by fingerprint
+
+    note for Layout "Extended layouts (origin = extended) are injected as new ppt/slideLayouts/slideLayoutN.xml parts, wired into the slideMaster *.rels + [Content_Types].xml inside the working template.pptx zip."

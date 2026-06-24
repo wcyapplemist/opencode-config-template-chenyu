@@ -8,7 +8,7 @@
 
 ## US-1: One-request deck generation
 
-**As a** busy professional,
+**As a** presenter who needs a deck fast,
 **I want** to describe my topic and page count in a single sentence and get back a finished presentation file,
 **So that** I skip the hours of manual formatting, asset hunting, and layout tweaking.
 
@@ -80,7 +80,7 @@
 
 ## US-5: Speaker notes on every slide
 
-**As a** someone who has to deliver the talk,
+**As a** presenter who has to deliver the talk,
 **I want** a spoken script attached to each slide,
 **So that** I can rehearse beforehand and stay calm and fluent on stage.
 
@@ -109,3 +109,23 @@
 - And the closing slide's design matches the template, so it doesn't look tacked on
 
 **Discussion points:** If the user wants a custom ending (e.g., "Q&A" or a tagline), how do they specify it?
+
+---
+
+## US-7: Permanent template extension when content exceeds the template
+
+**As a** user whose content occasionally outgrows the supplied template,
+**I want** the system to permanently teach `template.pptx` the new layout by injecting the extended-layout OOXML parts and relationship entries into the zip (after backing up the pristine original once),
+**So that** the current deck renders correctly **and** every future deck automatically supports that format without re-extension.
+
+**Acceptance Criteria:**
+- Given a slide whose layout is missing or whose content is over-limit for the working template
+- When the system resolves the over-limit
+- Then `template.pptx` is copied to `template.original.pptx` in the same folder **only if `template.original.pptx` does not already exist** (one-time backup of the pristine original)
+- And the required layout is injected into `template.pptx`'s zip as a new `ppt/slideLayouts/slideLayoutN.xml` part with wired relationship entries (slideMaster `*.rels` + `[Content_Types].xml` registration) — not an ephemeral clone
+- And the deck is rendered against the now-upgraded `template.pptx`
+- And the user is notified that `template.pptx` was permanently extended (naming the layout and that the original was backed up)
+- When a **future** deck needs that same layout
+- Then the working `template.pptx` already serves it — no second extension or backup occurs
+
+**Discussion points:** What triggers a re-backup if a user manually replaces `template.pptx` (mtime change)? Should `template.original.pptx` be git-ignored? Is there a revert/restore flow from the backup?

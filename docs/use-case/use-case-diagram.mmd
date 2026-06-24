@@ -17,7 +17,8 @@ flowchart LR
         UC10(["Resolve Placeholders"])
         UC11(["Render PPTX"])
         UC12(["Check Template Content Limit"])
-        UC13(["Clone Near-Copy Template (template_new.pptx)"])
+        UC13(["Backup Pristine Original<br/>(template.pptx → template.original.pptx)"])
+        UC14(["Inject Extended-Layout OOXML Parts<br/>& Relationships into template.pptx"])
     end
 
     User --> UC1
@@ -33,7 +34,8 @@ flowchart LR
     UC10 -.->|"include"| UC8
 
     UC11 -.->|"include"| UC12
-    UC13 -.->|"extend: over-limit detected"| UC12
+    UC14 -.->|"extend: over-limit detected"| UC12
+    UC13 -.->|"extend: first-ever extension"| UC14
 
     UC3 -.->|"extend"| UC6
     UC4 -.->|"extend"| UC6
