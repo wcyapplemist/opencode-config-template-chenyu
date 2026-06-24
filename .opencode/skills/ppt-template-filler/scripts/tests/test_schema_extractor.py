@@ -141,8 +141,8 @@ class TestPolygon:
         assert len(ids) == len(set(ids)), "component ids not globally unique"
 
     def test_z_order_nonneg_int(self, schema):
-        for L in schema["slide_layouts"]:
-            for c in L["components"]:
+        for container in schema["slide_layouts"] + [schema["slide_master"]]:
+            for c in container["components"]:
                 assert isinstance(c["z_order"], int) and c["z_order"] >= 0
 
 
@@ -367,6 +367,24 @@ class TestGroupRecursion:
         assert len(comps) == 3
         assert comps[0]["type"] == "group"
         assert {comps[1]["type"], comps[2]["type"]} == {"textbox", "image"}
+
+    def test_z_order_unique_when_group_has_following_sibling(self):
+        """Regression for code-review M1: a group followed by a sibling must
+        not produce a z_order collision. Order: [shape0, group(c1,c2), shape3]."""
+        shape0 = FakeShape("s0", st=MSO_SHAPE_TYPE.TEXT_BOX,
+                           left=0, top=0, width=1000, height=1000)
+        c1 = FakeShape("c1", st=MSO_SHAPE_TYPE.PICTURE, left=0, top=0, width=1000, height=1000)
+        c2 = FakeShape("c2", st=MSO_SHAPE_TYPE.PICTURE, left=0, top=0, width=1000, height=1000)
+        group = FakeShape("grp", st=MSO_SHAPE_TYPE.GROUP,
+                          left=0, top=0, width=1000, height=1000, children=[c1, c2])
+        shape3 = FakeShape("s3", st=MSO_SHAPE_TYPE.TEXT_BOX,
+                           left=0, top=0, width=1000, height=1000)
+        comps = _extract_components([shape0, group, shape3], SLIDE_W, SLIDE_H, _IdCounter())
+        assert len(comps) == 5  # s0, group, c1, c2, s3
+        z_orders = [c["z_order"] for c in comps]
+        # Monotonic + unique (0..4) — the bug produced a duplicate '2'.
+        assert z_orders == [0, 1, 2, 3, 4], z_orders
+        assert len(z_orders) == len(set(z_orders))
 
     def test_empty_container_does_not_crash(self):
         comps = _extract_components([], SLIDE_W, SLIDE_H, _IdCounter())

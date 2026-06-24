@@ -33,7 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
+import math
 import re
 from datetime import datetime, timezone
 from io import BytesIO
@@ -193,6 +193,9 @@ def map_shape_type(shape: Any) -> str:
     if st == MSO_SHAPE_TYPE.TEXT_BOX:
         return "textbox"
     if st == MSO_SHAPE_TYPE.MEDIA:
+        # NOTE: python-pptx does not expose an audio/video subtype, so all media
+        # maps to "video". The "audio" enum value is reserved (unreachable in
+        # US-1.1); subtype detection is deferred to a follow-up story.
         return "video"
     if st == MSO_SHAPE_TYPE.IGX_GRAPHIC:
         return "smartart"
@@ -255,7 +258,6 @@ def normalize_polygon(
 def _compute_ratio(width_emu: int, height_emu: int) -> str:
     if height_emu <= 0:
         return f"{width_emu}:0"
-    import math
     g = math.gcd(width_emu, height_emu)
     return f"{width_emu // g}:{height_emu // g}"
 
@@ -432,28 +434,29 @@ def _extract_components(
 
     Groups are recursed: the group itself becomes a ``group`` component, then its
     children are appended (flattened) so each nested shape is captured.
+    ``z_order`` is assigned by the final flatten order, so it is monotonic and
+    unique within each master/layout (the source-shape enumerate index is not
+    used, to avoid collisions when a sibling follows a flattened group).
     """
-    components: List[Dict[str, Any]] = []
-    for z, shape in enumerate(shapes):
-        comp = _build_component(shape, slide_w_emu, slide_h_emu, z, counter)
+    flat: List[Dict[str, Any]] = []
+    for shape in shapes:
+        comp = _build_component(shape, slide_w_emu, slide_h_emu, 0, counter)
         if comp is None:
             continue
-        components.append(comp)
+        flat.append(comp)
         # Recurse into groups: append nested children after the group.
         if comp["type"] == "group":
             try:
                 children = shape.shapes
             except Exception:
                 children = []
-            child_components = _extract_components(
+            flat.extend(_extract_components(
                 children, slide_w_emu, slide_h_emu, counter
-            )
-            # Re-number z_order for children to continue after parent z.
-            base = len(components)
-            for i, child in enumerate(child_components):
-                child["z_order"] = z + i + 1
-                components.append(child)
-    return components
+            ))
+    # Assign z_order by final flatten index (monotonic + unique).
+    for i, comp in enumerate(flat):
+        comp["z_order"] = i
+    return flat
 
 
 def _slugify(name: str) -> str:
@@ -659,6 +662,8 @@ def validate_template_schema(schema_dict: Any) -> ValidationResult:
     # slide_master
     master = schema_dict.get("slide_master")
     if isinstance(master, dict):
+        if not master.get("name"):
+            result.add(ValidationIssue("slide_master missing 'name'", field_path="slide_master.name"))
         comps = master.get("components")
         if not isinstance(comps, list):
             result.add(ValidationIssue("slide_master.components must be an array", field_path="slide_master.components"))
@@ -711,7 +716,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--log-level", default="info", help="log level (debug/info/warn/error)")
     args = parser.parse_args(argv)
 
-    logging.basicConfig(level=args.log_level.upper())
+    level_name = str(args.log_level).upper()
+    if level_name not in {"DEBUG", "INFO", "WARN", "WARNING", "ERROR"}:
+        logger.error("invalid --log-level '%s'", args.log_level)
+        return 2
+    logging.basicConfig(level=level_name)
 
     try:
         schema = extract_schema(args.input)
@@ -725,9 +734,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             logger.error("  %s", msg)
         return 1  # validation error
 
-    Path(args.output).write_text(
-        json.dumps(schema, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    try:
+        Path(args.output).write_text(
+            json.dumps(schema, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+    except OSError as exc:
+        logger.error("could not write output '%s': %s", args.output, exc)
+        return 2
     logger.info("wrote schema to %s", args.output)
     return 0
 
