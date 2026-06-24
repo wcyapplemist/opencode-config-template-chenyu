@@ -1,0 +1,42 @@
+%% PPTX Subagent System — Use Case Diagram
+%% Render at https://mermaid.live (paste everything below the line)
+flowchart LR
+    User((User))
+
+    subgraph SYS["PPTX Subagent System"]
+        direction TB
+        UC1(["Request Presentation Generation"])
+        UC2(["Supply Custom Template"])
+        UC3(["Select Density Mode"])
+        UC4(["Approve / Edit Outline"])
+        UC5(["Self-Critique Outline"])
+        UC6(["Generate Outline"])
+        UC7(["Generate Detail JSON"])
+        UC8(["Fetch Real Chart Data"])
+        UC9(["Validate Deck (Schema)"])
+        UC10(["Resolve Placeholders"])
+        UC11(["Render PPTX"])
+        UC12(["Check Template Content Limit"])
+        UC13(["Backup Pristine Original<br/>(template.pptx → template.original.pptx)"])
+        UC14(["Inject Extended-Layout OOXML Parts<br/>& Relationships into template.pptx"])
+    end
+
+    User --> UC1
+    User --> UC2
+    User --> UC3
+    User --> UC4
+
+    UC1 -.->|"include"| UC6
+    UC1 -.->|"include"| UC7
+    UC1 -.->|"include"| UC9
+    UC1 -.->|"include"| UC10
+    UC1 -.->|"include"| UC11
+    UC10 -.->|"include"| UC8
+
+    UC11 -.->|"include"| UC12
+    UC14 -.->|"extend: over-limit detected"| UC12
+    UC13 -.->|"extend: first-ever extension"| UC14
+
+    UC3 -.->|"extend"| UC6
+    UC4 -.->|"extend"| UC6
+    UC5 -.->|"extend"| UC6

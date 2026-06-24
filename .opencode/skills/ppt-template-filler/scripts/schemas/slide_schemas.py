@@ -47,7 +47,6 @@ CHART_TYPES = (
 
 _LEGEND_POSITIONS = ("bottom", "right", "top", "left", "none")
 _IMAGE_POSITIONS = ("full", "half-left", "half-right", "below-title")
-_IMAGE_SOURCES = ("auto", "stock", "ai")
 
 # A single chart series object: {"name": "...", "values": [numbers]}
 _SERIES_SPEC: Dict[str, Any] = {
@@ -78,13 +77,8 @@ CHART_OPTIONS_SPEC: Dict[str, Any] = {
 # Resource-pipeline placeholder fields (see DESIGN-resource-resolver.md).
 # All optional; the resolver replaces them with concrete assets.
 _PLACEHOLDER_FIELDS = {
-    "image_prompt": {"type": "string"},
-    "image_source": {"type": "string", "enum": _IMAGE_SOURCES},
-    "image_query": {"type": "string"},
     "image_path": {"type": "string"},
     "image_position": {"type": "string", "enum": _IMAGE_POSITIONS},
-    "icon_query": {"type": "string"},
-    "icon_path": {"type": "string"},
     "data_query": {"type": "string"},
     "data_hint": {"type": "string"},
     "data_source": {"type": "string"},

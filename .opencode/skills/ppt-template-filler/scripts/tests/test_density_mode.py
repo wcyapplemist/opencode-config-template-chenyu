@@ -237,12 +237,12 @@ class TestSlideTypeSemantics:
         assert findings == [], "chart_slide must count only title, not chart labels"
 
     def test_concise_image_only_slide_no_body_no_warning(self):
-        # An image-prompt-only slide (no body text) is valid in concise mode
+        # An image-only slide (no body text) is valid in concise mode
         # even though it has zero on-slide words.
         data = [{
             "slide_type": "content_image_slide",
             "title": "Drone",
-            "image_prompt": "aerial construction site",
+            "image_path": "assets/drone.png",
             "notes": "n",
         }]
         # title=1 word, within concise (0-10).
@@ -254,7 +254,7 @@ class TestSlideTypeSemantics:
         data = [{
             "slide_type": "content_image_slide",
             "title": "",
-            "image_prompt": "sunset",
+            "image_path": "assets/sunset.png",
             "notes": "n",
         }]
         findings = validate_density(data, "concise")

@@ -1,0 +1,35 @@
+%% PPTX Subagent System — Activity Diagram (Agent Stage 0-5 pipeline)
+%% Render at https://mermaid.live (paste everything below the line)
+flowchart TD
+    Start([User request: topic + page count]) --> S0
+
+    S0["Stage 0: Understand request + introspect template"]
+    S0 --> S1
+
+    S1["Stage 1: Generate plain-text outline<br/>record slide_type + save artifact"]
+    S1 --> S2
+
+    S2{"Execution context?"}
+    S2 -->|"Primary agent — interactive"| S2i["Interactive checkpoint<br/>single question call:<br/>(1) density mode   (2) outline approval"]
+    S2 -->|"Subagent — headless"| S2a["Autonomous:<br/>self-critique + default 'standard'"]
+    S2i --> S2c["Record mode + edits<br/>re-save outline with mode header"]
+    S2a --> S2c
+    S2c --> S3
+
+    S3["Stage 3: Author slide_data_list JSON<br/>density-aware body + ~120-180 word notes<br/>(webfetch real chart data)"]
+    S3 --> S3v["Pre-flight validate<br/>validate_slide_data_list strict=True, density_mode"]
+    S3v --> S3d{"Result?"}
+    S3d -->|"INVALID — schema error"| S3
+    S3d -->|"VALID + over-budget warning"| S3t["Shorten text to fit budget"] --> S3v
+    S3d -->|"VALID"| S4
+
+    S4["Stage 4: Resolve placeholders + template check + render"]
+    S4 --> S4c["Template check<br/>resolve_and_clone"]
+    S4c --> S4d{"Template serves every slide?"}
+    S4d -->|"No — missing layout / over-limit"| S4k["Persistently extend:<br/>① backup template.pptx→template.original.pptx (first time only)<br/>② inject extended-layout OOXML parts + relationship entries into template.pptx zip<br/>③ notify user"]
+    S4d -->|"Yes"| S4b["Use working template.pptx"]
+    S4k --> S4r["Render — generate_ppt_from_data<br/>(against upgraded template.pptx)"]
+    S4b --> S4r
+    S4r --> S5
+
+    S5(["Stage 5: Return .pptx path<br/>+ auto-cleanup temp artifacts"])

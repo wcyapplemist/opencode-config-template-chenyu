@@ -17,6 +17,11 @@ Search is pluggable:
                        testable shim).
 
 Graceful by contract: any failure returns the slide unchanged.
+
+Agent contract: ``data_query`` is resolved by the agent's ``webfetch``
+pre-flight, NOT by this resolver (it never makes a network call). The agent
+MUST fetch real numbers before writing concrete ``categories``/``series``;
+fabricating numbers just to pass schema validation is forbidden.
 """
 
 from __future__ import annotations

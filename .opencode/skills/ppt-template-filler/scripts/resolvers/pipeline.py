@@ -5,8 +5,8 @@ Orchestrates all resource resolvers over an entire ``slide_data_list``.
 
     resolve_slide_data_list(slide_data_list, config) -> slide_data_list
 
-Order: image -> icon -> chart_data. Each resolver is independent and non-fatal;
-a failing resolver is skipped so the rest of the deck still resolves and renders.
+Order: chart_data only. The resolver is non-fatal; a failure is skipped so the
+deck still resolves and renders.
 
 Config loading
 --------------
@@ -22,7 +22,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List
 
-from . import chart_data_resolver, icon_resolver, image_resolver
+from . import chart_data_resolver
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +31,6 @@ _DEFAULT_CONFIG = _SCRIPTS_DIR / "resolver.config.json"
 
 # Resolver pass order.
 _RESOLVERS = (
-    ("image", image_resolver.resolve),
-    ("icon", icon_resolver.resolve),
     ("chart_data", chart_data_resolver.resolve),
 )
 
@@ -41,6 +39,12 @@ def load_config(path: str | None = None) -> Dict[str, Any]:
     """Load resolver config; missing/invalid file yields an empty dict."""
     config_path = Path(path) if path else _DEFAULT_CONFIG
     if not config_path.exists():
+        logger.warning(
+            "Resolver config not found (%s) — resource placeholders "
+            "(data_query) will be skipped. Copy "
+            "resolver.config.example.json to resolver.config.json to enable.",
+            config_path,
+        )
         return {}
     try:
         with open(config_path, "r", encoding="utf-8") as f:

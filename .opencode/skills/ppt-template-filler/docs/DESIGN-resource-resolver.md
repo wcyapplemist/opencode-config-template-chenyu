@@ -7,8 +7,8 @@
 
 ## 1. Problem
 
-Today the agent (LLM) is asked to produce *concrete* assets: a real image URL,
-a chart's exact numbers, an icon file. This is fragile:
+Today the agent (LLM) is asked to produce *concrete* assets: a chart's exact
+numbers. This is fragile:
 
 - The LLM hallucinates URLs that 404 or fabricates statistics.
 - The rendering layer (`ppt_builder.py`) must never touch the network or guess
@@ -29,7 +29,7 @@ emits placeholders    →     resolves placeholders   →   renders concrete val
 
 The agent **only emits placeholders** describing what it wants. An independent,
 deterministic **resolver pass** walks the deck, finds placeholders, and replaces
-them with concrete values (`image_path`, `icon_path`, populated
+them with concrete values (populated
 `categories`/`series`). Only the resolved JSON reaches `generate_ppt_from_data()`.
 The rendering layer stays untouched and network-free.
 
@@ -39,36 +39,7 @@ All placeholders are **optional** fields on a slide dict. A slide may carry any
 combination. When a placeholder is present and unresolved, the resolver fills it
 in place; the original placeholder key is then removed or left harmless.
 
-### 3.1 Image
-
-```json
-{
-  "image_prompt": "modern construction site with drones at sunset",
-  "image_source": "auto",
-  "image_query": "construction drone aerial"
-}
-```
-
-| Field           | Required | Values              | Notes                                              |
-|-----------------|----------|---------------------|----------------------------------------------------|
-| `image_prompt`  | No       | string              | Free-text description; preferred input.            |
-| `image_source`  | No       | `auto`/`stock`/`ai` | `stock` = photo API; `ai` = generative model.      |
-| `image_query`   | No       | string              | Explicit search query (overrides prompt).          |
-
-**Resolved output:** `image_path` (a local file path) consumed by `_add_image_to_slide()` (#18).
-
-### 3.2 Icon
-
-```json
-{
-  "icon_query": "growth trend up arrow"
-}
-```
-
-**Resolved output:** `icon_path` (local SVG/PNG). Icons are inserted as native,
-editable pictures.
-
-### 3.3 Real-data chart
+### 3.1 Real-data chart
 
 ```json
 {
@@ -103,9 +74,7 @@ def resolve(slide_data: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any
     """
 ```
 
-Three resolvers are implemented: `image_resolver.resolve()`,
-`icon_resolver.resolve()`, `chart_data_resolver.resolve()`. They are independent
-and may be added/removed without touching the others.
+One resolver is implemented: `chart_data_resolver.resolve()`.
 
 ### 4.1 Injectable hooks (for testability)
 
@@ -114,13 +83,11 @@ dict, so tests can substitute deterministic fakes without monkeypatching:
 
 | Hook          | Used by            | Signature                             |
 |---------------|--------------------|---------------------------------------|
-| `fetch_fn`    | `image_resolver`   | `fetch_fn(query, source) -> bytes`    |
-| `match_fn`    | `icon_resolver`    | `match_fn(query) -> Optional[str]`     |
 | `search_fn`   | `chart_data_resolver` | `search_fn(query, hint) -> dict`   |
 
 When a hook is absent from `config`, the resolver falls back to its real
-provider (stock photo API, local icon library, web search). This makes the
-resolver pipeline fully testable without network access.
+provider (web search). This makes the resolver pipeline fully testable without
+network access.
 
 ## 5. Pipeline
 
@@ -128,12 +95,12 @@ resolver pipeline fully testable without network access.
 
 ```
 for each slide:
-    for resolver in [image, icon, chart_data]:
+    for resolver in [chart_data]:
         slide = resolver.resolve(slide, config)
 return slides
 ```
 
-Order is **image → icon → chart_data** (chart-data last so it can read a stable
+Order is **chart_data** (chart-data last so it can read a stable
 `data_source` if needed). Each resolver mutates only its own placeholder keys.
 
 ### 5.1 End-to-end pipeline order (Phase 1)
@@ -152,8 +119,6 @@ A checked-in `resolver.config.example.json` documents the schema:
 
 ```json
 {
-  "image": {"provider": "pexels", "api_key_env": "PEXELS_API_KEY"},
-  "icon":  {"library": "phosphor", "path": "assets/icons"},
   "chart_data": {"search": "webfetch"}
 }
 ```
@@ -176,5 +141,5 @@ only the affected asset is omitted.
 ## 8. What this does NOT do
 
 - Does not change the rendering paradigm (still native `python-pptx`).
-- Does not embed linked images — resolved assets are local & embedded.
+- Manual images via `image_path` are embedded (not linked); resolved assets are local.
 - Does not require network at render time — resolution is a separate pre-pass.

@@ -34,3 +34,9 @@ output/*.pptx
 
 # Resolver icon library (downloaded asset, not source)
 .opencode/skills/ppt-template-filler/scripts/assets/icons/
+
+# Template introspection contract cache (derived; mtime-managed, #43)
+.opencode/skills/ppt-template-filler/scripts/templates/*.contract.json
+
+# Template backup artifacts (local only, not source)
+.opencode/skills/ppt-template-filler/scripts/templates/*.original.pptx
