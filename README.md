@@ -59,6 +59,8 @@ pptx-subagent-development/
 │       ├── docs/                          # DESIGN-*.md architecture deep-dives
 │       └── scripts/
 │           ├── ppt_builder.py            # ← THE renderer (only .pptx writer)
+│           ├── template_introspector.py   # Fingerprint-contract extraction (renderer-side)
+│           ├── schema_extractor.py        # US-1.1: normalized template-schema extraction (parallel, non-invasive)
 │           ├── schema_validator.py        # JSON schema validation + retry
 │           ├── density_mode.py            # Per-slide word-budget enforcement
 │           ├── outline_store.py           # Outline checkpoint artifact
@@ -66,7 +68,7 @@ pptx-subagent-development/
 │           │   ├── template.pptx          # Slide Master with named layouts
 │           │   └── template.config.json   # Layout-name overrides
 │           ├── resolvers/                  # chart-data resolver
-│           ├── schemas/                    # Per-slide-type JSON schemas
+│           ├── schemas/                    # Per-slide-type JSON schemas + template_schema.json (US-1.1)
 │           └── tests/                      # pytest suite
 ├── output/                               # Generated .pptx files (gitignored)
 ├── USER-STORY.md                         # Agile user stories (the "why")

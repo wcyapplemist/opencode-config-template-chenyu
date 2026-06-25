@@ -15,11 +15,13 @@ pptx-subagent-development/
 │       └── ppt-template-filler/   # Template filling engine + SKILL.md
 │           ├── scripts/
 │           │   ├── ppt_builder.py          # Engine: layouts, charts, images
+│           │   ├── template_introspector.py # Fingerprint-contract extraction (renderer-side)
+│           │   ├── schema_extractor.py      # US-1.1: normalized proposed-schema extraction (parallel, non-invasive)
 │           │   ├── schema_validator.py      # JSON schema validation + retry (#20)
-│           │   ├── schemas/                 # Per-slide-type schema definitions
+│           │   ├── schemas/                 # Per-slide-type schema definitions + template_schema.json (US-1.1 extraction spec)
 │           │   ├── resolvers/               # Resource resolution pipeline (#23)
 │           │   ├── outline_store.py         # Multi-stage outline artifact (#21/#24)
-│           │   └── tests/                   # pytest suite (120 tests)
+│           │   └── tests/                   # pytest suite (156 tests)
 │           └── docs/                        # DESIGN-*.md architecture docs
 ├── output/                        # Generated .pptx files
 └── AGENTS.md                      # This file
