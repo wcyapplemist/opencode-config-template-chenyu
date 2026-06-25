@@ -202,6 +202,7 @@
           "minItems": 4,
           "maxItems": 4,
           "description": "Exactly 4 {x,y} points in TL->TR->BR->BL order, normalized to 0.0-1.0 relative to slide dimensions. Rectangular only in US-1.1 (non-rectangular vertices in US-1.2).",
+          "$comment": "Winding (US-1.2): the canonical order TL->TR->BR->BL yields a POSITIVE shoelace signed area, which is algebraically counter-clockwise (CCW = anti-clockwise) -- this is the winding the cross-product check in validate_template_schema() verifies. Note: in screen coords (Y-down) the trace visually appears clockwise, but the algebraic winding (what a cross-product measures) is CCW. maxItems:4 is rectangular-only; non-rectangular vertex extraction (deferred) will require relaxing this constraint.",
           "items": {
             "type": "object",
             "additionalProperties": false,
