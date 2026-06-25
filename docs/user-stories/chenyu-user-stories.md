@@ -59,7 +59,7 @@ The system must use a scripted skill (not raw LLM) to open the PPTX zip, locate 
 **Acceptance Criteria:**
 - [x] Every component has a `polygon` array with exactly 4 `{x, y}` objects for rectangular shapes.
 - [x] All x and y values are in [0.0, 1.0] range.
-- [x] Anti-clockwise winding is verified by a simple cross-product check in the script.
+- [ ] Anti-clockwise winding is verified by a simple cross-product check in the script.
 - [x] Slide dimensions (EMU, inches, and aspect ratio string) are recorded in metadata.
 
 **Tags:** polygon, normalized-coords, positioning
@@ -104,10 +104,10 @@ The system must use a scripted skill (not raw LLM) to open the PPTX zip, locate 
 - Multiple font runs within a single textbox (e.g., bold title + regular subtitle) are captured as a `runs` array.
 
 **Acceptance Criteria:**
-- [x] Every textbox component has a `font` object with all specified fields.
-- [x] `missing_fonts` array is empty when all fonts are built-in.
-- [x] When non-built-in fonts are found, the subagent prints a user-facing warning listing them.
-- [x] `fallback` is always a built-in font name.
+- [ ] Every textbox component has a `font` object with all specified fields.
+- [ ] `missing_fonts` array is empty when all fonts are built-in.
+- [ ] When non-built-in fonts are found, the subagent prints a user-facing warning listing them.
+- [ ] `fallback` is always a built-in font name.
 
 **Tags:** fonts, availability, fallback
 
@@ -126,10 +126,10 @@ The system must use a scripted skill (not raw LLM) to open the PPTX zip, locate 
 - The JSON is minified to keep file size impact minimal (typically < 50 KB).
 
 **Acceptance Criteria:**
-- [x] After embedding, the PPTX opens in PowerPoint without errors or repair prompts.
-- [x] The JSON is retrievable by re-reading the zip at the known path.
-- [x] Existing slide content, layouts, and media are untouched.
-- [x] File size increase is logged to the user.
+- [ ] After embedding, the PPTX opens in PowerPoint without errors or repair prompts.
+- [ ] The JSON is retrievable by re-reading the zip at the known path.
+- [ ] Existing slide content, layouts, and media are untouched.
+- [ ] File size increase is logged to the user.
 
 **Tags:** zip-embedding, pptx-safe, portability
 

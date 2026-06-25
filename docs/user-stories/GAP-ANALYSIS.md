@@ -5,7 +5,9 @@
 >
 > *Note: the source document's own header states "17 Stories", but it actually contains 19 (Epic 1: 5, Epic 2: 2, Epic 3: 4, Epic 4: 5, Epic 5: 3). This report counts 19.*
 > **Implementation audited:** `.opencode/skills/ppt-template-filler/`, `.opencode/skills/template-modifier-skill/`, `.opencode/agents/pptx-subagent.md`
-> **Date:** June 2026
+> **Date:** June 2026 (Revision 2 — post-US-1.1)
+>
+> **Revision 2 (post-US-1.1, PR #49):** US-1.1 now ✅ Met (new `schema_extractor.py` emits the proposed-schema JSON). US-1.2 → 🟡 Partial (polygon field now exists + normalized, but cross-product winding check pending). US-1.3 improved (full 10-value enum on all elements). Counts updated: Met 2 / Partial 7 / Not met 9.
 
 ---
 
@@ -18,7 +20,7 @@ This report compares `chenyu-user-stories.md` (the requirements document) agains
 
 Both achieve "fill any template", but they differ on **data model, skill decomposition, and artifact form**.
 
-**Story-by-story summary** (19 stories): Met 1 / Partial 7 / Not met 10 / Architecture differs 1.
+**Story-by-story summary** (19 stories): Met 2 / Partial 7 / Not met 9 / Architecture differs 1.
 
 **The largest gaps** are concentrated in Epic 1 (normalized polygon component model + font detection + zip embedding), Epic 2/3 (header/footer detection + standalone template generator skill), and Epic 5 (skill decomposition into generate-template / generate-slides + CLI).
 
@@ -38,6 +40,8 @@ The requirements document and the implementation describe two different routes t
 | **Layout matching** | Read embedded JSON → denormalize polygon coords back to EMU → place OOXML at exact positions | Placeholder-composition **fingerprint match** + name fallback via python-pptx `add_slide(layout)` (`ppt_builder.py:298`) |
 | **Template generation output** | A downloadable PPTX with the embedded JSON (round-trip tested) | A sidecar contract; the original `.pptx` is never modified |
 
+> **Revision 2 note (§1):** A new parallel module `schema_extractor.py` now **coexists** with `template_introspector.py` — it emits the **proposed-schema** JSON (normalized `polygon`, `type` enum, `components[]`) conforming to `schemas/template_schema.json`, separate from the renderer's fingerprint contract. The two data models are now "partially bridged"; the renderer still consumes only the contract. GAP §5 Decision 1 (Coexist) is now reality.
+
 ---
 
 ## §2 Story-by-Story Gap Analysis
@@ -46,25 +50,25 @@ Status legend: ✅ Met · 🟡 Partial · ❌ Not met · ⚪ Architecture differ
 
 ### Epic 1 — Template Extraction & JSON Schema
 
-#### US-1.1 — Extract Slide Master to Structured JSON `[Must Have]` — 🟡 Partial
+#### US-1.1 — Extract Slide Master to Structured JSON `[Must Have]` — ✅ Met
 
-The system **does** introspect any `.pptx` into JSON. `template_introspector.introspect()` (`template_introspector.py:213`) reads the presentation and emits a contract with `slide_size`, `theme`, and a `layouts[]` array. However the **field set differs from the proposed schema**: placeholders carry `idx/name/type/left_in/top_in/width_in/height_in` (`template_introspector.py:161-179`), but there is **no** `polygon`, `font`, `runs`, `content_template`, or `z_order`. The extraction is real but produces a lighter "introspection contract", not the full normalized component model.
+**Implemented (PR #49).** `schema_extractor.extract_schema()` (`schema_extractor.py`) reads any `.pptx`, parses the slide master (`prs.slide_masters[0]`) AND every layout, and emits a structured JSON conforming to `schemas/template_schema.json`. All four ACs are met: no crash on valid PPTX (`TemplateExtractionError` on bad input); master parsed + every layout enumerated; output validates against `template_schema.json`; deterministic Python. The renderer's fingerprint contract (`template_introspector.py`) is untouched — the two modules coexist (§5 Decision 1, now reality). 37 tests pass.
 
-#### US-1.2 — Normalized Polygon Positioning `[Must Have]` — ❌ Not met
+#### US-1.2 — Normalized Polygon Positioning `[Must Have]` — 🟡 Partial
 
-Placeholders use **absolute inches** (`left_in/top_in/width_in/height_in`, `template_introspector.py:175-178`), not normalized 0.0–1.0 values. There is **no `polygon` field, no 4-point anti-clockwise winding, and no cross-product validation**. Slide dimensions ARE recorded (`slide_size` with EMU/inches/ratio, `template_introspector.py:114-123`), so the metadata half exists — but normalization does not.
+**Improved (PR #49).** `schema_extractor.normalize_polygon()` (`schema_extractor.py:227`) now emits a `polygon` field on every component: exactly 4 normalized `{x,y}` points in `[0,1]` (TL→TR→BR→BL), with slide dimensions recorded in `template_metadata.slide_dimensions`. So AC1/AC2/AC4 are met. **Still missing (AC3):** no cross-product winding check, and the emitted order TL→TR→BR→BL is actually **clockwise** in screen coords — the requirement's "anti-clockwise" label is a misnomer to reconcile. Non-rectangular shapes still emit a rectangular bounding box (17 `custGeom` + ~25 non-rect prstGeom shapes in the bundled template are affected).
 
 #### US-1.3 — Component Type Enumeration `[Must Have]` — 🟡 Partial
 
-A canonical type system exists (`_TYPE_CANONICAL`, `template_introspector.py:54-69`): TITLE, SUBTITLE, OBJECT, PICTURE, CHART, TABLE, MEDIA, OTHER. But it covers **placeholder types only** — there is no extraction of non-placeholder elements (freeform `shape`, `group`, `smartart`, `audio`, `video`). No `type_confidence: "low"` fallback exists; unknowns map to "OTHER". The enum is also narrower than the requirements' 10-value enum (`textbox/image/table/video/shape/chart/group/smartart/placeholder/audio`).
+**Improved (PR #49).** `schema_extractor.map_shape_type()` (`schema_extractor.py:173`) now applies the **full 10-value enum** (`textbox/image/table/video/shape/chart/group/smartart/placeholder/audio`) to **all elements** — not just placeholders — via `MSO_SHAPE_TYPE` + `has_table`/`has_chart` detection. All three ACs are met (type always present; unknowns degrade to `shape`, never null/unknown; mapping table in source). **Still Partial because** the `type_confidence: "low"` fallback (a Details item, not an AC) is not implemented, and `"audio"` is unreachable (`MEDIA` → `video` only).
 
 #### US-1.4 — Font Detection & Availability Checking `[Must Have]` — ❌ Not met
 
-`_build_theme()` (`template_introspector.py:126-158`) extracts only **theme-level** fonts (`major_latin`/`minor_latin`). There is **no per-textbox font detection** — no `family/size_pt/weight/color/alignment`, no `is_available`, no `fallback`, and **no top-level `missing_fonts` array**. Mixed-format `runs` are not captured.
+Still not met. `_build_theme()` (`template_introspector.py:126-158`) extracts only **theme-level** fonts (`major_latin`/`minor_latin`). `schema_extractor` (PR #49) adds **structural placeholders** — text components carry an empty `font: {}` stub and a top-level `missing_fonts: []` array — but there is **no per-textbox font detection** (no `family/size_pt/weight/color/alignment`, no `is_available`/`fallback`), no `runs`, and no user warning. The structure is in place; the detection logic is the remaining work.
 
 #### US-1.5 — JSON Storage Inside PPTX Zip `[Must Have]` — ❌ Not met
 
-The contract is written as a **sidecar** `<stem>.pptx.contract.json` next to the template (`template_introspector.py:271-275`, `get_contract`). There is **no zip-embedding logic** anywhere — a full-repo grep for `template_schema.json`, `zipfile`, `ppt/template_schema`, and `polygon` returned zero hits (the only `zip` match is Python's iteration builtin in a test). No PowerPoint-safe embedding, no file-size logging.
+Still not met. `schema_extractor` (PR #49) outputs JSON (CLI `--output` or stdout) and authors `schemas/template_schema.json` as the **spec**, but it does **not embed** the JSON into the PPTX zip. The renderer still reads the sidecar `<stem>.pptx.contract.json` (`template_introspector.py:271-275`). No PowerPoint-safe zip-append logic, no file-size logging.
 
 ### Epic 2 — Header, Footer & Best Practices
 
@@ -138,21 +142,21 @@ Python's `logging` module is used (`logger = logging.getLogger(__name__)`, e.g. 
 
 | Status | Count | Stories |
 |---|---|---|
-| ✅ Met | 1 | US-4.5 |
-| 🟡 Partial | 7 | US-1.1, US-1.3, US-3.4, US-4.1, US-4.2, US-5.2, US-5.3 |
-| ❌ Not met | 10 | US-1.2, US-1.4, US-1.5, US-2.1, US-2.2, US-3.1, US-3.2, US-3.3, US-4.4, US-5.1 |
+| ✅ Met | 2 | US-1.1, US-4.5 |
+| 🟡 Partial | 7 | US-1.2, US-1.3, US-3.4, US-4.1, US-4.2, US-5.2, US-5.3 |
+| ❌ Not met | 9 | US-1.4, US-1.5, US-2.1, US-2.2, US-3.1, US-3.2, US-3.3, US-4.4, US-5.1 |
 | ⚪ Architecture differs | 1 | US-4.3 |
 
 ### §3.2 Priority × Status Matrix
 
 | | Must Have | Should Have | Could Have |
 |---|---|---|---|
-| ✅ Met | — | — | US-4.5 |
-| 🟡 Partial | US-1.1, US-1.3, US-4.1, US-4.2, US-5.2 | US-3.4, US-5.3 | — |
-| ❌ Not met | **US-1.2, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-5.1** | US-2.2, US-4.4 | — |
+| ✅ Met | US-1.1 | — | US-4.5 |
+| 🟡 Partial | US-1.2, US-1.3, US-4.1, US-4.2, US-5.2 | US-3.4, US-5.3 | — |
+| ❌ Not met | **US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-5.1** | US-2.2, US-4.4 | — |
 | ⚪ Differs | US-4.3 | — | — |
 
-**Highest-risk gaps** are the 8 unmet **Must-Have** stories, all clustered in Epic 1 (extraction model), Epic 2 (header/footer), Epic 3 (template generator), and Epic 5 (skill decomposition).
+**Highest-risk gaps** are the 7 unmet **Must-Have** stories (US-1.2 is now Partial), clustered in Epic 1 (font/zip), Epic 2 (header/footer), Epic 3 (template generator), and Epic 5 (skill decomposition).
 
 ---
 
@@ -166,7 +170,7 @@ These four stories are the foundation everything else builds on. They define the
 
 | Story | Suggestion |
 |---|---|
-| **US-1.2 Polygon** | Add a `polygon` field (4 normalized 0–1 coords, anti-clockwise) to each component. Extend `placeholder_record` (`template_introspector.py:161`) to compute normalized coords from `left/top/width/height` × slide dimensions. Add a cross-product winding check. |
+| **US-1.2 Polygon** | **Half-done (PR #49):** `polygon` field + 4 normalized 0–1 coords already exist in `schema_extractor.normalize_polygon`. **Remaining:** add a cross-product winding check (AC3), reconcile the "anti-clockwise" label vs the clockwise TL→TR→BR→BL order, and extract real vertices for non-rectangular shapes (custGeom/triangle). |
 | **US-1.4 Fonts** | Add per-textbox `font` extraction (family/size_pt/weight/color/alignment) by reading `<a:rPr>` runs from each `<p:txBody>`. Build a top-level `missing_fonts` array against a built-in-font allowlist, with `fallback` suggestions. Capture the `runs` array for mixed formatting. |
 | **US-1.5 Zip embedding** | Add a `embed_schema(pptx_path, schema)` function that opens the zip, appends `ppt/template_schema.json` (minified), and writes a new zip **without touching `[Content_Types].xml` or any existing entry**. Verify PowerPoint opens it without repair. |
 | **US-2.1 Header/Footer** | Stop discarding chrome: record `has_header/has_footer` booleans + component IDs in `header_footer` metadata. Emit a user prompt when both are absent. |
@@ -192,7 +196,7 @@ These four stories are the foundation everything else builds on. They define the
 
 ### Partial stories already mostly satisfied
 
-US-1.1, US-4.1, US-4.2, US-4.5, US-5.2 (content side), US-5.3 — these need **field-set additions or mode changes**, not greenfield work. The cheapest wins are here.
+~~US-1.1~~ (now Met), US-4.1, US-4.2, US-4.5, US-5.2 (content side), US-5.3 — these need **field-set additions or mode changes**, not greenfield work. The cheapest wins are here.
 
 ---
 
@@ -204,6 +208,8 @@ Before any build work, these route questions need a decision:
 - (a) **Coexist**: build the requirements architecture (polygon schema + zip embed + generate-template/generate-slides skills) *alongside* the current fingerprint-contract engine. Most work, lowest disruption.
 - (b) **Replace**: migrate the current engine onto the normalized-schema model and deprecate the sidecar contract. Highest consistency, highest risk.
 - (c) **Update requirements**: judge the current fingerprint architecture as the better-evolved path and rewrite `chenyu-user-stories.md` to match it, documenting the divergence rationale. Least work; changes the contract.
+
+> **Status (Revision 2):** Decision 1 is now **(a) Coexist — implemented**. `schema_extractor.py` (PR #49) coexists with the fingerprint contract; the renderer still consumes only the contract. The full migration (deprecating the introspector / bridging the polygon model into rendering) remains open via Decision 2.
 
 **2. Who consumes the polygon schema**
 The requirements assume the slide generator denormalizes polygons back to EMU and places OOXML at exact positions. The current engine delegates positioning to python-pptx `add_slide(layout)` (the layout's own placeholders). If the polygon model is built, does the renderer switch to manual coordinate placement, or do polygons stay metadata-only?
