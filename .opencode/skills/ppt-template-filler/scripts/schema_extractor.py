@@ -570,6 +570,31 @@ def _is_number(v: Any) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
+# Winding check threshold (US-1.2). Below any physically meaningful shape area
+# in normalized [0,1] coords (a 1px-tall divider on a 7.5" slide normalizes to
+# ~1.4e-3 height; even sub-pixel shapes yield area well above this); above
+# float noise (~1e-15 for [0,1] coords over a few terms).
+_WINDING_EPSILON = 1e-9
+
+
+def _signed_area(polygon: List[Dict[str, float]]) -> float:
+    """Shoelace signed area of a polygon (normalized coords).
+
+    Positive => algebraically counter-clockwise (the canonical winding emitted by
+    :func:`normalize_polygon`, order TL->TR->BR->BL). Negative => reversed.
+    ~0 => degenerate/collinear. Works for any n-point simple polygon.
+    """
+    n = len(polygon)
+    if n < 3:
+        return 0.0
+    s = 0.0
+    for i in range(n):
+        x1, y1 = polygon[i]["x"], polygon[i]["y"]
+        x2, y2 = polygon[(i + 1) % n]["x"], polygon[(i + 1) % n]["y"]
+        s += x1 * y2 - x2 * y1
+    return s / 2.0
+
+
 def _validate_component(comp: Any, path: str, result: ValidationResult) -> None:
     if not isinstance(comp, dict):
         result.add(ValidationIssue(f"component must be an object, got {type(comp).__name__}", field_path=path))
@@ -614,6 +639,23 @@ def _validate_component(comp: Any, path: str, result: ValidationResult) -> None:
                                 f"polygon[{i}].{axis}={pt[axis]} out of [0,1]",
                                 field_path=f"{path}.polygon[{i}].{axis}",
                             ))
+            # Winding check (US-1.2): only when every point is a numeric {x,y}.
+            # Positive signed area => canonical TL->TR->BR->BL (algebraic CCW).
+            if all(isinstance(p, dict) and _is_number(p.get("x")) and _is_number(p.get("y"))
+                   for p in polygon):
+                area = _signed_area(polygon)
+                if area < -_WINDING_EPSILON:
+                    result.add(ValidationIssue(
+                        f"polygon has reversed winding (signed area {area:.4g} < 0); "
+                        f"expected canonical TL->TR->BR->BL",
+                        field_path=f"{path}.polygon",
+                    ))
+                elif abs(area) <= _WINDING_EPSILON:
+                    result.add(ValidationIssue(
+                        "polygon is degenerate/zero-area (collinear/coincident points)",
+                        field_path=f"{path}.polygon",
+                        severity="warning",
+                    ))
     # z_order
     zo = comp.get("z_order")
     if zo is not None and not (isinstance(zo, int) and not isinstance(zo, bool) and zo >= 0):

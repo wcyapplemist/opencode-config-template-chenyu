@@ -27,6 +27,7 @@ from schema_extractor import (
     TemplateExtractionError,
     _extract_components,
     _IdCounter,
+    _signed_area,
     extract_schema,
     map_shape_type,
     normalize_polygon,
@@ -207,6 +208,104 @@ class TestValidationFinds:
         assert not r.is_valid
 
 
+# ---------------------------------------------------------------------------
+# Winding check (US-1.2): cross-product / shoelace signed-area verification
+# ---------------------------------------------------------------------------
+class TestWinding:
+    def test_canonical_axis_aligned_passes(self):
+        # TL->TR->BR->BL => positive signed area => valid.
+        r = validate_template_schema(_schema_with(_ok_component()))
+        assert r.is_valid, r.error_messages()
+
+    def test_reversed_winding_is_error(self):
+        comp = _ok_component()
+        # BL -> BR -> TR -> TL (reversed) => negative signed area.
+        comp["polygon"] = [
+            {"x": 0.1, "y": 0.9}, {"x": 0.9, "y": 0.9},
+            {"x": 0.9, "y": 0.1}, {"x": 0.1, "y": 0.1},
+        ]
+        r = validate_template_schema(_schema_with(comp))
+        assert not r.is_valid
+        assert any("reversed winding" in e.reason for e in r.errors)
+
+    def test_degenerate_is_warning_not_error(self):
+        comp = _ok_component()
+        comp["polygon"] = [{"x": 0.5, "y": 0.5}] * 4  # zero area
+        r = validate_template_schema(_schema_with(comp))
+        # degenerate => warning only => is_valid stays True
+        assert r.is_valid
+        assert any("degenerate" in w.reason for w in r.warnings)
+
+    def test_non_axis_aligned_canonical_passes(self):
+        # A tilted quadrilateral in canonical (CCW) winding — proves the check
+        # is a real shoelace, not a rect-only shortcut.
+        comp = _ok_component()
+        comp["polygon"] = [
+            {"x": 0.2, "y": 0.1}, {"x": 0.9, "y": 0.3},
+            {"x": 0.7, "y": 0.9}, {"x": 0.1, "y": 0.7},
+        ]
+        r = validate_template_schema(_schema_with(comp))
+        assert r.is_valid, r.error_messages()
+
+    def test_collinear_is_warning(self):
+        comp = _ok_component()
+        # 4 collinear points => zero area, degenerate (warning).
+        comp["polygon"] = [
+            {"x": 0.1, "y": 0.5}, {"x": 0.4, "y": 0.5},
+            {"x": 0.7, "y": 0.5}, {"x": 0.9, "y": 0.5},
+        ]
+        r = validate_template_schema(_schema_with(comp))
+        assert r.is_valid  # warning, not error
+        assert any("degenerate" in w.reason for w in r.warnings)
+
+    def test_bundled_template_still_validates(self, schema):
+        # Regression guard: real extraction must still pass (any real zero-area
+        # shape would now be a non-fatal warning, keeping is_valid True).
+        r = validate_template_schema(schema)
+        assert r.is_valid, [e.format() for e in r.errors]
+
+    def test_tilted_reversed_is_error(self):
+        # A tilted quadrilateral in REVERSED winding => negative area => error.
+        comp = _ok_component()
+        comp["polygon"] = [
+            {"x": 0.1, "y": 0.7}, {"x": 0.7, "y": 0.9},
+            {"x": 0.9, "y": 0.3}, {"x": 0.2, "y": 0.1},
+        ]
+        r = validate_template_schema(_schema_with(comp))
+        assert not r.is_valid
+        assert any("reversed winding" in e.reason for e in r.errors)
+
+
+# ---------------------------------------------------------------------------
+# _signed_area unit tests (forward-compat: n-point + guards)
+# ---------------------------------------------------------------------------
+class TestSignedArea:
+    def test_canonical_rect_positive(self):
+        poly = [{"x": 0.1, "y": 0.1}, {"x": 0.9, "y": 0.1},
+                {"x": 0.9, "y": 0.9}, {"x": 0.1, "y": 0.9}]
+        assert _signed_area(poly) > 0
+
+    def test_reversed_negative(self):
+        poly = [{"x": 0.1, "y": 0.9}, {"x": 0.9, "y": 0.9},
+                {"x": 0.9, "y": 0.1}, {"x": 0.1, "y": 0.1}]
+        assert _signed_area(poly) < 0
+
+    def test_triangle_works(self):
+        # n=3 (forward-compat for future non-rectangular vertices).
+        poly = [{"x": 0.0, "y": 0.0}, {"x": 1.0, "y": 0.0}, {"x": 0.5, "y": 1.0}]
+        assert _signed_area(poly) == pytest.approx(0.5)
+
+    def test_fewer_than_three_zero(self):
+        assert _signed_area([{"x": 0.1, "y": 0.1}, {"x": 0.9, "y": 0.9}]) == 0.0
+
+    def test_degenerate_collinear_zero(self):
+        poly = [{"x": 0.1, "y": 0.5}, {"x": 0.4, "y": 0.5},
+                {"x": 0.7, "y": 0.5}, {"x": 0.9, "y": 0.5}]
+        assert _signed_area(poly) == 0.0
+
+
+
+
 def _ok_meta():
     return {
         "title": "T", "schema_version": "1.0.0",
@@ -221,7 +320,11 @@ def _ok_meta():
 def _ok_component():
     return {
         "id": "comp_001", "type": "textbox", "name": "N",
-        "polygon": [{"x": 0.1, "y": 0.1}] * 4, "z_order": 0,
+        "polygon": [
+            {"x": 0.1, "y": 0.1}, {"x": 0.9, "y": 0.1},
+            {"x": 0.9, "y": 0.9}, {"x": 0.1, "y": 0.9},
+        ],
+        "z_order": 0,
         "placeholder_type": None, "font": {}, "runs": [],
         "content_template": "{{content}}",
     }

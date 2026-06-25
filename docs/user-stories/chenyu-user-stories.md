@@ -59,7 +59,7 @@ The system must use a scripted skill (not raw LLM) to open the PPTX zip, locate 
 **Acceptance Criteria:**
 - [x] Every component has a `polygon` array with exactly 4 `{x, y}` objects for rectangular shapes.
 - [x] All x and y values are in [0.0, 1.0] range.
-- [ ] Anti-clockwise winding is verified by a simple cross-product check in the script.
+- [x] Anti-clockwise winding is verified by a simple cross-product check in the script.
 - [x] Slide dimensions (EMU, inches, and aspect ratio string) are recorded in metadata.
 
 **Tags:** polygon, normalized-coords, positioning

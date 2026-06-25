@@ -8,6 +8,8 @@
 > **Date:** June 2026 (Revision 2 — post-US-1.1)
 >
 > **Revision 2 (post-US-1.1, PR #49):** US-1.1 now ✅ Met (new `schema_extractor.py` emits the proposed-schema JSON). US-1.2 → 🟡 Partial (polygon field now exists + normalized, but cross-product winding check pending). US-1.3 improved (full 10-value enum on all elements). Counts updated: Met 2 / Partial 7 / Not met 9.
+>
+> **Revision 3 (post-US-1.2, PR pending):** US-1.2 now ✅ Met — cross-product winding check delivered (`_signed_area()` + check in `validate_template_schema()`; canonical TL→TR→BR→BL = algebraic CCW = anti-clockwise). Counts: Met 3 / Partial 6 / Not met 9.
 
 ---
 
@@ -20,7 +22,7 @@ This report compares `chenyu-user-stories.md` (the requirements document) agains
 
 Both achieve "fill any template", but they differ on **data model, skill decomposition, and artifact form**.
 
-**Story-by-story summary** (19 stories): Met 2 / Partial 7 / Not met 9 / Architecture differs 1.
+**Story-by-story summary** (19 stories): Met 3 / Partial 6 / Not met 9 / Architecture differs 1.
 
 **The largest gaps** are concentrated in Epic 1 (normalized polygon component model + font detection + zip embedding), Epic 2/3 (header/footer detection + standalone template generator skill), and Epic 5 (skill decomposition into generate-template / generate-slides + CLI).
 
@@ -54,9 +56,9 @@ Status legend: ✅ Met · 🟡 Partial · ❌ Not met · ⚪ Architecture differ
 
 **Implemented (PR #49).** `schema_extractor.extract_schema()` (`schema_extractor.py`) reads any `.pptx`, parses the slide master (`prs.slide_masters[0]`) AND every layout, and emits a structured JSON conforming to `schemas/template_schema.json`. All four ACs are met: no crash on valid PPTX (`TemplateExtractionError` on bad input); master parsed + every layout enumerated; output validates against `template_schema.json`; deterministic Python. The renderer's fingerprint contract (`template_introspector.py`) is untouched — the two modules coexist (§5 Decision 1, now reality). 37 tests pass.
 
-#### US-1.2 — Normalized Polygon Positioning `[Must Have]` — 🟡 Partial
+#### US-1.2 — Normalized Polygon Positioning `[Must Have]` — ✅ Met
 
-**Improved (PR #49).** `schema_extractor.normalize_polygon()` (`schema_extractor.py:227`) now emits a `polygon` field on every component: exactly 4 normalized `{x,y}` points in `[0,1]` (TL→TR→BR→BL), with slide dimensions recorded in `template_metadata.slide_dimensions`. So AC1/AC2/AC4 are met. **Still missing (AC3):** no cross-product winding check, and the emitted order TL→TR→BR→BL is actually **clockwise** in screen coords — the requirement's "anti-clockwise" label is a misnomer to reconcile. Non-rectangular shapes still emit a rectangular bounding box (17 `custGeom` + ~25 non-rect prstGeom shapes in the bundled template are affected).
+**Met (PR pending, US-1.2).** All four ACs satisfied. `normalize_polygon()` emits exactly 4 normalized `{x,y}` points in `[0,1]` (AC1/AC2); slide dimensions in metadata (AC4). AC3 — the cross-product winding check — is delivered by `_signed_area()` + a check in `validate_template_schema()`: the canonical order TL→TR→BR→BL yields a **positive signed area**, which is algebraically counter-clockwise (CCW = anti-clockwise), exactly what AC3 asks a cross-product to verify. (Reversed winding → error; degenerate/zero-area → warning.) Note: in screen coords (Y-down) the trace visually appears clockwise, but the algebraic winding is CCW — documented in `template_schema.json` `$comment`. **Out of scope (Details, not ACs):** non-rectangular actual vertices (custGeom/triangle/connector) — polygon stays a 4-point rectangular bounding box; deferred (polygon is metadata-only, no consumer).
 
 #### US-1.3 — Component Type Enumeration `[Must Have]` — 🟡 Partial
 
@@ -142,8 +144,8 @@ Python's `logging` module is used (`logger = logging.getLogger(__name__)`, e.g. 
 
 | Status | Count | Stories |
 |---|---|---|
-| ✅ Met | 2 | US-1.1, US-4.5 |
-| 🟡 Partial | 7 | US-1.2, US-1.3, US-3.4, US-4.1, US-4.2, US-5.2, US-5.3 |
+| ✅ Met | 3 | US-1.1, US-1.2, US-4.5 |
+| 🟡 Partial | 6 | US-1.3, US-3.4, US-4.1, US-4.2, US-5.2, US-5.3 |
 | ❌ Not met | 9 | US-1.4, US-1.5, US-2.1, US-2.2, US-3.1, US-3.2, US-3.3, US-4.4, US-5.1 |
 | ⚪ Architecture differs | 1 | US-4.3 |
 
@@ -151,12 +153,12 @@ Python's `logging` module is used (`logger = logging.getLogger(__name__)`, e.g. 
 
 | | Must Have | Should Have | Could Have |
 |---|---|---|---|
-| ✅ Met | US-1.1 | — | US-4.5 |
-| 🟡 Partial | US-1.2, US-1.3, US-4.1, US-4.2, US-5.2 | US-3.4, US-5.3 | — |
+| ✅ Met | US-1.1, US-1.2 | — | US-4.5 |
+| 🟡 Partial | US-1.3, US-4.1, US-4.2, US-5.2 | US-3.4, US-5.3 | — |
 | ❌ Not met | **US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-5.1** | US-2.2, US-4.4 | — |
 | ⚪ Differs | US-4.3 | — | — |
 
-**Highest-risk gaps** are the 7 unmet **Must-Have** stories (US-1.2 is now Partial), clustered in Epic 1 (font/zip), Epic 2 (header/footer), Epic 3 (template generator), and Epic 5 (skill decomposition).
+**Highest-risk gaps** are the 7 unmet **Must-Have** stories (US-1.2 now Met), clustered in Epic 1 (font/zip), Epic 2 (header/footer), Epic 3 (template generator), and Epic 5 (skill decomposition).
 
 ---
 
@@ -170,7 +172,7 @@ These four stories are the foundation everything else builds on. They define the
 
 | Story | Suggestion |
 |---|---|
-| **US-1.2 Polygon** | **Half-done (PR #49):** `polygon` field + 4 normalized 0–1 coords already exist in `schema_extractor.normalize_polygon`. **Remaining:** add a cross-product winding check (AC3), reconcile the "anti-clockwise" label vs the clockwise TL→TR→BR→BL order, and extract real vertices for non-rectangular shapes (custGeom/triangle). |
+| ~~**US-1.2 Polygon**~~ | **Done (US-1.2):** `polygon` field + 4 normalized 0–1 coords + the cross-product winding check (AC3) are all delivered — see §2 (Met). *Deferred Details (not ACs):* non-rectangular actual vertices (custGeom/triangle) — polygon stays a rectangular bounding box (metadata-only, no consumer). |
 | **US-1.4 Fonts** | Add per-textbox `font` extraction (family/size_pt/weight/color/alignment) by reading `<a:rPr>` runs from each `<p:txBody>`. Build a top-level `missing_fonts` array against a built-in-font allowlist, with `fallback` suggestions. Capture the `runs` array for mixed formatting. |
 | **US-1.5 Zip embedding** | Add a `embed_schema(pptx_path, schema)` function that opens the zip, appends `ppt/template_schema.json` (minified), and writes a new zip **without touching `[Content_Types].xml` or any existing entry**. Verify PowerPoint opens it without repair. |
 | **US-2.1 Header/Footer** | Stop discarding chrome: record `has_header/has_footer` booleans + component IDs in `header_footer` metadata. Emit a user prompt when both are absent. |
