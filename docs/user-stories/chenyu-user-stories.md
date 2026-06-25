@@ -151,9 +151,9 @@ Detecting and validating structural conventions like headers, footers, slide num
 The script checks for the presence of header (`<p:hdr>`) and footer (`<p:ftr>`) elements in the slide master XML. If absent, the subagent pauses extraction and returns a structured prompt to the user.
 
 **Acceptance Criteria:**
-- [x] `template_metadata.header_footer.has_header` and `.has_footer` are booleans reflecting actual detection.
-- [x] When both are `false`, the subagent outputs a user-facing question before continuing.
-- [x] If the user says "yes, add header", the script injects a default header zone into the JSON (not into the PPTX yet — only into the schema).
+- [ ] `template_metadata.header_footer.has_header` and `.has_footer` are booleans reflecting actual detection.
+- [ ] When both are `false`, the subagent outputs a user-facing question before continuing.
+- [ ] If the user says "yes, add header", the script injects a default header zone into the JSON (not into the PPTX yet — only into the schema).
 
 **Tags:** header, footer, detection, prompt
 
@@ -169,9 +169,9 @@ The script checks for the presence of header (`<p:hdr>`) and footer (`<p:ftr>`) 
 Suggestions are stored in `template_metadata.common_practices.suggestions` as an array of objects with `practice`, `status` (`"present"` | `"missing"` | `"optional"`), and `recommendation` fields.
 
 **Acceptance Criteria:**
-- [x] At least 5 practices are checked: slide numbers, company logo, consistent margins, section dividers, and thank-you/closing slide.
-- [x] Only `"missing"` practices are shown as suggestions to the user.
-- [x] The user can acknowledge or dismiss each suggestion without blocking the workflow.
+- [ ] At least 5 practices are checked: slide numbers, company logo, consistent margins, section dividers, and thank-you/closing slide.
+- [ ] Only `"missing"` practices are shown as suggestions to the user.
+- [ ] The user can acknowledge or dismiss each suggestion without blocking the workflow.
 
 **Tags:** best-practices, suggestions, guidance
 
@@ -193,9 +193,9 @@ The first of two core skills: taking an existing PPTX, extracting its structure 
 This skill is the entry point. The user says something like "extract the template from this PPTX" and the subagent routes to this skill. The skill orchestrates: zip read → XML parse → JSON build → validate → embed → return file.
 
 **Acceptance Criteria:**
-- [x] Skill is invocable by natural language intent detection (no special command needed).
-- [x] Full pipeline runs end-to-end without manual intermediate steps.
-- [x] Validation errors (e.g., no slide master found) are reported clearly to the user.
+- [ ] Skill is invocable by natural language intent detection (no special command needed).
+- [ ] Full pipeline runs end-to-end without manual intermediate steps.
+- [ ] Validation errors (e.g., no slide master found) are reported clearly to the user.
 
 **Tags:** skill, template-generator, pipeline
 
@@ -211,9 +211,9 @@ This skill is the entry point. The user says something like "extract the templat
 The title is inferred from the PPTX file metadata (document title property), or from the first slide's title text, or — if neither exists — the subagent prompts the user to name it.
 
 **Acceptance Criteria:**
-- [x] `template_metadata.title` is always a non-empty string.
-- [x] Inference order: core.xml title → slide 1 title text → user prompt.
-- [x] The title is displayed to the user for confirmation after extraction.
+- [ ] `template_metadata.title` is always a non-empty string.
+- [ ] Inference order: core.xml title → slide 1 title text → user prompt.
+- [ ] The title is displayed to the user for confirmation after extraction.
 
 **Tags:** metadata, naming, queryable
 
@@ -229,9 +229,9 @@ The title is inferred from the PPTX file metadata (document title property), or 
 The returned file is the original PPTX plus `ppt/template_schema.json`. The subagent provides a download link and a summary of what was extracted (number of layouts, components, fonts, etc.).
 
 **Acceptance Criteria:**
-- [x] Downloadable PPTX is provided via OpenCode's file output mechanism.
-- [x] A human-readable extraction summary is printed to the user.
-- [x] File passes a round-trip test: open in PowerPoint, re-upload, re-extract → identical JSON.
+- [ ] Downloadable PPTX is provided via OpenCode's file output mechanism.
+- [ ] A human-readable extraction summary is printed to the user.
+- [ ] File passes a round-trip test: open in PowerPoint, re-upload, re-extract → identical JSON.
 
 **Tags:** output, download, round-trip
 
@@ -247,9 +247,9 @@ The returned file is the original PPTX plus `ppt/template_schema.json`. The suba
 Theme colors are extracted from `<a:clrScheme>` and mapped to semantic roles. Font palette comes from `<a:fontScheme>`.
 
 **Acceptance Criteria:**
-- [x] `theme` object contains `primary_color`, `secondary_color`, `accent_color`, `background_color` as hex strings.
-- [x] `theme.font_palette` contains `heading`, `body`, `accent` font names.
-- [x] If theme1.xml is missing or malformed, sensible defaults are used and a warning is shown.
+- [ ] `theme` object contains `primary_color`, `secondary_color`, `accent_color`, `background_color` as hex strings.
+- [ ] `theme.font_palette` contains `heading`, `body`, `accent` font names.
+- [ ] If theme1.xml is missing or malformed, sensible defaults are used and a warning is shown.
 
 **Tags:** theme, colors, branding
 
@@ -271,9 +271,9 @@ The second core skill: reading the embedded JSON template and using it to genera
 The skill reads the JSON, identifies which slide layout to use based on the user's intent (e.g., "title slide", "content slide", "two-column"), denormalizes the polygon coordinates back to EMUs using the stored slide dimensions, and creates OOXML elements at those exact positions.
 
 **Acceptance Criteria:**
-- [x] Skill reads JSON from the zip — does not re-extract or re-parse XML.
-- [x] Layout selection is based on `layout_name` matching or user confirmation.
-- [x] Denormalized EMU coordinates are within 1% of the original element positions.
+- [ ] Skill reads JSON from the zip — does not re-extract or re-parse XML.
+- [ ] Layout selection is based on `layout_name` matching or user confirmation.
+- [ ] Denormalized EMU coordinates are within 1% of the original element positions.
 
 **Tags:** slide-generation, layout-matching, denormalization
 
@@ -291,9 +291,9 @@ The skill reads the JSON, identifies which slide layout to use based on the user
 - Bullet points use the template's bullet style if detected; otherwise, a clean default is applied.
 
 **Acceptance Criteria:**
-- [x] No generated slide has text overflowing its bounding box.
-- [x] Font size is only reduced when necessary — never increased beyond the template's defined size.
-- [x] A `font_size_adjusted` flag is set in the component when auto-sizing occurs.
+- [ ] No generated slide has text overflowing its bounding box.
+- [ ] Font size is only reduced when necessary — never increased beyond the template's defined size.
+- [ ] A `font_size_adjusted` flag is set in the component when auto-sizing occurs.
 
 **Tags:** text-fitting, visual-quality, auto-sizing
 
@@ -309,9 +309,9 @@ The skill reads the JSON, identifies which slide layout to use based on the user
 The subagent detects the absence of `ppt/template_schema.json`, automatically chains the Template Generator skill first, then proceeds to Slide Generation. The user is informed of the two-step process but doesn't need to manually trigger each step.
 
 **Acceptance Criteria:**
-- [x] Single user prompt triggers both skills in sequence without error.
-- [x] Intermediate JSON is embedded in the output PPTX.
-- [x] User sees a status message like "No template found — extracting first, then generating slides..."
+- [ ] Single user prompt triggers both skills in sequence without error.
+- [ ] Intermediate JSON is embedded in the output PPTX.
+- [ ] User sees a status message like "No template found — extracting first, then generating slides..."
 
 **Tags:** chaining, auto-detect, ux
 
@@ -327,10 +327,10 @@ The subagent detects the absence of `ppt/template_schema.json`, automatically ch
 When no PPTX is provided and no embedded JSON exists, the subagent presents a style picker. Each style maps to a built-in JSON schema (shipped with the skill) that defines layout, colors, and fonts. The user can also say "just use default" to skip the prompt.
 
 **Acceptance Criteria:**
-- [x] At least 4 built-in style presets are included with the skill.
-- [x] The user can select a style by name or description.
-- [x] "Default" is always an option and requires no extra interaction.
-- [x] Selected style's JSON is embedded in the output PPTX for future reuse.
+- [ ] At least 4 built-in style presets are included with the skill.
+- [ ] The user can select a style by name or description.
+- [ ] "Default" is always an option and requires no extra interaction.
+- [ ] Selected style's JSON is embedded in the output PPTX for future reuse.
 
 **Tags:** style-picker, presets, fallback
 
@@ -373,9 +373,9 @@ The technical foundation: how the two skills are implemented as OpenCode agent s
 - Both scripts exit with meaningful exit codes (0 = success, 1 = validation error, 2 = runtime error).
 
 **Acceptance Criteria:**
-- [x] Each skill has its own directory with `skill.yaml`, script, and README.
-- [x] Both scripts are runnable from the CLI independently of the LLM.
-- [x] Exit codes are documented and used consistently.
+- [ ] Each skill has its own directory with `skill.yaml`, script, and README.
+- [ ] Both scripts are runnable from the CLI independently of the LLM.
+- [ ] Exit codes are documented and used consistently.
 
 **Tags:** architecture, cli, testability, single-responsibility
 
@@ -391,10 +391,10 @@ The technical foundation: how the two skills are implemented as OpenCode agent s
 The schema file (`template_schema.json`) lives in a shared `common/` directory. Both scripts run `validate(json, schema)` before reading or writing. The LLM is also given the schema in its system prompt so it understands the structure when reasoning about slide content.
 
 **Acceptance Criteria:**
-- [x] A `.json` schema file exists and is referenced by both scripts.
-- [x] Template generator validates its output before embedding.
-- [x] Slide generator validates the JSON before reading it.
-- [x] Schema version is tracked in `template_metadata.schema_version`.
+- [ ] A `.json` schema file exists and is referenced by both scripts.
+- [ ] Template generator validates its output before embedding.
+- [ ] Slide generator validates the JSON before reading it.
+- [ ] Schema version is tracked in `template_metadata.schema_version`.
 
 **Tags:** json-schema, validation, contract, versioning
 
@@ -410,9 +410,9 @@ The schema file (`template_schema.json`) lives in a shared `common/` directory. 
 Each log line is a JSON object with `timestamp`, `level`, `skill`, `action`, and `details`. Logs are written to stderr so they don't interfere with file output on stdout.
 
 **Acceptance Criteria:**
-- [x] Every significant action emits a structured log line.
-- [x] Logs go to stderr; only file paths go to stdout.
-- [x] Log level can be controlled via `--log-level` flag (debug, info, warn, error).
+- [ ] Every significant action emits a structured log line.
+- [ ] Logs go to stderr; only file paths go to stdout.
+- [ ] Log level can be controlled via `--log-level` flag (debug, info, warn, error).
 
 **Tags:** logging, debugging, observability
 
