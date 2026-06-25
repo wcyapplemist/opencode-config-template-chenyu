@@ -27,6 +27,7 @@ from schema_extractor import (
     TemplateExtractionError,
     _extract_components,
     _IdCounter,
+    _signed_area,
     extract_schema,
     map_shape_type,
     normalize_polygon,
@@ -262,6 +263,47 @@ class TestWinding:
         # shape would now be a non-fatal warning, keeping is_valid True).
         r = validate_template_schema(schema)
         assert r.is_valid, [e.format() for e in r.errors]
+
+    def test_tilted_reversed_is_error(self):
+        # A tilted quadrilateral in REVERSED winding => negative area => error.
+        comp = _ok_component()
+        comp["polygon"] = [
+            {"x": 0.1, "y": 0.7}, {"x": 0.7, "y": 0.9},
+            {"x": 0.9, "y": 0.3}, {"x": 0.2, "y": 0.1},
+        ]
+        r = validate_template_schema(_schema_with(comp))
+        assert not r.is_valid
+        assert any("reversed winding" in e.reason for e in r.errors)
+
+
+# ---------------------------------------------------------------------------
+# _signed_area unit tests (forward-compat: n-point + guards)
+# ---------------------------------------------------------------------------
+class TestSignedArea:
+    def test_canonical_rect_positive(self):
+        poly = [{"x": 0.1, "y": 0.1}, {"x": 0.9, "y": 0.1},
+                {"x": 0.9, "y": 0.9}, {"x": 0.1, "y": 0.9}]
+        assert _signed_area(poly) > 0
+
+    def test_reversed_negative(self):
+        poly = [{"x": 0.1, "y": 0.9}, {"x": 0.9, "y": 0.9},
+                {"x": 0.9, "y": 0.1}, {"x": 0.1, "y": 0.1}]
+        assert _signed_area(poly) < 0
+
+    def test_triangle_works(self):
+        # n=3 (forward-compat for future non-rectangular vertices).
+        poly = [{"x": 0.0, "y": 0.0}, {"x": 1.0, "y": 0.0}, {"x": 0.5, "y": 1.0}]
+        assert _signed_area(poly) == pytest.approx(0.5)
+
+    def test_fewer_than_three_zero(self):
+        assert _signed_area([{"x": 0.1, "y": 0.1}, {"x": 0.9, "y": 0.9}]) == 0.0
+
+    def test_degenerate_collinear_zero(self):
+        poly = [{"x": 0.1, "y": 0.5}, {"x": 0.4, "y": 0.5},
+                {"x": 0.7, "y": 0.5}, {"x": 0.9, "y": 0.5}]
+        assert _signed_area(poly) == 0.0
+
+
 
 
 def _ok_meta():

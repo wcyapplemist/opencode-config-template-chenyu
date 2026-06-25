@@ -172,7 +172,7 @@ These four stories are the foundation everything else builds on. They define the
 
 | Story | Suggestion |
 |---|---|
-| **US-1.2 Polygon** | **Half-done (PR #49):** `polygon` field + 4 normalized 0–1 coords already exist in `schema_extractor.normalize_polygon`. **Remaining:** add a cross-product winding check (AC3), reconcile the "anti-clockwise" label vs the clockwise TL→TR→BR→BL order, and extract real vertices for non-rectangular shapes (custGeom/triangle). |
+| ~~**US-1.2 Polygon**~~ | **Done (US-1.2):** `polygon` field + 4 normalized 0–1 coords + the cross-product winding check (AC3) are all delivered — see §2 (Met). *Deferred Details (not ACs):* non-rectangular actual vertices (custGeom/triangle) — polygon stays a rectangular bounding box (metadata-only, no consumer). |
 | **US-1.4 Fonts** | Add per-textbox `font` extraction (family/size_pt/weight/color/alignment) by reading `<a:rPr>` runs from each `<p:txBody>`. Build a top-level `missing_fonts` array against a built-in-font allowlist, with `fallback` suggestions. Capture the `runs` array for mixed formatting. |
 | **US-1.5 Zip embedding** | Add a `embed_schema(pptx_path, schema)` function that opens the zip, appends `ppt/template_schema.json` (minified), and writes a new zip **without touching `[Content_Types].xml` or any existing entry**. Verify PowerPoint opens it without repair. |
 | **US-2.1 Header/Footer** | Stop discarding chrome: record `has_header/has_footer` booleans + component IDs in `header_footer` metadata. Emit a user prompt when both are absent. |

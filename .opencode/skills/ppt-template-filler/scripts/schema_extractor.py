@@ -571,8 +571,9 @@ def _is_number(v: Any) -> bool:
 
 
 # Winding check threshold (US-1.2). Below any physically meaningful shape area
-# in normalized [0,1] coords (a 1px divider on a 7.5" slide normalizes to ~1e-4,
-# area ~1e-8, well above this); above float noise.
+# in normalized [0,1] coords (a 1px-tall divider on a 7.5" slide normalizes to
+# ~1.4e-3 height; even sub-pixel shapes yield area well above this); above
+# float noise (~1e-15 for [0,1] coords over a few terms).
 _WINDING_EPSILON = 1e-9
 
 
