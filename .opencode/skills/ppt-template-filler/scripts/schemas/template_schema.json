@@ -179,6 +179,11 @@
             "audio"
           ]
         },
+        "type_confidence": {
+          "type": "string",
+          "enum": ["high", "low"],
+          "description": "Detection confidence for `type`. 'low' = unrecognized fallback (shape_type None/unreadable) or indeterminate MEDIA subtype. Always emitted by schema_extractor; optional here for backward compatibility (US-1.3)."
+        },
         "name": { "type": "string" },
         "placeholder_type": {
           "type": ["string", "null"],

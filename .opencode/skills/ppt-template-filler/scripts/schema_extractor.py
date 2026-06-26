@@ -44,6 +44,7 @@ from lxml import etree
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.enum.shapes import PP_PLACEHOLDER
+from pptx.oxml.ns import qn
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,12 @@ PLACEHOLDER_TYPE_ENUM: List[Optional[str]] = [
 
 # Component types that may carry a ``font`` object (C1 cardinality rule).
 _TEXT_TYPES = {"textbox", "placeholder"}
+
+# Confidence values emitted on every component's ``type_confidence`` (US-1.3).
+# Centralized so the classifier, the validator, and template_schema.json's enum
+# stay in sync (single source of truth for the {"high","low"} domain).
+_CONFIDENCE_HIGH = "high"
+_CONFIDENCE_LOW = "low"
 
 # Initial theme semantic-role mapping (refined in US-3.4). Maps the OOXML
 # clrScheme role produced by :func:`_raw_theme_colors` to a semantic role.
@@ -169,37 +176,82 @@ _PLACEHOLDER_TYPE_MAP: Dict[Any, str] = {
 }
 
 
-def map_shape_type(shape: Any) -> str:
-    """Map a python-pptx shape to a component ``type`` enum value.
+def _media_classification(shape: Any) -> Tuple[str, bool]:
+    """Classify a MEDIA shape's subtype from its OOXML (US-1.3).
 
-    Placeholders take precedence (they carry ``placeholder_format``). Tables and
-    charts are detected via ``has_table`` / ``has_chart`` before ``shape_type``
-    because graphicFrame subtypes are not always cleanly exposed.
+    python-pptx collapses audio and video into ``MSO_SHAPE_TYPE.MEDIA`` and
+    exposes no audio/video subtype. The subtype is recoverable from OOXML: a
+    media ``<p:pic>`` carries ``<a:audioFile>`` or ``<a:videoFile>`` under
+    ``<p:nvPicPr>/<p:nvPr>``.
+
+    Returns ``(subtype, had_marker)`` where ``subtype`` is ``"audio"`` or
+    ``"video"`` and ``had_marker`` is True when an ``<a:audioFile>``/
+    ``<a:videoFile>`` element was found. Returns ``("video", False)`` when the
+    marker is absent or the shape has no ``_element`` (defensive; reachable only
+    via synthetic test shapes — real python-pptx shapes always carry ``_element``).
+    """
+    el = getattr(shape, "_element", None)
+    if el is not None:
+        if el.find(".//" + qn("a:audioFile")) is not None:
+            return "audio", True
+        if el.find(".//" + qn("a:videoFile")) is not None:
+            return "video", True
+    return "video", False
+
+
+def _classify_shape(shape: Any) -> Tuple[str, str]:
+    """Classify a shape into ``(component_type, type_confidence)``.
+
+    ``type_confidence`` is ``"high"`` whenever the element was positively
+    recognized (any non-``None`` ``shape_type``, or a table/chart/placeholder),
+    and ``"low"`` only for genuinely unrecognized shapes (``shape_type`` is
+    ``None`` or unreadable) and for MEDIA whose audio/video subtype could not be
+    determined (the US-1.3 "flagged for review" signal).
+
+    Per architecture review MAJOR-1 (PLAN-GIT-52 v2): there is NO whitelist —
+    every non-``None`` ``shape_type`` is treated as recognized, so recognized
+    members that are not explicitly mapped (``AUTO_SHAPE``, ``FREEFORM``,
+    ``LINE``, ``CALLOUT``, ``LINKED_PICTURE``, ``TEXT_EFFECT``, …) fall through
+    to ``("shape", "high")`` rather than being mislabeled ``"low"``.
     """
     if getattr(shape, "is_placeholder", False) and shape.placeholder_format is not None:
-        return "placeholder"
+        return "placeholder", _CONFIDENCE_HIGH
     if getattr(shape, "has_table", False):
-        return "table"
+        return "table", _CONFIDENCE_HIGH
     if getattr(shape, "has_chart", False):
-        return "chart"
+        return "chart", _CONFIDENCE_HIGH
     try:
         st = shape.shape_type
     except Exception:
-        return "shape"
+        return "shape", _CONFIDENCE_LOW  # cannot even read shape_type -> unrecognized
+    if st is None:
+        return "shape", _CONFIDENCE_LOW  # genuinely unrecognized
     if st == MSO_SHAPE_TYPE.PICTURE:
-        return "image"
+        return "image", _CONFIDENCE_HIGH
     if st == MSO_SHAPE_TYPE.GROUP:
-        return "group"
+        return "group", _CONFIDENCE_HIGH
     if st == MSO_SHAPE_TYPE.TEXT_BOX:
-        return "textbox"
-    if st == MSO_SHAPE_TYPE.MEDIA:
-        # NOTE: python-pptx does not expose an audio/video subtype, so all media
-        # maps to "video". The "audio" enum value is reserved (unreachable in
-        # US-1.1); subtype detection is deferred to a follow-up story.
-        return "video"
+        return "textbox", _CONFIDENCE_HIGH
     if st == MSO_SHAPE_TYPE.IGX_GRAPHIC:
-        return "smartart"
-    return "shape"
+        return "smartart", _CONFIDENCE_HIGH
+    if st == MSO_SHAPE_TYPE.WEB_VIDEO:
+        return "video", _CONFIDENCE_HIGH
+    if st == MSO_SHAPE_TYPE.MEDIA:
+        sub, had_marker = _media_classification(shape)
+        return (sub, _CONFIDENCE_HIGH) if had_marker else ("video", _CONFIDENCE_LOW)
+    # Any other non-None shape_type (AUTO_SHAPE, FREEFORM, LINE, CALLOUT,
+    # LINKED_PICTURE, TEXT_EFFECT, INK, DIAGRAM, …) is a recognized shape that
+    # the enum does not sub-type further.
+    return "shape", _CONFIDENCE_HIGH
+
+
+def map_shape_type(shape: Any) -> str:
+    """Map a python-pptx shape to a component ``type`` enum value.
+
+    Backward-compatible wrapper over :func:`_classify_shape` (returns only the
+    type); see that function for the full precedence chain and confidence rules.
+    """
+    return _classify_shape(shape)[0]
 
 
 def map_placeholder_type(ph: Any) -> Optional[str]:
@@ -394,11 +446,12 @@ def _build_component(
     polygon/z_order of nested shapes are captured individually.
     """
     comp_id = counter.next_id()
-    comp_type = map_shape_type(shape)
+    comp_type, confidence = _classify_shape(shape)
 
     component: Dict[str, Any] = {
         "id": comp_id,
         "type": comp_type,
+        "type_confidence": confidence,
         "name": shape.name or "",
         "polygon": normalize_polygon(shape, slide_w_emu, slide_h_emu),
         "z_order": z_order,
@@ -606,6 +659,22 @@ def _validate_component(comp: Any, path: str, result: ValidationResult) -> None:
     if ctype is not None and ctype not in COMPONENT_TYPE_ENUM:
         result.add(ValidationIssue(
             f"type '{ctype}' not in component_type_enum", field_path=f"{path}.type"
+        ))
+    # type_confidence enum legality + shape/low "flagged for review" (US-1.3).
+    tc = comp.get("type_confidence")
+    if tc is not None and tc not in (_CONFIDENCE_HIGH, _CONFIDENCE_LOW):
+        result.add(ValidationIssue(
+            f"type_confidence '{tc}' must be 'high' or 'low'",
+            field_path=f"{path}.type_confidence",
+        ))
+    if ctype == "shape" and tc == _CONFIDENCE_LOW:
+        # Scope is intentionally shape-only (locked decision 6, PLAN-GIT-52 v2):
+        # an unrecognized element emitted as shape/low is surfaced for review
+        # (mirrors the US-1.2 degenerate-polygon warning; is_valid stays True).
+        # Indeterminate MEDIA (video/low) is NOT flagged here by design.
+        result.add(ValidationIssue(
+            "shape with type_confidence 'low' (unrecognized element) -- flagged for review",
+            field_path=f"{path}.type_confidence", severity="warning",
         ))
     # placeholder_type enum legality
     ptype = comp.get("placeholder_type")
