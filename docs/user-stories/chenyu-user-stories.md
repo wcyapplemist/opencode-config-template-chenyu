@@ -104,10 +104,10 @@ The system must use a scripted skill (not raw LLM) to open the PPTX zip, locate 
 - Multiple font runs within a single textbox (e.g., bold title + regular subtitle) are captured as a `runs` array.
 
 **Acceptance Criteria:**
-- [ ] Every textbox component has a `font` object with all specified fields.
-- [ ] `missing_fonts` array is empty when all fonts are built-in.
-- [ ] When non-built-in fonts are found, the subagent prints a user-facing warning listing them.
-- [ ] `fallback` is always a built-in font name.
+- [x] Every textbox component has a `font` object with all specified fields.
+- [x] `missing_fonts` array is empty when all fonts are built-in.
+- [x] When non-built-in fonts are found, the subagent prints a user-facing warning listing them.
+- [x] `fallback` is always a built-in font name.
 
 **Tags:** fonts, availability, fallback
 

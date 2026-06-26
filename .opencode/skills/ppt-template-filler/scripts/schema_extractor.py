@@ -42,6 +42,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from lxml import etree
 from pptx import Presentation
+from pptx.enum.dml import MSO_COLOR_TYPE
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.enum.shapes import PP_PLACEHOLDER
 from pptx.oxml.ns import qn
@@ -74,6 +75,42 @@ _TEXT_TYPES = {"textbox", "placeholder"}
 # stay in sync (single source of truth for the {"high","low"} domain).
 _CONFIDENCE_HIGH = "high"
 _CONFIDENCE_LOW = "low"
+
+# US-1.4: fonts considered universally available (MS-Office / cross-platform).
+# Membership drives is_available + missing_fonts. Curated, extensible.
+_BUILTIN_FONTS: frozenset = frozenset({
+    "Arial", "Calibri", "Calibri Light", "Cambria", "Candara", "Century Gothic",
+    "Comic Sans MS", "Consolas", "Constantia", "Corbel", "Courier New", "Georgia",
+    "Impact", "Segoe UI", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana",
+})
+
+# US-1.4: common non-built-in -> built-in fallback (values must be in
+# _BUILTIN_FONTS). Unmapped non-built-in families fall back to the theme body
+# font (if built-in) else "Arial" — see _font_fallback().
+_FONT_FALLBACK_MAP: Dict[str, str] = {
+    # sans-serif -> Arial
+    "Helvetica": "Arial", "Helvetica Neue": "Arial", "SF Pro": "Arial",
+    "SF Pro Display": "Arial", "SF Pro Text": "Arial", "Roboto": "Arial",
+    "Open Sans": "Arial", "Inter": "Arial", "Lato": "Arial", "Montserrat": "Arial",
+    "Proxima Nova": "Arial", "Avenir": "Arial", "Avenir Next": "Arial",
+    "Ubuntu": "Arial", "Noto Sans": "Arial", "Source Sans Pro": "Arial",
+    # serif -> Times New Roman / Georgia
+    "Garamond": "Times New Roman", "Garamond Premier Pro": "Times New Roman",
+    "Baskerville": "Times New Roman", "Didot": "Georgia",
+    # monospace -> Consolas
+    "Source Code Pro": "Consolas", "Fira Code": "Consolas",
+    "Monaco": "Consolas", "Menlo": "Consolas",
+}
+
+# PP_ALIGN enum-name -> schema alignment string.
+_ALIGNMENT_MAP: Dict[str, str] = {
+    "LEFT": "left", "CENTER": "center", "RIGHT": "right",
+    "JUSTIFY": "justify", "JUSTIFY_LOW": "justify",
+    "DISTRIBUTE": "distribute", "START": "start", "END": "end",
+}
+
+# Default fallback used when the theme body font is not itself a built-in.
+_DEFAULT_FALLBACK_FONT = "Arial"
 
 # Initial theme semantic-role mapping (refined in US-3.4). Maps the OOXML
 # clrScheme role produced by :func:`_raw_theme_colors` to a semantic role.
@@ -412,7 +449,7 @@ def _build_metadata(prs: Presentation, path: str) -> Dict[str, Any]:
         "generated_by": GENERATED_BY,
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "slide_dimensions": _build_slide_dimensions(prs),
-        "missing_fonts": [],  # populated in US-1.4
+        "missing_fonts": [],  # initially empty; populated below in extract_schema
         "header_footer": {},  # populated in US-2.1
         "common_practices": {},  # populated in US-2.2
     }
@@ -432,12 +469,130 @@ class _IdCounter:
         return f"comp_{self._n:03d}"
 
 
+def _alignment_str(align: Any) -> Optional[str]:
+    """Map a ``PP_ALIGN`` value to the schema alignment string (US-1.4).
+
+    python-pptx enum ``str`` is like ``"left (1)"``; take the name token.
+    """
+    if align is None:
+        return None
+    name = str(align).split(" (")[0].strip().upper()
+    return _ALIGNMENT_MAP.get(name, name.lower())
+
+
+def _weight_from_bold(bold: Any) -> Optional[str]:
+    """Map ``run.font.bold`` (tri-state bool|None) to a weight string.
+
+    True -> "bold"; False/None -> None (explicit-only; "regular" is implied).
+    """
+    return "bold" if bold is True else None
+
+
+def _run_color_hex(run: Any) -> Optional[str]:
+    """Hex color of a run's font, only when it is an explicit RGB (US-1.4).
+
+    ``run.font.color.rgb`` raises on theme/None colors, so guard on
+    ``color.type == MSO_COLOR_TYPE.RGB``. Returns "#RRGGBB" or None.
+    """
+    try:
+        color = run.font.color
+        if color.type == MSO_COLOR_TYPE.RGB:
+            return "#" + str(color.rgb)
+    except Exception:  # pragma: no cover - defensive
+        pass
+    return None
+
+
+def _font_fallback(family: Optional[str], default_body: str) -> Optional[str]:
+    """Built-in substitute for a non-built-in family (US-1.4, AC4).
+
+    Returns None when ``family`` is None or built-in; the mapped built-in name
+    for known non-built-ins; else ``default_body`` (the theme body font when it
+    is itself built-in, else "Arial"). The result is always a built-in font name
+    or None.
+    """
+    if family is None or family in _BUILTIN_FONTS:
+        return None
+    mapped = _FONT_FALLBACK_MAP.get(family)
+    if mapped is not None:
+        return mapped
+    # default_body should already be built-in (resolved by the caller); guard so
+    # AC4 holds regardless of caller.
+    return default_body if default_body in _BUILTIN_FONTS else _DEFAULT_FALLBACK_FONT
+
+
+def _extract_text_fonts(
+    shape: Any, default_body: str
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """Extract per-run font metadata from a text-bearing shape (US-1.4).
+
+    Returns ``(font_summary, runs)``:
+      - ``font_summary``: dict keyed for all target fields, summarizing the
+        **first text run**'s explicit props (+ the first **explicit** paragraph
+        alignment); null where not explicitly set. is_available/fallback are
+        derived. The summary is the first run (possibly empty) — ``runs[]`` is
+        authoritative for visible text.
+      - ``runs``: list of ``{text, font: {family, size_pt, weight, color}}`` for
+        runs that carry text.
+
+    Explicit-only (inherited/None -> null); Latin only (``<a:latin>``).
+    """
+    summary: Dict[str, Any] = {
+        "family": None, "size_pt": None, "weight": None, "color": None,
+        "alignment": None, "is_available": True, "fallback": None,
+    }
+    runs: List[Dict[str, Any]] = []
+
+    tf = getattr(shape, "text_frame", None)
+    if tf is None:
+        return summary, runs
+
+    paragraphs = list(tf.paragraphs)
+    # alignment: first paragraph that explicitly sets one
+    for p in paragraphs:
+        if p.alignment is not None:
+            summary["alignment"] = _alignment_str(p.alignment)
+            break
+
+    first_seen = False
+    for p in paragraphs:
+        for run in p.runs:
+            family = run.font.name
+            size = run.font.size
+            bold = run.font.bold
+            color = _run_color_hex(run)
+            size_pt = float(size.pt) if size is not None else None
+            if not first_seen:
+                summary["family"] = family
+                summary["size_pt"] = size_pt
+                summary["weight"] = _weight_from_bold(bold)
+                summary["color"] = color
+                first_seen = True
+            text = run.text or ""
+            if text:
+                runs.append({
+                    "text": text,
+                    "font": {
+                        "family": family,
+                        "size_pt": size_pt,
+                        "weight": _weight_from_bold(bold),
+                        "color": color,
+                    },
+                })
+
+    fam = summary["family"]
+    summary["is_available"] = (fam is None) or (fam in _BUILTIN_FONTS)
+    summary["fallback"] = _font_fallback(fam, default_body)
+    return summary, runs
+
+
 def _build_component(
     shape: Any,
     slide_w_emu: int,
     slide_h_emu: int,
     z_order: int,
     counter: _IdCounter,
+    default_body: str = _DEFAULT_FALLBACK_FONT,
 ) -> Optional[Dict[str, Any]]:
     """Build a component record from a single shape, or ``None`` to skip.
 
@@ -463,10 +618,12 @@ def _build_component(
     else:
         component["placeholder_type"] = None
 
-    # font: present ONLY on text-bearing components (C1). Empty stub in US-1.1.
+    # font: present ONLY on text-bearing components (C1). Populated per-run
+    # (US-1.4); default_body is the theme-aware fallback default.
     if comp_type in _TEXT_TYPES:
-        component["font"] = {}  # populated in US-1.4
-        component["runs"] = []  # populated in US-1.4
+        font_summary, runs = _extract_text_fonts(shape, default_body)
+        component["font"] = font_summary
+        component["runs"] = runs
 
     # content_template: text-bearing components get a simple placeholder marker.
     if comp_type in _TEXT_TYPES:
@@ -482,6 +639,7 @@ def _extract_components(
     slide_w_emu: int,
     slide_h_emu: int,
     counter: _IdCounter,
+    default_body: str = _DEFAULT_FALLBACK_FONT,
 ) -> List[Dict[str, Any]]:
     """Extract components from an iterable of shapes (master or a layout).
 
@@ -493,7 +651,7 @@ def _extract_components(
     """
     flat: List[Dict[str, Any]] = []
     for shape in shapes:
-        comp = _build_component(shape, slide_w_emu, slide_h_emu, 0, counter)
+        comp = _build_component(shape, slide_w_emu, slide_h_emu, 0, counter, default_body)
         if comp is None:
             continue
         flat.append(comp)
@@ -504,7 +662,7 @@ def _extract_components(
             except Exception:
                 children = []
             flat.extend(_extract_components(
-                children, slide_w_emu, slide_h_emu, counter
+                children, slide_w_emu, slide_h_emu, counter, default_body
             ))
     # Assign z_order by final flatten index (monotonic + unique).
     for i, comp in enumerate(flat):
@@ -544,6 +702,12 @@ def extract_schema(pptx_path: str) -> Dict[str, Any]:
     slide_h_emu = dims["height_emu"]
     counter = _IdCounter()
 
+    # Theme is built FIRST (it has no component dependency) so the theme body
+    # font can drive the per-component font fallback default (US-1.4 MINOR-3).
+    theme = _build_theme(prs)
+    body_font = (theme.get("font_palette") or {}).get("body") or ""
+    default_body = body_font if body_font in _BUILTIN_FONTS else _DEFAULT_FALLBACK_FONT
+
     # Slide master (AC#2): parse explicitly. A master may legally have zero
     # shapes (e.g., a synthetic minimal deck).
     try:
@@ -554,7 +718,7 @@ def extract_schema(pptx_path: str) -> Dict[str, Any]:
         raise TemplateExtractionError("presentation has no slide master")
     master = masters[0]
     master_components = _extract_components(
-        master.shapes, slide_w_emu, slide_h_emu, counter
+        master.shapes, slide_w_emu, slide_h_emu, counter, default_body
     )
     slide_master = {
         "name": getattr(master, "name", "Slide Master") or "Slide Master",
@@ -566,7 +730,7 @@ def extract_schema(pptx_path: str) -> Dict[str, Any]:
     seen_ids: Dict[str, int] = {}
     for index, layout in enumerate(prs.slide_layouts):
         components = _extract_components(
-            layout.shapes, slide_w_emu, slide_h_emu, counter
+            layout.shapes, slide_w_emu, slide_h_emu, counter, default_body
         )
         base_id = _slugify(getattr(layout, "name", "") or f"layout_{index}")
         # Ensure uniqueness across layouts with duplicate names.
@@ -590,12 +754,39 @@ def extract_schema(pptx_path: str) -> Dict[str, Any]:
         "component_type_enum": list(COMPONENT_TYPE_ENUM),
         "placeholder_type_enum": list(PLACEHOLDER_TYPE_ENUM),
     }
-    # theme is best-effort; always present (possibly with empty strings).
-    schema["theme"] = _build_theme(prs)
+    schema["theme"] = theme
+
+    # US-1.4: aggregate deduped non-built-in fonts across all text components.
+    missing_fonts: List[Dict[str, Any]] = []
+    seen_fonts: set = set()
+    all_components = list(master_components)
+    all_components.extend(c for L in slide_layouts for c in L["components"])
+    for comp in all_components:
+        font = comp.get("font")
+        if not isinstance(font, dict):
+            continue
+        candidates = [font.get("family")]
+        candidates.extend(r.get("font", {}).get("family") for r in comp.get("runs", []))
+        for family in candidates:
+            if family is None or family in _BUILTIN_FONTS or family in seen_fonts:
+                continue
+            seen_fonts.add(family)
+            missing_fonts.append({
+                "family": family,
+                "is_available": False,
+                "fallback": _font_fallback(family, default_body),
+                "download_url": None,
+            })
+    schema["template_metadata"]["missing_fonts"] = missing_fonts
+    if missing_fonts:
+        names = ", ".join(m["family"] for m in missing_fonts)
+        logger.warning(
+            "Template depends on %d non-built-in font(s): %s", len(missing_fonts), names
+        )
 
     logger.info(
-        "Extracted schema for %s: master=%d components, %d layouts",
-        path.name, len(master_components), len(slide_layouts),
+        "Extracted schema for %s: master=%d components, %d layouts, %d missing fonts",
+        path.name, len(master_components), len(slide_layouts), len(missing_fonts),
     )
     return schema
 
@@ -735,6 +926,40 @@ def _validate_component(comp: Any, path: str, result: ValidationResult) -> None:
             f"non-text component type '{ctype}' must not carry a 'font' field",
             field_path=f"{path}.font",
         ))
+    # US-1.4 font checks (only when a font object is present).
+    font = comp.get("font")
+    if isinstance(font, dict):
+        ia = font.get("is_available")
+        if ia is not None and not isinstance(ia, bool):
+            result.add(ValidationIssue(
+                "font.is_available must be a boolean", field_path=f"{path}.font.is_available"
+            ))
+        sp = font.get("size_pt")
+        if sp is not None and not (_is_number(sp) and not isinstance(sp, bool)):
+            result.add(ValidationIssue(
+                "font.size_pt must be a number", field_path=f"{path}.font.size_pt"
+            ))
+        # String-or-null fields (m4: symmetric type checks).
+        for key in ("family", "weight", "color", "alignment"):
+            v = font.get(key)
+            if v is not None and not isinstance(v, str):
+                result.add(ValidationIssue(
+                    f"font.{key} must be a string or null", field_path=f"{path}.font.{key}"
+                ))
+        fb = font.get("fallback")
+        # AC4: a non-null fallback must always be a built-in font name.
+        if fb is not None and fb not in _BUILTIN_FONTS:
+            result.add(ValidationIssue(
+                f"font.fallback '{fb}' is not a built-in font name (AC4)",
+                field_path=f"{path}.font.fallback",
+            ))
+        # Invariant: is_available == (fallback is None). Covers all four quadrants
+        # (incl. the is_available=False / fallback=None violation).
+        if ia is not None and ia != (fb is None):
+            result.add(ValidationIssue(
+                "font.is_available must equal (fallback is None)",
+                field_path=f"{path}.font", severity="warning",
+            ))
 
 
 def validate_template_schema(schema_dict: Any) -> ValidationResult:
@@ -811,6 +1036,20 @@ def validate_template_schema(schema_dict: Any) -> ValidationResult:
         val = schema_dict.get(key)
         if not isinstance(val, list):
             result.add(ValidationIssue(f"{key} must be an array", field_path=key))
+
+    # US-1.4 (AC3): surface each non-built-in font as a non-fatal warning so the
+    # subagent/consumer is "flagged for review" (mirrors US-1.2/1.3 warnings).
+    meta = schema_dict.get("template_metadata")
+    if isinstance(meta, dict):
+        missing = meta.get("missing_fonts")
+        if isinstance(missing, list):
+            for entry in missing:
+                if isinstance(entry, dict) and entry.get("family"):
+                    result.add(ValidationIssue(
+                        f"non-built-in font '{entry['family']}' is required by the template "
+                        f"(fallback: {entry.get('fallback')}) -- install it to avoid substitution",
+                        field_path="template_metadata.missing_fonts", severity="warning",
+                    ))
 
     return result
 
