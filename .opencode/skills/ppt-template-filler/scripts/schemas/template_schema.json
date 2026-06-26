@@ -61,8 +61,17 @@
         },
         "missing_fonts": {
           "type": "array",
-          "description": "Non-builtin fonts the template depends on. Empty in US-1.1 (populated in US-1.4).",
-          "items": { "type": "object" }
+          "description": "Deduped non-builtin fonts the template depends on (US-1.4). Each entry: {family, is_available:false, fallback, download_url}. validate_template_schema emits a non-fatal WARNING per entry.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "family": { "type": "string" },
+              "is_available": { "type": "boolean" },
+              "fallback": { "type": ["string", "null"] },
+              "download_url": { "type": ["string", "null"] }
+            }
+          }
         },
         "header_footer": {
           "type": "object",
@@ -220,7 +229,7 @@
         },
         "font": {
           "type": "object",
-          "description": "Present ONLY on text-bearing components (textbox/placeholder). All sub-properties optional in US-1.1; populated in US-1.4. May be {} in US-1.1.",
+          "description": "Present ONLY on text-bearing components (textbox/placeholder). Populated by schema_extractor per-run (US-1.4); sub-properties optional (null when not explicitly set / inherited).",
           "additionalProperties": false,
           "properties": {
             "family": { "type": "string" },

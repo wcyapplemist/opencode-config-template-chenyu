@@ -26,8 +26,11 @@ from schema_extractor import (
     COMPONENT_TYPE_ENUM,
     PLACEHOLDER_TYPE_ENUM,
     TemplateExtractionError,
+    _BUILTIN_FONTS,
     _classify_shape,
     _extract_components,
+    _extract_text_fonts,
+    _font_fallback,
     _IdCounter,
     _signed_area,
     extract_schema,
@@ -172,14 +175,211 @@ class TestFontCardinality:
                 if c["type"] not in TEXT_TYPES:
                     assert "font" not in c, f"{c['id']} ({c['type']}) must not carry font"
 
-    def test_text_components_carry_font_stub(self, schema):
+    def test_text_components_carry_populated_font(self, schema):
+        # US-1.4: text components carry a populated font object (all keys present),
+        # not the old empty {} stub. Values may be null (inherited) but the keys
+        # must be there.
         found_text = False
+        required_keys = {"family", "size_pt", "weight", "color",
+                         "alignment", "is_available", "fallback"}
         for L in schema["slide_layouts"] + [schema["slide_master"]]:
             for c in L["components"]:
                 if c["type"] in TEXT_TYPES:
                     found_text = True
-                    assert "font" in c and c["font"] == {}, c["id"]
+                    assert "font" in c, c["id"]
+                    assert required_keys <= set(c["font"].keys()), (c["id"], c["font"])
+                    assert isinstance(c["font"]["is_available"], bool), c["id"]
+                    assert "runs" in c and isinstance(c["runs"], list), c["id"]
         assert found_text, "template produced no text components"
+
+
+# ---------------------------------------------------------------------------
+# (5b) Font detection (US-1.4)
+# ---------------------------------------------------------------------------
+def _deck_with_textbox(tmp_path, runs):
+    """Build a 1-slide .pptx with a textbox whose paragraphs carry the given
+    runs. `runs` is a list of (text, family, size_pt, bold, rgb_or_None).
+    """
+    from pptx import Presentation
+    from pptx.util import Pt
+    from pptx.dml.color import RGBColor
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
+    tb = slide.shapes.add_textbox(0, 0, 9144000, 9144000)
+    tf = tb.text_frame
+    first = True
+    for text, family, size_pt, bold, rgb in runs:
+        p = tf.paragraphs[0] if first else tf.add_paragraph()
+        first = False
+        run = p.add_run()
+        run.text = text
+        if family is not None:
+            run.font.name = family
+        if size_pt is not None:
+            run.font.size = Pt(size_pt)
+        if bold is not None:
+            run.font.bold = bold
+        if rgb is not None:
+            run.font.color.rgb = RGBColor(*rgb)
+    out = tmp_path / "font_deck.pptx"
+    prs.save(str(out))
+    return str(out)
+
+
+class TestFontFallback:
+    def test_builtin_or_null_returns_none(self):
+        assert _font_fallback("Arial", "Arial") is None
+        assert _font_fallback(None, "Arial") is None
+
+    def test_mapped_family(self):
+        assert _font_fallback("Helvetica", "Arial") == "Arial"
+        assert _font_fallback("Roboto", "Calibri") == "Arial"
+
+    def test_unmapped_uses_theme_default(self):
+        assert _font_fallback("Acme Corp Font", "Calibri") == "Calibri"
+        assert _font_fallback("Acme Corp Font", "NotBuiltin") == "Arial"
+
+    def test_builtin_set_membership(self):
+        assert "Calibri" in _BUILTIN_FONTS
+        assert "Roboto" not in _BUILTIN_FONTS
+
+
+class TestExtractTextFonts:
+    def test_populated_first_run_summary(self, tmp_path):
+        from pptx import Presentation
+        from pptx.util import Pt
+        prs = Presentation()
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        tb = slide.shapes.add_textbox(0, 0, 9144000, 9144000)
+        run = tb.text_frame.paragraphs[0].add_run()
+        run.text = "Hi"
+        run.font.name = "Roboto"
+        run.font.size = Pt(18)
+        run.font.bold = True
+        summary, runs, families = _extract_text_fonts(tb, "Arial")
+        assert summary["family"] == "Roboto"
+        assert summary["size_pt"] == 18.0
+        assert summary["weight"] == "bold"
+        assert summary["is_available"] is False
+        assert summary["fallback"] == "Arial"
+        assert families == ["Roboto"]
+        assert runs and runs[0]["text"] == "Hi"
+        assert runs[0]["font"]["family"] == "Roboto"
+
+    def test_inherited_fields_are_null(self, tmp_path):
+        from pptx import Presentation
+        prs = Presentation()
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        tb = slide.shapes.add_textbox(0, 0, 9144000, 9144000)
+        tb.text_frame.text = "Inherited"  # no explicit font props
+        summary, runs, families = _extract_text_fonts(tb, "Arial")
+        assert summary["family"] is None
+        assert summary["size_pt"] is None
+        assert summary["weight"] is None
+        assert summary["is_available"] is True  # null family -> available
+        assert summary["fallback"] is None
+        assert families == []
+
+    def test_rgb_color_hex_theme_color_null(self, tmp_path):
+        from pptx import Presentation
+        from pptx.util import Pt
+        from pptx.dml.color import RGBColor
+        prs = Presentation()
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        tb = slide.shapes.add_textbox(0, 0, 9144000, 9144000)
+        r1 = tb.text_frame.paragraphs[0].add_run()
+        r1.text = "rgb"
+        r1.font.color.rgb = RGBColor(0x1A, 0x2B, 0x3C)
+        summary, runs, _ = _extract_text_fonts(tb, "Arial")
+        assert summary["color"] == "#1A2B3C"
+        assert runs[0]["font"]["color"] == "#1A2B3C"
+        # a no-color run -> null (no crash)
+        tb2 = slide.shapes.add_textbox(0, 0, 9144000, 9144000)
+        tb2.text_frame.text = "nocolor"
+        s2, _, _ = _extract_text_fonts(tb2, "Arial")
+        assert s2["color"] is None
+
+    def test_empty_textbox(self, tmp_path):
+        from pptx import Presentation
+        prs = Presentation()
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        tb = slide.shapes.add_textbox(0, 0, 9144000, 9144000)  # no text
+        summary, runs, families = _extract_text_fonts(tb, "Arial")
+        assert set(summary.keys()) == {
+            "family", "size_pt", "weight", "color", "alignment",
+            "is_available", "fallback",
+        }
+        assert summary["family"] is None
+        assert summary["is_available"] is True  # null family -> available
+        assert summary["fallback"] is None
+        assert runs == []
+        assert families == []
+
+
+class TestFontExtractionIntegration:
+    def test_custom_and_builtin_runs(self, tmp_path):
+        # Per-component font extraction via _extract_components on real shapes.
+        deck = _deck_with_textbox(tmp_path, [
+            ("Custom", "Roboto", 20, True, (0x10, 0x20, 0x30)),
+            ("Builtin", "Calibri", None, None, None),
+        ])
+        from pptx import Presentation as P
+        slide = P(deck).slides[0]
+        comps = _extract_components(slide.shapes, 9144000, 5143500, _IdCounter(), "Arial")
+        text = [c for c in comps if c["type"] in TEXT_TYPES]
+        assert text, "textbox not captured"
+        t = text[0]
+        assert t["font"]["family"] == "Roboto"
+        assert t["font"]["is_available"] is False
+        assert t["font"]["fallback"] == "Arial"
+        assert t["font"]["color"] == "#102030"
+        fams = {r["font"]["family"] for r in t["runs"]}
+        assert "Roboto" in fams and "Calibri" in fams
+
+    def test_missing_fonts_aggregated_and_warned(self, schema):
+        # The bundled template's master/layout text uses Roboto -> aggregated.
+        families = {m["family"] for m in schema["template_metadata"]["missing_fonts"]}
+        assert families, "bundled template expected to depend on a non-built-in font"
+        for m in schema["template_metadata"]["missing_fonts"]:
+            assert m["is_available"] is False
+            assert m["fallback"] is not None
+        # AC3: validate emits a non-fatal warning per missing font.
+        result = validate_template_schema(schema)
+        assert result.is_valid
+        assert any("non-built-in font" in w.reason for w in result.warnings)
+
+    def test_all_builtin_yields_no_missing(self, tmp_path):
+        from pptx import Presentation
+        deck = tmp_path / "default.pptx"
+        Presentation().save(str(deck))  # Office default theme -> built-in fonts
+        schema = extract_schema(str(deck))
+        assert schema["template_metadata"]["missing_fonts"] == []
+        result = validate_template_schema(schema)
+        assert not any("non-built-in font" in w.reason for w in result.warnings)
+
+
+class TestFontValidation:
+    def test_ac4_bad_fallback_is_error(self):
+        comp = _ok_component()
+        comp["font"] = {
+            "family": "Roboto", "is_available": False,
+            "fallback": "NotABuiltinFont", "size_pt": None,
+            "weight": None, "color": None, "alignment": None,
+        }
+        r = validate_template_schema(_schema_with(comp))
+        assert not r.is_valid
+        assert any("AC4" in e.reason or "built-in font name" in e.reason for e in r.errors)
+
+    def test_valid_fallback_passes(self):
+        comp = _ok_component()
+        comp["font"] = {
+            "family": "Roboto", "is_available": False,
+            "fallback": "Arial", "size_pt": None,
+            "weight": None, "color": None, "alignment": None,
+        }
+        r = validate_template_schema(_schema_with(comp))
+        assert r.is_valid, r.error_messages()
 
 
 # ---------------------------------------------------------------------------
