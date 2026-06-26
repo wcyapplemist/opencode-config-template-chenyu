@@ -257,13 +257,12 @@ class TestExtractTextFonts:
         run.font.name = "Roboto"
         run.font.size = Pt(18)
         run.font.bold = True
-        summary, runs, families = _extract_text_fonts(tb, "Arial")
+        summary, runs = _extract_text_fonts(tb, "Arial")
         assert summary["family"] == "Roboto"
         assert summary["size_pt"] == 18.0
         assert summary["weight"] == "bold"
         assert summary["is_available"] is False
         assert summary["fallback"] == "Arial"
-        assert families == ["Roboto"]
         assert runs and runs[0]["text"] == "Hi"
         assert runs[0]["font"]["family"] == "Roboto"
 
@@ -273,13 +272,12 @@ class TestExtractTextFonts:
         slide = prs.slides.add_slide(prs.slide_layouts[6])
         tb = slide.shapes.add_textbox(0, 0, 9144000, 9144000)
         tb.text_frame.text = "Inherited"  # no explicit font props
-        summary, runs, families = _extract_text_fonts(tb, "Arial")
+        summary, runs = _extract_text_fonts(tb, "Arial")
         assert summary["family"] is None
         assert summary["size_pt"] is None
         assert summary["weight"] is None
         assert summary["is_available"] is True  # null family -> available
         assert summary["fallback"] is None
-        assert families == []
 
     def test_rgb_color_hex_theme_color_null(self, tmp_path):
         from pptx import Presentation
@@ -291,13 +289,13 @@ class TestExtractTextFonts:
         r1 = tb.text_frame.paragraphs[0].add_run()
         r1.text = "rgb"
         r1.font.color.rgb = RGBColor(0x1A, 0x2B, 0x3C)
-        summary, runs, _ = _extract_text_fonts(tb, "Arial")
+        summary, runs = _extract_text_fonts(tb, "Arial")
         assert summary["color"] == "#1A2B3C"
         assert runs[0]["font"]["color"] == "#1A2B3C"
         # a no-color run -> null (no crash)
         tb2 = slide.shapes.add_textbox(0, 0, 9144000, 9144000)
         tb2.text_frame.text = "nocolor"
-        s2, _, _ = _extract_text_fonts(tb2, "Arial")
+        s2, _ = _extract_text_fonts(tb2, "Arial")
         assert s2["color"] is None
 
     def test_empty_textbox(self, tmp_path):
@@ -305,7 +303,7 @@ class TestExtractTextFonts:
         prs = Presentation()
         slide = prs.slides.add_slide(prs.slide_layouts[6])
         tb = slide.shapes.add_textbox(0, 0, 9144000, 9144000)  # no text
-        summary, runs, families = _extract_text_fonts(tb, "Arial")
+        summary, runs = _extract_text_fonts(tb, "Arial")
         assert set(summary.keys()) == {
             "family", "size_pt", "weight", "color", "alignment",
             "is_available", "fallback",
@@ -314,7 +312,6 @@ class TestExtractTextFonts:
         assert summary["is_available"] is True  # null family -> available
         assert summary["fallback"] is None
         assert runs == []
-        assert families == []
 
 
 class TestFontExtractionIntegration:
@@ -380,6 +377,30 @@ class TestFontValidation:
         }
         r = validate_template_schema(_schema_with(comp))
         assert r.is_valid, r.error_messages()
+
+    def test_invariant_false_available_null_fallback(self):
+        # M1: the is_available == (fallback is None) invariant must catch the
+        # is_available=False / fallback=None quadrant (previously missed).
+        comp = _ok_component()
+        comp["font"] = {
+            "family": "Roboto", "is_available": False,
+            "fallback": None, "size_pt": None,
+            "weight": None, "color": None, "alignment": None,
+        }
+        r = validate_template_schema(_schema_with(comp))
+        assert r.is_valid  # invariant is a warning, not an error
+        assert any("must equal (fallback is None)" in w.reason for w in r.warnings)
+
+    def test_font_string_fields_type_checked(self):
+        # m4: family/weight/color/alignment must be strings or null.
+        comp = _ok_component()
+        comp["font"] = {
+            "family": 123, "is_available": True, "fallback": None,
+            "size_pt": None, "weight": None, "color": None, "alignment": None,
+        }
+        r = validate_template_schema(_schema_with(comp))
+        assert not r.is_valid
+        assert any("font.family" in e.reason for e in r.errors)
 
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@
 **Issue**: #54
 **Branch**: GIT-54 (base: dev)
 **Priority**: Must Have (P0)
-**Status**: Planning (v2 — architecture review findings incorporated)
+**Status**: Implemented (v2 + code-review follow-ups; all phases complete, 80 tests green)
 
 ## Goal
 
@@ -141,25 +141,25 @@ theme-level ea read.)
 
 ## Acceptance Criteria (US-1.4) — to deliver
 
-- [ ] Every textbox component has a `font` object with all specified fields
+- [x] Every textbox component has a `font` object with all specified fields
       (`family`, `size_pt`, `weight`, `color`, `alignment`, `is_available`,
       `fallback`).
-- [ ] `missing_fonts` array is empty when all fonts are built-in.
-- [ ] When non-built-in fonts are found, a user-facing warning lists them
+- [x] `missing_fonts` array is empty when all fonts are built-in.
+- [x] When non-built-in fonts are found, a user-facing warning lists them
       (delivered as a `ValidationIssue(severity="warning")` in
       `validate_template_schema`).
-- [ ] `fallback` is always a built-in font name (enforced as a validator ERROR).
+- [x] `fallback` is always a built-in font name (enforced as a validator ERROR).
 
 ## Implementation Phases
 
 ### Phase 1: Font data model + helpers (schema_extractor.py)
 
-- [ ] Task 1: Add `_BUILTIN_FONTS` (~25 MS-Office/universal fonts).
-- [ ] Task 2: Add `_FONT_FALLBACK_MAP` (Helvetica→Arial, Roboto/Inter/Open
+- [x] Task 1: Add `_BUILTIN_FONTS` (~25 MS-Office/universal fonts).
+- [x] Task 2: Add `_FONT_FALLBACK_MAP` (Helvetica→Arial, Roboto/Inter/Open
       Sans/Lato→Arial, …) and `_font_fallback(family, default_body)` — mapped
       built-in name, else `default_body` (theme body or `"Arial"`), or `null`
       when family is built-in/`null`.
-- [ ] Task 3: Add `_extract_text_fonts(shape, default_body)` — walk
+- [x] Task 3: Add `_extract_text_fonts(shape, default_body)` — walk
       `text_frame.paragraphs`→`.runs`; read `run.font.name/size/bold/color` +
       `paragraph.alignment`; **color guarded by `color.type == MSO_COLOR_TYPE.RGB`**
       (else `null`); `size→.pt`; `bold→weight`; `alignment PP_ALIGN→string`; return
@@ -168,24 +168,24 @@ theme-level ea read.)
 
 ### Phase 2: Component wiring + missing_fonts aggregation
 
-- [ ] Task 4: Reorder `extract_schema` — build `_build_theme(prs)` **before**
+- [x] Task 4: Reorder `extract_schema` — build `_build_theme(prs)` **before**
       components; resolve `default_body = theme.font_palette.body if in
       _BUILTIN_FONTS else "Arial"`; thread into `_extract_components`/
       `_build_component`/`_extract_text_fonts`.
-- [ ] Task 5: In `_build_component` (`:467-469`), for `_TEXT_TYPES` replace the
+- [x] Task 5: In `_build_component` (`:467-469`), for `_TEXT_TYPES` replace the
       `font:{}`/`runs:[]` stubs with `_extract_text_fonts` output (nested runs).
-- [ ] Task 6: In `extract_schema`, aggregate `missing_fonts` after components
+- [x] Task 6: In `extract_schema`, aggregate `missing_fonts` after components
       (deduped non-built-in families, each
       `{family, is_available:false, fallback, download_url:null}`); set
       `template_metadata.missing_fonts`; `logger.warning(...)` when non-empty.
-- [ ] Task 7: Non-text components keep the C1 rule (no `font`).
+- [x] Task 7: Non-text components keep the C1 rule (no `font`).
 
 ### Phase 3: Schema + validator
 
-- [ ] Task 8: `template_schema.json` — tighten `font` description; define
+- [x] Task 8: `template_schema.json` — tighten `font` description; define
       `missing_fonts` item shape with `download_url` nullable. Keep `missing_fonts`
       **optional** (not in `_METADATA_REQUIRED`).
-- [ ] Task 9: `_validate_component` — font-field type checks; AC4: non-null
+- [x] Task 9: `_validate_component` — font-field type checks; AC4: non-null
       `fallback` not built-in → **ERROR**; invariant
       `is_available == (fallback is None)` → warning. In
       `validate_template_schema`: emit one non-fatal `ValidationIssue(severity="warning")`
@@ -193,21 +193,21 @@ theme-level ea read.)
 
 ### Phase 4: Tests
 
-- [ ] Task 10: Unit tests for `_font_fallback`/`_BUILTIN_FONTS` (built-in→null;
+- [x] Task 10: Unit tests for `_font_fallback`/`_BUILTIN_FONTS` (built-in→null;
       Helvetica→Arial; unmapped→default_body).
-- [ ] Task 11: Unit tests for `_extract_text_fonts` (inherited→null; RGB→hex;
+- [x] Task 11: Unit tests for `_extract_text_fonts` (inherited→null; RGB→hex;
       theme/None color→null; size→pt; bold→weight; alignment→string; empty
       textbox→all-null keyed font + `runs:[]`).
-- [ ] Task 12: Integration test — deck with custom-font run + built-in-font run;
+- [x] Task 12: Integration test — deck with custom-font run + built-in-font run;
       assert populated `font`/nested `runs[]`/`is_available`/`fallback`/
       `missing_fonts`/`result.warnings`.
-- [ ] Task 13: **MAJOR-2** — update `test_text_components_carry_font_stub` →
+- [x] Task 13: **MAJOR-2** — update `test_text_components_carry_font_stub` →
       `test_text_components_carry_populated_font` (assert populated `font`, not
       `== {}`). Non-text C1 regression (no `font`). AC4-error + invariant tests.
 
 ### Phase 5: Docs
 
-- [ ] Task 14: Update `GAP-ANALYSIS.md` US-1.4 → ✅ Met (Met 5→6);
+- [x] Task 14: Update `GAP-ANALYSIS.md` US-1.4 → ✅ Met (Met 5→6);
       `chenyu-user-stories.md` US-1.4 ACs → `[x]`.
 
 ## Test matrix
@@ -265,11 +265,35 @@ python schema_extractor.py --input templates/template.pptx --output /tmp/s.json
 - **Backward compatibility — low** — `font:{}` stub → populated object; output is
   generated (not committed), so no committed artifact changes shape.
 
+## Code-review follow-ups
+
+Post-implementation code review (verdict: Approve with revisions — 0 Critical, 1
+Major). The applied fixes (behavior-preserving except the widened validator):
+
+- [x] **M1 — invariant guard hole.** `_validate_component` dropped the
+  `fb is not None` clause from the `is_available == (fallback is None)` check, so
+  the `is_available=False`/`fallback=None` quadrant is now caught (warning). Added
+  `test_invariant_false_available_null_fallback`.
+- [x] **m1 — dead `families` output.** `_extract_text_fonts` now returns
+  `(summary, runs)` (the `families` list was discarded by every caller); the
+  `missing_fonts` aggregator keeps its single derivation from emitted
+  `font`/`runs`.
+- [x] **m4 — symmetric font type checks.** `_validate_component` now type-checks
+  `family`/`weight`/`color`/`alignment` (string-or-null), matching the existing
+  `is_available`/`size_pt` checks. Added `test_font_string_fields_type_checked`.
+- [x] **m6/n2 — doc accuracy.** `_extract_text_fonts` docstring now says "first
+  **explicit** paragraph alignment" (matches code); the stale
+  `# populated in US-1.4` comment is now "populated below in extract_schema".
+- Not applied (justified): **m3** (AC4 data-invariant assert), **m5** (decouple
+  bundled-template test) — deferred.
+
+Tests: `test_schema_extractor.py` → **80 passed** (was 78). No extraction-output
+change; only the validator catches more (M1/m4) and dead code was removed (m1).
+
 ## References
 
 - Requirements: `docs/user-stories/chenyu-user-stories.md` → Epic 1, US-1.4.
-- Gap analysis: `docs/user-stories/GAP-ANALYSIS.md` → §2 US-1.4 (❌ Not met),
-  §4 P0.
+- Gap analysis: `docs/user-stories/GAP-ANALYSIS.md` → §2 US-1.4 (✅ Met), §4 P0.
 - GitHub issue: #54 (`[US-1.4] Font Detection & Availability Checking`).
 - Predecessors: US-1.1 (issue #48, PR #49), US-1.2 (issue #50, PR #51), US-1.3
   (issue #52, PR #53).
@@ -277,5 +301,7 @@ python schema_extractor.py --input templates/template.pptx --output /tmp/s.json
 - Architecture review: findings MAJOR-1 (CJK scope-out), MAJOR-2 (test update),
   MAJOR-3 (ValidationIssue warning), MINOR-1/3/5/6/7, NIT-1/3/4/5 incorporated
   above; MINOR-2/4 (aggregate helper) not adopted.
+- Code review: M1, m1, m4, m6/n2 applied — see §"Code-review follow-ups"; m3/m5
+  not applied (justified).
 - After implementation: update `GAP-ANALYSIS.md` US-1.4 → ✅ Met (Met 5→6);
   `chenyu-user-stories.md` US-1.4 ACs → `[x]`.

@@ -449,7 +449,7 @@ def _build_metadata(prs: Presentation, path: str) -> Dict[str, Any]:
         "generated_by": GENERATED_BY,
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "slide_dimensions": _build_slide_dimensions(prs),
-        "missing_fonts": [],  # populated in US-1.4
+        "missing_fonts": [],  # initially empty; populated below in extract_schema
         "header_footer": {},  # populated in US-2.1
         "common_practices": {},  # populated in US-2.2
     }
@@ -523,16 +523,17 @@ def _font_fallback(family: Optional[str], default_body: str) -> Optional[str]:
 
 def _extract_text_fonts(
     shape: Any, default_body: str
-) -> Tuple[Dict[str, Any], List[Dict[str, Any]], List[str]]:
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     """Extract per-run font metadata from a text-bearing shape (US-1.4).
 
-    Returns ``(font_summary, runs, families)``:
+    Returns ``(font_summary, runs)``:
       - ``font_summary``: dict keyed for all target fields, summarizing the
-        **first text run**'s explicit props (+ first paragraph alignment); null
-        where not explicitly set. is_available/fallback are derived.
+        **first text run**'s explicit props (+ the first **explicit** paragraph
+        alignment); null where not explicitly set. is_available/fallback are
+        derived. The summary is the first run (possibly empty) — ``runs[]`` is
+        authoritative for visible text.
       - ``runs``: list of ``{text, font: {family, size_pt, weight, color}}`` for
         runs that carry text.
-      - ``families``: distinct non-None explicit families seen (for aggregation).
 
     Explicit-only (inherited/None -> null); Latin only (``<a:latin>``).
     """
@@ -541,11 +542,10 @@ def _extract_text_fonts(
         "alignment": None, "is_available": True, "fallback": None,
     }
     runs: List[Dict[str, Any]] = []
-    families: List[str] = []
 
     tf = getattr(shape, "text_frame", None)
     if tf is None:
-        return summary, runs, families
+        return summary, runs
 
     paragraphs = list(tf.paragraphs)
     # alignment: first paragraph that explicitly sets one
@@ -579,13 +579,11 @@ def _extract_text_fonts(
                         "color": color,
                     },
                 })
-            if family is not None and family not in families:
-                families.append(family)
 
     fam = summary["family"]
     summary["is_available"] = (fam is None) or (fam in _BUILTIN_FONTS)
     summary["fallback"] = _font_fallback(fam, default_body)
-    return summary, runs, families
+    return summary, runs
 
 
 def _build_component(
@@ -623,7 +621,7 @@ def _build_component(
     # font: present ONLY on text-bearing components (C1). Populated per-run
     # (US-1.4); default_body is the theme-aware fallback default.
     if comp_type in _TEXT_TYPES:
-        font_summary, runs, _families = _extract_text_fonts(shape, default_body)
+        font_summary, runs = _extract_text_fonts(shape, default_body)
         component["font"] = font_summary
         component["runs"] = runs
 
@@ -941,6 +939,13 @@ def _validate_component(comp: Any, path: str, result: ValidationResult) -> None:
             result.add(ValidationIssue(
                 "font.size_pt must be a number", field_path=f"{path}.font.size_pt"
             ))
+        # String-or-null fields (m4: symmetric type checks).
+        for key in ("family", "weight", "color", "alignment"):
+            v = font.get(key)
+            if v is not None and not isinstance(v, str):
+                result.add(ValidationIssue(
+                    f"font.{key} must be a string or null", field_path=f"{path}.font.{key}"
+                ))
         fb = font.get("fallback")
         # AC4: a non-null fallback must always be a built-in font name.
         if fb is not None and fb not in _BUILTIN_FONTS:
@@ -948,8 +953,9 @@ def _validate_component(comp: Any, path: str, result: ValidationResult) -> None:
                 f"font.fallback '{fb}' is not a built-in font name (AC4)",
                 field_path=f"{path}.font.fallback",
             ))
-        # Invariant: is_available == (fallback is None).
-        if ia is not None and fb is not None and ia != (fb is None):
+        # Invariant: is_available == (fallback is None). Covers all four quadrants
+        # (incl. the is_available=False / fallback=None violation).
+        if ia is not None and ia != (fb is None):
             result.add(ValidationIssue(
                 "font.is_available must equal (fallback is None)",
                 field_path=f"{path}.font", severity="warning",
