@@ -2,7 +2,7 @@
 
 > **Project:** opencode.ai / pptx-subagent
 > **Date:** June 2025
-> **Scope:** 5 Epics, 17 Stories
+> **Scope:** 5 Epics, 19 Stories
 > **Author:** Founder (OpenCode User)
 > **Source:** `chenyu-user requirement.html` (`.md` export) — pure requirements, stripped of HTML/CSS/JS boilerplate.
 
@@ -247,9 +247,9 @@ The returned file is the original PPTX plus `ppt/template_schema.json`. The suba
 Theme colors are extracted from `<a:clrScheme>` and mapped to semantic roles. Font palette comes from `<a:fontScheme>`.
 
 **Acceptance Criteria:**
-- [ ] `theme` object contains `primary_color`, `secondary_color`, `accent_color`, `background_color` as hex strings.
-- [ ] `theme.font_palette` contains `heading`, `body`, `accent` font names.
-- [ ] If theme1.xml is missing or malformed, sensible defaults are used and a warning is shown.
+- [x] `theme` object contains `primary_color`, `secondary_color`, `accent_color`, `background_color` as hex strings.
+- [x] `theme.font_palette` contains `heading`, `body`, `accent` font names.
+- [x] If theme1.xml is missing or malformed, sensible defaults are used and a warning is shown.
 
 **Tags:** theme, colors, branding
 
