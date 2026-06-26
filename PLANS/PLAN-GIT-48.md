@@ -63,11 +63,11 @@ guessing.
 
 ## Acceptance Criteria (US-1.1)
 
-- [ ] Accepts a .pptx input and does not crash on any valid PPTX.
-- [ ] Slide master XML is parsed; every layout under the master is extracted.
-- [ ] Output is a valid JSON object conforming to `template_schema.json` (the
+- [x] Accepts a .pptx input and does not crash on any valid PPTX.
+- [x] Slide master XML is parsed; every layout under the master is extracted.
+- [x] Output is a valid JSON object conforming to `template_schema.json` (the
       schema authored in Task 1).
-- [ ] Extraction is performed by a Python script — not by LLM guessing.
+- [x] Extraction is performed by a Python script — not by LLM guessing.
 
 ## Implementation Phases
 

@@ -10,6 +10,8 @@
 > **Revision 2 (post-US-1.1, PR #49):** US-1.1 now ✅ Met (new `schema_extractor.py` emits the proposed-schema JSON). US-1.2 → 🟡 Partial (polygon field now exists + normalized, but cross-product winding check pending). US-1.3 improved (full 10-value enum on all elements). Counts updated: Met 2 / Partial 7 / Not met 9.
 >
 > **Revision 3 (post-US-1.2, PR #51):** US-1.2 now ✅ Met — cross-product winding check delivered (`_signed_area()` + check in `validate_template_schema()`; canonical TL→TR→BR→BL = algebraic CCW = anti-clockwise). Counts: Met 3 / Partial 6 / Not met 9.
+>
+> **Revision 4 (post-US-1.3, issue #52):** US-1.3 now ✅ Met — `type_confidence` is always emitted (`"high"` default, `"low"` only for `shape_type` None/unreadable and indeterminate MEDIA; no whitelist per architecture-review MAJOR-1), `"audio"` is now reachable via OOXML `<a:audioFile>`/`<a:videoFile>` split, `WEB_VIDEO`→`video/high`, and a non-fatal WARNING surfaces `shape/low` (MINOR-2). Optional `type_confidence` added to `template_schema.json`. Counts: Met 4 / Partial 5 / Not met 9.
 
 ---
 
@@ -22,7 +24,7 @@ This report compares `chenyu-user-stories.md` (the requirements document) agains
 
 Both achieve "fill any template", but they differ on **data model, skill decomposition, and artifact form**.
 
-**Story-by-story summary** (19 stories): Met 3 / Partial 6 / Not met 9 / Architecture differs 1.
+**Story-by-story summary** (19 stories): Met 4 / Partial 5 / Not met 9 / Architecture differs 1.
 
 **The largest gaps** are concentrated in Epic 1 (normalized polygon component model + font detection + zip embedding), Epic 2/3 (header/footer detection + standalone template generator skill), and Epic 5 (skill decomposition into generate-template / generate-slides + CLI).
 
@@ -54,15 +56,15 @@ Status legend: ✅ Met · 🟡 Partial · ❌ Not met · ⚪ Architecture differ
 
 #### US-1.1 — Extract Slide Master to Structured JSON `[Must Have]` — ✅ Met
 
-**Implemented (PR #49).** `schema_extractor.extract_schema()` (`schema_extractor.py`) reads any `.pptx`, parses the slide master (`prs.slide_masters[0]`) AND every layout, and emits a structured JSON conforming to `schemas/template_schema.json`. All four ACs are met: no crash on valid PPTX (`TemplateExtractionError` on bad input); master parsed + every layout enumerated; output validates against `template_schema.json`; deterministic Python. The renderer's fingerprint contract (`template_introspector.py`) is untouched — the two modules coexist (§5 Decision 1, now reality). 37 tests pass.
+**Implemented (PR #49).** `schema_extractor.extract_schema()` (`schema_extractor.py`) reads any `.pptx`, parses the slide master (`prs.slide_masters[0]`) AND every layout, and emits a structured JSON conforming to `schemas/template_schema.json`. All four ACs are met: no crash on valid PPTX (`TemplateExtractionError` on bad input); master parsed + every layout enumerated; output is validated by a hand-rolled `validate_template_schema()` that mirrors `template_schema.json`'s rules (the file is a conformance-target spec, **not** loaded at runtime — see US-5.2); deterministic Python. The renderer's fingerprint contract (`template_introspector.py`) is untouched — the two modules coexist (§5 Decision 1, now reality). 49 tests pass (`test_schema_extractor.py`).
 
 #### US-1.2 — Normalized Polygon Positioning `[Must Have]` — ✅ Met
 
 **Met (PR #51).** All four ACs satisfied. `normalize_polygon()` emits exactly 4 normalized `{x,y}` points in `[0,1]` (AC1/AC2); slide dimensions in metadata (AC4). AC3 — the cross-product winding check — is delivered by `_signed_area()` + a check in `validate_template_schema()`: the canonical order TL→TR→BR→BL yields a **positive signed area**, which is algebraically counter-clockwise (CCW = anti-clockwise), exactly what AC3 asks a cross-product to verify. (Reversed winding → error; degenerate/zero-area → warning.) Note: in screen coords (Y-down) the trace visually appears clockwise, but the algebraic winding is CCW — documented in `template_schema.json` `$comment`. **Out of scope (Details, not ACs):** non-rectangular actual vertices (custGeom/triangle/connector) — polygon stays a 4-point rectangular bounding box; deferred (polygon is metadata-only, no consumer).
 
-#### US-1.3 — Component Type Enumeration `[Must Have]` — 🟡 Partial
+#### US-1.3 — Component Type Enumeration `[Must Have]` — ✅ Met
 
-**Improved (PR #49).** `schema_extractor.map_shape_type()` (`schema_extractor.py:173`) now applies the **full 10-value enum** (`textbox/image/table/video/shape/chart/group/smartart/placeholder/audio`) to **all elements** — not just placeholders — via `MSO_SHAPE_TYPE` + `has_table`/`has_chart` detection. All three ACs are met (type always present; unknowns degrade to `shape`, never null/unknown; mapping table in source). **Still Partial because** the `type_confidence: "low"` fallback (a Details item, not an AC) is not implemented, and `"audio"` is unreachable (`MEDIA` → `video` only).
+**Met (issue #52).** `schema_extractor._classify_shape()` (`schema_extractor.py`) applies the **full 10-value enum** to all elements (placeholders and freeform shapes). All three ACs are met (type always present; unknowns degrade to `shape`, never null/unknown; OOXML→enum mapping in source). The two previously-deferred **Details** are now delivered: (1) `type_confidence` is **always emitted** (`"high"` default; `"low"` only when `shape_type` is `None`/unreadable or MEDIA is indeterminate — no whitelist, per architecture-review MAJOR-1, so recognized-but-unmapped members like `LINKED_PICTURE`/`TEXT_EFFECT`/`CALLOUT` stay `"high"`); (2) the `"audio"` enum value is **reachable** via OOXML `<a:audioFile>`/`<a:videoFile>` split of `MSO_SHAPE_TYPE.MEDIA`, and `WEB_VIDEO`→`video/high`. A non-fatal `ValidationIssue` WARNING surfaces `shape/low` ("flagged for review"). Optional `type_confidence` added to `schemas/template_schema.json`. 64 tests in `test_schema_extractor.py` (was 49).
 
 #### US-1.4 — Font Detection & Availability Checking `[Must Have]` — ❌ Not met
 
@@ -144,8 +146,8 @@ Python's `logging` module is used (`logger = logging.getLogger(__name__)`, e.g. 
 
 | Status | Count | Stories |
 |---|---|---|
-| ✅ Met | 3 | US-1.1, US-1.2, US-4.5 |
-| 🟡 Partial | 6 | US-1.3, US-3.4, US-4.1, US-4.2, US-5.2, US-5.3 |
+| ✅ Met | 4 | US-1.1, US-1.2, US-1.3, US-4.5 |
+| 🟡 Partial | 5 | US-3.4, US-4.1, US-4.2, US-5.2, US-5.3 |
 | ❌ Not met | 9 | US-1.4, US-1.5, US-2.1, US-2.2, US-3.1, US-3.2, US-3.3, US-4.4, US-5.1 |
 | ⚪ Architecture differs | 1 | US-4.3 |
 
@@ -153,12 +155,12 @@ Python's `logging` module is used (`logger = logging.getLogger(__name__)`, e.g. 
 
 | | Must Have | Should Have | Could Have |
 |---|---|---|---|
-| ✅ Met | US-1.1, US-1.2 | — | US-4.5 |
-| 🟡 Partial | US-1.3, US-4.1, US-4.2, US-5.2 | US-3.4, US-5.3 | — |
+| ✅ Met | US-1.1, US-1.2, US-1.3 | — | US-4.5 |
+| 🟡 Partial | US-4.1, US-4.2, US-5.2 | US-3.4, US-5.3 | — |
 | ❌ Not met | **US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-5.1** | US-2.2, US-4.4 | — |
 | ⚪ Differs | US-4.3 | — | — |
 
-**Highest-risk gaps** are the 7 unmet **Must-Have** stories (US-1.2 now Met), clustered in Epic 1 (font/zip), Epic 2 (header/footer), Epic 3 (template generator), and Epic 5 (skill decomposition).
+**Highest-risk gaps** are the 7 unmet **Must-Have** stories (US-1.2 and US-1.3 now Met), clustered in Epic 1 (font/zip), Epic 2 (header/footer), Epic 3 (template generator), and Epic 5 (skill decomposition).
 
 ---
 
@@ -189,7 +191,7 @@ These four stories are the foundation everything else builds on. They define the
 
 | Story | Suggestion |
 |---|---|
-| **US-1.3** | Extend type extraction beyond placeholders: walk `<p:sp>` (shape/group), `<p:pic>` (image), `<p:graphicFrame>` (table/chart) and assign the full 10-value enum. Add `type_confidence: "low"` for unknowns. |
+| ~~**US-1.3**~~ | **Done (issue #52):** `type_confidence` now always emitted (`"high"` default; `"low"` only for `shape_type` None/unreadable or indeterminate MEDIA — no whitelist, so recognized-unmapped members stay `"high"`); `"audio"` reachable via `<a:audioFile>`/`<a:videoFile>` split; `WEB_VIDEO`→`video/high`; `shape/low` surfaces a non-fatal WARNING. Optional `type_confidence` added to `template_schema.json`. *(The original suggestion "extend extraction beyond placeholders" was already done in US-1.1/PR #49.)* |
 | **US-2.2** | Add a `common_practices` checker (5+ practices: slide numbers, logo, margins, section dividers, closing slide) emitting a `suggestions` array. |
 | **US-3.4** | Map raw theme colors (`dk1/lt2/accent1/…`) to semantic roles (`primary/secondary/accent/background`) and build `font_palette.{heading,body,accent}`. |
 | **US-4.4** | Ship 4+ built-in style presets (minimalist/corporate/creative/dark) as JSON schemas and add a style-picker prompt when no template is provided. |

@@ -40,3 +40,6 @@ output/*.pptx
 
 # Template backup artifacts (local only, not source)
 .opencode/skills/ppt-template-filler/scripts/templates/*.original.pptx
+
+# Local-only Chinese translation of GAP-ANALYSIS (not tracked by git)
+docs/user-stories/GAP-ANALYSIS.zh.md

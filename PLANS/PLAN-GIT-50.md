@@ -3,7 +3,7 @@
 **Issue**: #50
 **Branch**: GIT-50 (base: dev)
 **Priority**: Must Have (P0)
-**Status**: Planning (v2 — architecture review findings incorporated)
+**Status**: Implementation complete (v2 — architecture review findings incorporated)
 
 ## Goal
 
@@ -81,24 +81,24 @@ reversed -0.48, degenerate 0.0).
 
 - [x] Every component has a `polygon` array with exactly 4 `{x, y}` objects for rectangular shapes.
 - [x] All x and y values are in [0.0, 1.0] range.
-- [ ] Anti-clockwise winding is verified by a simple cross-product check in the script. *(delivered by Task 2)*
+- [x] Anti-clockwise winding is verified by a simple cross-product check in the script. *(delivered by Task 2)*
 - [x] Slide dimensions (EMU, inches, and aspect ratio string) are recorded in metadata.
 
 ## Implementation Phases
 
 ### Phase 1: Winding Check (single phase)
 
-- [ ] Task 1: Add `_signed_area(polygon)` shoelace helper (works for n-point
+- [x] Task 1: Add `_signed_area(polygon)` shoelace helper (works for n-point
       polygons; forward-compatible with future non-rectangular vertices).
-- [ ] Task 2: Integrate winding check into `_validate_component()` in
+- [x] Task 2: Integrate winding check into `_validate_component()` in
       `validate_template_schema()` — reversed (A < -1e-9) → error;
       degenerate (|A| <= 1e-9) → warning. Use the existing `severity` field on
       `ValidationIssue`.
-- [ ] Task 3: Add `$comment` to `template_schema.json` `polygon` documenting:
+- [x] Task 3: Add `$comment` to `template_schema.json` `polygon` documenting:
       (a) canonical winding = positive signed area = algebraic CCW = anti-clockwise;
       (b) the Y-down visual artifact note; (c) `maxItems:4` is rectangular-only —
       non-rectangular vertex extraction (deferred) will require relaxing this.
-- [ ] Task 4: Tests:
+- [x] Task 4: Tests:
       - canonical winding (axis-aligned rect) passes;
       - reversed (BL→BR→TR→TL) → error;
       - degenerate (4 identical points / zero area) → warning, `is_valid` stays True;
@@ -108,7 +108,7 @@ reversed -0.48, degenerate 0.0).
         regression guard for any real zero-area shape.
       - Fix `_ok_component()` test helper to a canonical non-degenerate polygon
         (currently 4 identical points = zero area + mutable-aliasing bug).
-- [ ] Task 5: Docs — GAP-ANALYSIS §2 US-1.2 → ✅ Met (algebraic-CCW note);
+- [x] Task 5: Docs — GAP-ANALYSIS §2 US-1.2 → ✅ Met (algebraic-CCW note);
       `chenyu-user-stories.md` AC3 → `[x]`.
 
 ## Out of Scope (deferred)

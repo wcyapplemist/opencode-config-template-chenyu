@@ -17,6 +17,7 @@ import os
 from typing import Any, List, Optional
 
 import pytest
+from lxml import etree
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.enum.shapes import PP_PLACEHOLDER
@@ -25,6 +26,7 @@ from schema_extractor import (
     COMPONENT_TYPE_ENUM,
     PLACEHOLDER_TYPE_ENUM,
     TemplateExtractionError,
+    _classify_shape,
     _extract_components,
     _IdCounter,
     _signed_area,
@@ -75,6 +77,16 @@ class TestExtractAndValidate:
     def test_enums_self_documenting(self, schema):
         assert schema["component_type_enum"] == COMPONENT_TYPE_ENUM
         assert schema["placeholder_type_enum"] == PLACEHOLDER_TYPE_ENUM
+
+    def test_every_component_has_valid_type_confidence(self, schema):
+        # US-1.3: type_confidence is always emitted and always high/low.
+        containers = schema["slide_layouts"] + [schema["slide_master"]]
+        seen = set()
+        for container in containers:
+            for c in container["components"]:
+                assert c["type_confidence"] in ("high", "low"), c["id"]
+                seen.add(c["type_confidence"])
+        assert seen, "template produced no components"
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +215,49 @@ class TestValidationFinds:
         assert not r.is_valid
         assert any("not in component_type_enum" in e.reason for e in r.errors)
 
+    def test_rejects_bad_type_confidence(self):
+        comp = _ok_component()
+        comp["type_confidence"] = "maybe"
+        r = validate_template_schema(_schema_with(comp))
+        assert not r.is_valid
+        assert any("type_confidence" in e.reason for e in r.errors)
+
+    def test_missing_type_confidence_is_valid(self):
+        # Backward compatibility: type_confidence is optional.
+        comp = _ok_component()
+        comp.pop("type_confidence", None)
+        r = validate_template_schema(_schema_with(comp))
+        assert r.is_valid, r.error_messages()
+
+    def test_shape_low_is_warning_not_error(self):
+        # MINOR-2: shape/low must surface as a non-fatal warning so unrecognized
+        # elements are "flagged for review" without blocking is_valid.
+        comp = _ok_component()
+        comp["type"] = "shape"
+        comp["type_confidence"] = "low"
+        # shape components must not carry a font (C1) -> drop it for a clean case.
+        comp.pop("font", None)
+        comp.pop("runs", None)
+        comp.pop("content_template", None)
+        r = validate_template_schema(_schema_with(comp))
+        assert r.is_valid  # warning, not error
+        assert any("flagged for review" in w.reason for w in r.warnings)
+
+    def test_video_low_emits_no_warning(self):
+        # MINOR-3: the "flagged for review" warning is shape-only (decision 6).
+        # Indeterminate MEDIA (video/low) must pass completely silently so the
+        # scoped boundary is locked against accidental widening.
+        comp = _ok_component()
+        comp["type"] = "video"
+        comp["type_confidence"] = "low"
+        # video is non-text -> must not carry font/runs/content_template (C1).
+        comp.pop("font", None)
+        comp.pop("runs", None)
+        comp.pop("content_template", None)
+        r = validate_template_schema(_schema_with(comp))
+        assert r.is_valid
+        assert r.warnings == []
+
     def test_rejects_non_object(self):
         r = validate_template_schema("not a dict")
         assert not r.is_valid
@@ -320,6 +375,7 @@ def _ok_meta():
 def _ok_component():
     return {
         "id": "comp_001", "type": "textbox", "name": "N",
+        "type_confidence": "high",
         "polygon": [
             {"x": 0.1, "y": 0.1}, {"x": 0.9, "y": 0.1},
             {"x": 0.9, "y": 0.9}, {"x": 0.1, "y": 0.9},
@@ -328,6 +384,23 @@ def _ok_component():
         "placeholder_type": None, "font": {}, "runs": [],
         "content_template": "{{content}}",
     }
+
+
+def _media_element(marker: str):
+    """Build a minimal <p:pic> element carrying an <a:{marker}File> under <p:nvPr>.
+
+    marker is 'audio' or 'video'. Used to attach a synthetic _element to a
+    FakeShape so _classify_shape's MEDIA branch can be exercised end-to-end.
+    """
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    p = "http://schemas.openxmlformats.org/presentationml/2006/main"
+    r = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    xml = (
+        f'<p:pic xmlns:p="{p}" xmlns:a="{a}" xmlns:r="{r}">'
+        f'<p:nvPicPr><p:nvPr><a:{marker}File r:link="rId1"/></p:nvPr></p:nvPicPr>'
+        f'</p:pic>'
+    )
+    return etree.fromstring(xml)
 
 
 def _bad_component_with_font_on_image():
@@ -385,6 +458,9 @@ class FakeShape:
         self.left, self.top, self.width, self.height = left, top, width, height
         self._children = children or []
         self.placeholder_format = FakePlaceholderFormat(ph_type) if is_placeholder else None
+        # _element is None by default; tests attach a synthetic lxml element
+        # (e.g. _media_element) to exercise the MEDIA audio/video split.
+        self._element = None
 
     @property
     def shapes(self):
@@ -431,6 +507,84 @@ class TestTypeMapper:
     def test_unknown_degrades_to_shape(self):
         s = FakeShape("u", st=None)
         assert map_shape_type(s) == "shape"
+
+
+# ---------------------------------------------------------------------------
+# type_confidence + audio/video subtype (US-1.3)
+# ---------------------------------------------------------------------------
+class TestTypeConfidence:
+    def test_recognized_types_are_high(self):
+        cases = [
+            (FakeShape("t", st=None, has_table=True), "table"),
+            (FakeShape("c", st=None, has_chart=True), "chart"),
+            (FakeShape("pic", st=MSO_SHAPE_TYPE.PICTURE), "image"),
+            (FakeShape("g", st=MSO_SHAPE_TYPE.GROUP), "group"),
+            (FakeShape("tb", st=MSO_SHAPE_TYPE.TEXT_BOX), "textbox"),
+            (FakeShape("sm", st=MSO_SHAPE_TYPE.IGX_GRAPHIC), "smartart"),
+        ]
+        for shape, expected in cases:
+            assert _classify_shape(shape) == (expected, "high")
+
+    def test_placeholder_is_high(self):
+        s = FakeShape("p", st=MSO_SHAPE_TYPE.PICTURE, is_placeholder=True, ph_type=PP_PLACEHOLDER.TITLE)
+        assert _classify_shape(s) == ("placeholder", "high")
+
+    def test_recognized_shapelike_types_are_shape_high(self):
+        # AUTO_SHAPE / FREEFORM / LINE are recognized preset-geometry shapes.
+        for st in (MSO_SHAPE_TYPE.AUTO_SHAPE, MSO_SHAPE_TYPE.FREEFORM, MSO_SHAPE_TYPE.LINE):
+            assert _classify_shape(FakeShape("x", st=st)) == ("shape", "high")
+
+    def test_other_non_none_members_default_shape_high(self):
+        # MAJOR-1 option (a): every non-None shape_type is recognized -> high.
+        # CALLOUT / LINKED_PICTURE / TEXT_EFFECT / INK must NOT be mislabeled low.
+        for st in (
+            MSO_SHAPE_TYPE.CALLOUT,
+            MSO_SHAPE_TYPE.LINKED_PICTURE,
+            MSO_SHAPE_TYPE.TEXT_EFFECT,
+            MSO_SHAPE_TYPE.INK,
+        ):
+            assert _classify_shape(FakeShape("x", st=st)) == ("shape", "high"), st
+
+    def test_web_video_maps_to_video_high(self):
+        s = FakeShape("wv", st=MSO_SHAPE_TYPE.WEB_VIDEO)
+        assert _classify_shape(s) == ("video", "high")
+
+    def test_none_shape_type_is_shape_low(self):
+        assert _classify_shape(FakeShape("u", st=None)) == ("shape", "low")
+
+    def test_shape_type_exception_is_shape_low(self):
+        class Boom:
+            is_placeholder = False
+            has_table = False
+            has_chart = False
+
+            @property
+            def shape_type(self):
+                raise RuntimeError("boom")
+
+        assert _classify_shape(Boom()) == ("shape", "low")
+
+    def test_media_without_marker_is_video_low(self):
+        s = FakeShape("m", st=MSO_SHAPE_TYPE.MEDIA)  # _element is None
+        assert _classify_shape(s) == ("video", "low")
+
+
+class TestAudioVideo:
+    def test_audio_marker_detected(self):
+        s = FakeShape("a", st=MSO_SHAPE_TYPE.MEDIA)
+        s._element = _media_element("audio")
+        assert _classify_shape(s) == ("audio", "high")
+
+    def test_video_marker_detected_high(self):
+        s = FakeShape("v", st=MSO_SHAPE_TYPE.MEDIA)
+        s._element = _media_element("video")
+        assert _classify_shape(s) == ("video", "high")
+
+    def test_audio_enum_reachable_via_wrapper(self):
+        # The "audio" enum value is now reachable end-to-end (US-1.3 D2).
+        s = FakeShape("a", st=MSO_SHAPE_TYPE.MEDIA)
+        s._element = _media_element("audio")
+        assert map_shape_type(s) == "audio"
 
 
 class TestPolygonNormalizer:
