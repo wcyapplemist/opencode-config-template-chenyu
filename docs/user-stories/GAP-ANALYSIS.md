@@ -12,6 +12,8 @@
 > **Revision 3 (post-US-1.2, PR #51):** US-1.2 now ✅ Met — cross-product winding check delivered (`_signed_area()` + check in `validate_template_schema()`; canonical TL→TR→BR→BL = algebraic CCW = anti-clockwise). Counts: Met 3 / Partial 6 / Not met 9.
 >
 > **Revision 4 (post-US-1.3, issue #52):** US-1.3 now ✅ Met — `type_confidence` is always emitted (`"high"` default, `"low"` only for `shape_type` None/unreadable and indeterminate MEDIA; no whitelist per architecture-review MAJOR-1), `"audio"` is now reachable via OOXML `<a:audioFile>`/`<a:videoFile>` split, `WEB_VIDEO`→`video/high`, and a non-fatal WARNING surfaces `shape/low` (MINOR-2). Optional `type_confidence` added to `template_schema.json`. Counts: Met 4 / Partial 5 / Not met 9.
+>
+> **Revision 5 (audit-path consistency):** Re-graded Epic 3/5 stories on the **same path used for Epic 1** (`schema_extractor.py`, the proposed-schema extractor) instead of the renderer contract. Corrections: **US-3.2** ❌→🟡 (`_infer_title` emits `title`; AC1 met, AC2/AC3 not), **US-3.4** 🟡→✅ (`_build_theme` maps semantic roles + `font_palette`; all 3 ACs met), **US-5.1** ❌→🟡 (`schema_extractor` is a real CLI with `--input/--output/--log-level` + exit codes 0/1/2; AC3 met, but skill names/decomposition differ), **US-5.2** 🟡 (clarified: `schema_version` IS in the proposed schema; `template_schema.json` exists but is not loaded at runtime), **US-5.3** 🟡 (clarified: `--log-level` DOES exist in `schema_extractor`; still not JSON-lines). Counts: Met 5 / Partial 6 / Not met 7.
 
 ---
 
@@ -24,7 +26,7 @@ This report compares `chenyu-user-stories.md` (the requirements document) agains
 
 Both achieve "fill any template", but they differ on **data model, skill decomposition, and artifact form**.
 
-**Story-by-story summary** (19 stories): Met 4 / Partial 5 / Not met 9 / Architecture differs 1.
+**Story-by-story summary** (19 stories): Met 5 / Partial 6 / Not met 7 / Architecture differs 1.
 
 **The largest gaps** are concentrated in Epic 1 (normalized polygon component model + font detection + zip embedding), Epic 2/3 (header/footer detection + standalone template generator skill), and Epic 5 (skill decomposition into generate-template / generate-slides + CLI).
 
@@ -90,17 +92,17 @@ No `common_practices` object exists in the contract. There is **no checks** for 
 
 Introspection is **embedded in the render path** (runs automatically before `generate_ppt_from_data`), not a standalone `generate-template` skill. There is **no** "extract → validate → embed → return templated PPTX" CLI pipeline.
 
-#### US-3.2 — Template Naming `[Must Have]` — ❌ Not met
+#### US-3.2 — Template Naming `[Must Have]` — 🟡 Partial
 
-The contract has only `source_file` (the filename) and `source_mtime` (`template_introspector.py:228-229`). There is **no `title`** field, no inference from `docProps/core.xml` or the first slide's title text, and no user prompt.
+The renderer's fingerprint contract (`template_introspector.py`) has only `source_file`/`source_mtime` — no `title`. **But the proposed-schema path implements it**: `schema_extractor._infer_title()` infers `template_metadata.title` (`core.xml` title → first-slide title text → filename stem) and `_build_metadata()` emits it. AC1 (title always non-empty — the filename fallback guarantees it) is **met**; AC2 (inference order ending in a **user prompt**) and AC3 (displayed for confirmation) are **not** (the third fallback is the filename, not a prompt; nothing is surfaced for confirmation). Graded Partial on the `schema_extractor` path.
 
 #### US-3.3 — Return Downloadable Templated PPTX `[Must Have]` — ❌ Not met
 
 No PPTX-with-embedded-JSON is produced or returned. The original `.pptx` is **never modified** (the sidecar is the only artifact). No round-trip test exists.
 
-#### US-3.4 — Theme & Color Extraction `[Should Have]` — 🟡 Partial
+#### US-3.4 — Theme & Color Extraction `[Should Have]` — ✅ Met
 
-`_build_theme()` (`template_introspector.py:126-158`) **does** extract raw theme colors (hex per OOXML role: `dk1/lt1/dk2/lt2/accent1-6/hlink/folHlink`) and fonts. But they are **not mapped to semantic roles** (`primary_color/secondary_color/accent_color/background_color`), and there is no `font_palette` with `heading/body/accent` naming. The data is present in raw form; the semantic mapping layer is missing.
+The renderer's `_build_theme()` (`template_introspector.py`) extracts only raw OOXML role colors. **But the proposed-schema path fully implements it**: `schema_extractor._build_theme()` maps raw colors to semantic roles (`primary_color`/`secondary_color`/`accent_color`/`background_color`/`text_color`) and builds `font_palette.{heading,body,accent}`; `_raw_theme_colors_and_fonts()` is wrapped in try/except that logs a warning and yields empty defaults on a missing/malformed theme. All three ACs (semantic colors as hex; `font_palette`; sensible defaults + warning) are met on the `schema_extractor` path.
 
 ### Epic 4 — Skill — Slide Generator
 
@@ -126,17 +128,17 @@ The multi-stage pipeline (outline → critique → detail → render) generates 
 
 ### Epic 5 — Skill Architecture & Scripts
 
-#### US-5.1 — Two Independent Skills with CLI Scripts `[Must Have]` — ❌ Not met
+#### US-5.1 — Two Independent Skills with CLI Scripts `[Must Have]` — 🟡 Partial
 
-The skills are `ppt-template-filler` (fill) and `template-modifier-skill` (extend) — **not** `generate-template` + `generate-slides`. The scripts are **Python functions**, not standalone CLIs with `--input/--output` flags and documented exit codes (0/1/2). No `skill.yaml` either (the skill manifests are `SKILL.md`).
+The skills are `ppt-template-filler` (fill) and `template-modifier-skill` (extend) — **not** the `generate-template`/`generate-slides` decomposition the story names, and the manifests are `SKILL.md` (no `skill.yaml`) → AC1 not met. **But a standalone CLI does exist**: `schema_extractor.py` `main()` is a real CLI (`--input/-i`, `--output/-o`, `--log-level`) with documented exit codes 0/1/2 (success/validation/runtime) → AC3 (exit codes) met and AC2 (runnable from CLI independently of the LLM) met *for the extractor*. `ppt_builder.py` remains function-based (its `main()` is a demo, no argparse). Graded Partial: one of the two intended skills exists as a CLI with exit codes, but the skill decomposition/naming differs and the slide side is not a CLI.
 
 #### US-5.2 — Shared JSON Schema for Validation `[Must Have]` — 🟡 Partial
 
-`slide_schemas.py` validates **slide content** for all 8 slide types + `chart_options` (`schema_validator.py:271` `validate_slide_data_list`, `schema_validator.py:401` `parse_and_validate`). But there is **no shared `template_schema.json`** (JSON Schema draft-07/2020-12) validating the **extraction output**, and the contract has **no `schema_version`** field (grep confirmed).
+`slide_schemas.py` validates **slide content** for all 8 slide types + `chart_options` (`schema_validator.py` `validate_slide_data_list` / `parse_and_validate`). The **extraction** side: `schemas/template_schema.json` (JSON Schema draft-2020-12) exists as the conformance spec and the proposed schema **does** carry `schema_version` (`SCHEMA_VERSION = "1.0.0"`, emitted in `_build_metadata`). However, the schema file is **not loaded at runtime** — `validate_template_schema()` is hand-rolled (no `jsonschema` dependency), so spec and validator are kept in sync manually (a pre-existing divergence: `additionalProperties:false` and the `id` `pattern` in the schema are not enforced). Graded Partial: the spec + version exist, but runtime validation is hand-rolled, not schema-driven.
 
 #### US-5.3 — Structured Logging `[Should Have]` — 🟡 Partial
 
-Python's `logging` module is used (`logger = logging.getLogger(__name__)`, e.g. `template_introspector.py:38`). But it is **not JSON-lines structured**, there is **no `--log-level` flag**, and output is not explicitly routed to stderr-only.
+Python's `logging` module is used across the modules. `schema_extractor.py` **does** expose a `--log-level` flag (debug/info/warn/error) applied via `logging.basicConfig`. But logging is **not JSON-lines structured** (plain `%(asctime)s [%(levelname)s] %(message)s` format), output is not explicitly routed to stderr-only, and only `schema_extractor` exposes the flag (the engine modules don't). Graded Partial: the flag exists for the extractor, but structured JSON-lines + stderr-only routing are not implemented.
 
 ---
 
@@ -146,21 +148,21 @@ Python's `logging` module is used (`logger = logging.getLogger(__name__)`, e.g. 
 
 | Status | Count | Stories |
 |---|---|---|
-| ✅ Met | 4 | US-1.1, US-1.2, US-1.3, US-4.5 |
-| 🟡 Partial | 5 | US-3.4, US-4.1, US-4.2, US-5.2, US-5.3 |
-| ❌ Not met | 9 | US-1.4, US-1.5, US-2.1, US-2.2, US-3.1, US-3.2, US-3.3, US-4.4, US-5.1 |
+| ✅ Met | 5 | US-1.1, US-1.2, US-1.3, US-3.4, US-4.5 |
+| 🟡 Partial | 6 | US-3.2, US-4.1, US-4.2, US-5.1, US-5.2, US-5.3 |
+| ❌ Not met | 7 | US-1.4, US-1.5, US-2.1, US-2.2, US-3.1, US-3.3, US-4.4 |
 | ⚪ Architecture differs | 1 | US-4.3 |
 
 ### §3.2 Priority × Status Matrix
 
 | | Must Have | Should Have | Could Have |
 |---|---|---|---|
-| ✅ Met | US-1.1, US-1.2, US-1.3 | — | US-4.5 |
-| 🟡 Partial | US-4.1, US-4.2, US-5.2 | US-3.4, US-5.3 | — |
-| ❌ Not met | **US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-5.1** | US-2.2, US-4.4 | — |
+| ✅ Met | US-1.1, US-1.2, US-1.3 | US-3.4 | US-4.5 |
+| 🟡 Partial | US-3.2, US-4.1, US-4.2, US-5.1, US-5.2 | US-5.3 | — |
+| ❌ Not met | **US-1.4, US-1.5, US-2.1, US-3.1, US-3.3** | US-2.2, US-4.4 | — |
 | ⚪ Differs | US-4.3 | — | — |
 
-**Highest-risk gaps** are the 7 unmet **Must-Have** stories (US-1.2 and US-1.3 now Met), clustered in Epic 1 (font/zip), Epic 2 (header/footer), Epic 3 (template generator), and Epic 5 (skill decomposition).
+**Highest-risk gaps** are the 5 unmet **Must-Have** stories (US-1.2, US-1.3 now Met; US-3.2/US-5.1 re-graded to Partial in Rev 5), clustered in Epic 1 (font/zip), Epic 2 (header/footer), Epic 3 (template generator), and Epic 5 (skill decomposition).
 
 ---
 
@@ -193,10 +195,10 @@ These four stories are the foundation everything else builds on. They define the
 |---|---|
 | ~~**US-1.3**~~ | **Done (issue #52):** `type_confidence` now always emitted (`"high"` default; `"low"` only for `shape_type` None/unreadable or indeterminate MEDIA — no whitelist, so recognized-unmapped members stay `"high"`); `"audio"` reachable via `<a:audioFile>`/`<a:videoFile>` split; `WEB_VIDEO`→`video/high`; `shape/low` surfaces a non-fatal WARNING. Optional `type_confidence` added to `template_schema.json`. *(The original suggestion "extend extraction beyond placeholders" was already done in US-1.1/PR #49.)* |
 | **US-2.2** | Add a `common_practices` checker (5+ practices: slide numbers, logo, margins, section dividers, closing slide) emitting a `suggestions` array. |
-| **US-3.4** | Map raw theme colors (`dk1/lt2/accent1/…`) to semantic roles (`primary/secondary/accent/background`) and build `font_palette.{heading,body,accent}`. |
+| ~~**US-3.4**~~ | **Done (Rev 5):** `schema_extractor._build_theme()` maps semantic roles (`primary/secondary/accent/background/text_color`) + builds `font_palette.{heading,body,accent}`; missing-theme → empty defaults + warning. All 3 ACs met. *(The renderer-side `_build_theme` still emits raw role colors only; that is US-5.2/migration scope.)* |
 | **US-4.4** | Ship 4+ built-in style presets (minimalist/corporate/creative/dark) as JSON schemas and add a style-picker prompt when no template is provided. |
-| **US-5.2** | Author a shared `template_schema.json` (JSON Schema draft-2020-12) for the extraction output and validate against it; add `schema_version`. |
-| **US-5.3** | Switch logging to structured JSON-lines (timestamp/level/skill/action/details) routed to stderr; add a `--log-level` flag. |
+| **US-5.2** | Load `template_schema.json` at runtime (or generate the validator from it) so `additionalProperties:false`/`pattern` are enforced, not just hand-rolled; bridge the spec↔validator divergence. (`schema_version` and the spec file already exist.) |
+| **US-5.3** | Switch logging to structured JSON-lines (timestamp/level/skill/action/details) routed to stderr. *(The `--log-level` flag already exists in `schema_extractor.py`; extend it to the engine modules.)* |
 
 ### Partial stories already mostly satisfied
 
