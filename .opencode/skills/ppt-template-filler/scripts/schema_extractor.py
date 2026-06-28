@@ -34,11 +34,14 @@ import argparse
 import json
 import logging
 import math
+import os
 import re
+import tempfile
+import zipfile
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from lxml import etree
 from pptx import Presentation
@@ -55,6 +58,22 @@ logger = logging.getLogger(__name__)
 _EMU_PER_INCH = 914400
 SCHEMA_VERSION = "1.0.0"
 GENERATED_BY = "opencode-pptx-subagent/schema_extractor"
+
+# US-1.5: the canonical path of the embedded schema inside the PPTX zip, and the
+# OPC [Content_Types].xml namespace for the json-Default injection.
+_EMBEDDED_SCHEMA_PATH = "ppt/template_schema.json"
+_CONTENT_TYPES_XML = "[Content_Types].xml"
+_CONTENT_TYPES_NS = "{http://schemas.openxmlformats.org/package/2006/content-types}"
+_JSON_CONTENT_TYPE = "application/json"
+
+
+class EmbeddedSchemaResult(NamedTuple):
+    """Outcome of :func:`embed_schema` (US-1.5); doubles as the testable AC4 signal."""
+
+    output_path: str
+    original_bytes: int
+    new_bytes: int
+    delta_bytes: int
 
 # Self-documenting enums (mirrors chenyu-user-stories.md Reference schema).
 COMPONENT_TYPE_ENUM: List[str] = [
@@ -1055,6 +1074,131 @@ def validate_template_schema(schema_dict: Any) -> ValidationResult:
 
 
 # ---------------------------------------------------------------------------
+# US-1.5: embed / read the proposed schema inside the PPTX zip
+# ---------------------------------------------------------------------------
+def _inject_json_default(content_types_xml: bytes) -> bytes:
+    """Return ``[Content_Types].xml`` bytes with a ``<Default Extension="json"/>`` added.
+
+    Idempotent: if a ``json`` Default is already declared, the input is returned
+    unchanged. Otherwise a ``<Default Extension="json" ContentType="application/json"/>``
+    is inserted as the first child of ``<Types>`` (OPC: Defaults precede Overrides).
+    Deliberately modifies ``[Content_Types].xml`` (architecture review MAJOR-2): the
+    bundled template declares no ``json`` Default and strict PowerPoint may otherwise
+    offer to repair an undeclared ``ppt/template_schema.json`` part.
+    """
+    root = etree.fromstring(content_types_xml)
+    for default in root.findall(_CONTENT_TYPES_NS + "Default"):
+        if default.get("Extension") == "json":
+            return content_types_xml  # already declared
+    new_default = etree.Element(_CONTENT_TYPES_NS + "Default")
+    new_default.set("Extension", "json")
+    new_default.set("ContentType", _JSON_CONTENT_TYPE)
+    root.insert(0, new_default)  # Defaults precede Overrides
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def embed_schema(
+    pptx_path: str, schema: Dict[str, Any], output_pptx_path: str
+) -> EmbeddedSchemaResult:
+    """Embed ``schema`` into a COPY of the PPTX at ``pptx_path`` (US-1.5).
+
+    Order-preserving full zip rewrite: ``[Content_Types].xml`` first (with the
+    ``json`` Default injected), then every other original entry decompressed-content-
+    identical in original order (an existing ``ppt/template_schema.json`` is skipped
+    so embedding is idempotent — MAJOR-3), then the minified schema appended last.
+    Written atomically (temp file + ``os.replace`` — MINOR-6). Never modifies the
+    input in place. Returns an :class:`EmbeddedSchemaResult` (AC4 size delta).
+    """
+    in_path = Path(pptx_path)
+    out_path = Path(output_pptx_path)
+    original_bytes = in_path.stat().st_size
+    schema_payload = json.dumps(
+        schema, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(suffix=".pptx", dir=str(out_path.parent))
+    os.close(fd)
+    try:
+        with zipfile.ZipFile(str(in_path), "r") as zin, \
+                zipfile.ZipFile(tmp_name, "w", zipfile.ZIP_DEFLATED) as zout:
+            names = zin.namelist()
+            # [Content_Types].xml first (with the json Default injected).
+            if _CONTENT_TYPES_XML in names:
+                ct_info = zin.getinfo(_CONTENT_TYPES_XML)
+                ct_out = zipfile.ZipInfo(filename=_CONTENT_TYPES_XML, date_time=ct_info.date_time)
+                ct_out.compress_type = ct_info.compress_type
+                ct_out.external_attr = ct_info.external_attr
+                zout.writestr(ct_out, _inject_json_default(zin.read(_CONTENT_TYPES_XML)))
+            # Every other original entry, decompressed-content-identical, original
+            # order. Skip the schema path (idempotency) and [Content_Types].xml.
+            for name in names:
+                if name == _CONTENT_TYPES_XML or name == _EMBEDDED_SCHEMA_PATH:
+                    continue
+                info = zin.getinfo(name)
+                out_info = zipfile.ZipInfo(filename=name, date_time=info.date_time)
+                out_info.compress_type = info.compress_type
+                out_info.external_attr = info.external_attr
+                zout.writestr(out_info, zin.read(name))
+            # The new schema part, last.
+            schema_info = zipfile.ZipInfo(filename=_EMBEDDED_SCHEMA_PATH)
+            schema_info.compress_type = zipfile.ZIP_DEFLATED
+            zout.writestr(schema_info, schema_payload)
+        os.replace(tmp_name, str(out_path))
+    except Exception:
+        if os.path.exists(tmp_name):
+            os.remove(tmp_name)
+        raise
+
+    new_bytes = out_path.stat().st_size
+    logger.info(
+        "embedded schema into %s: %d -> %d bytes (%+d)",
+        out_path, original_bytes, new_bytes, new_bytes - original_bytes,
+    )
+    return EmbeddedSchemaResult(str(out_path), original_bytes, new_bytes, new_bytes - original_bytes)
+
+
+def read_embedded_schema(pptx_path: str) -> Optional[Dict[str, Any]]:
+    """Read the embedded ``ppt/template_schema.json`` from a PPTX (US-1.5).
+
+    Error contract (architecture review MINOR-3/4):
+      - valid zip + present        -> the schema dict
+      - valid zip + absent         -> ``None``
+      - malformed / non-object JSON -> ``logger.warning`` + ``None`` (corrupt-as-absent)
+      - corrupt zip / unreadable    -> raise :class:`TemplateExtractionError`
+    """
+    try:
+        with zipfile.ZipFile(str(pptx_path), "r") as z:
+            if _EMBEDDED_SCHEMA_PATH not in z.namelist():
+                return None
+            raw = z.read(_EMBEDDED_SCHEMA_PATH)
+    except zipfile.BadZipFile as exc:
+        raise TemplateExtractionError(
+            f"not a valid zip/pptx: {pptx_path} ({exc.__class__.__name__}: {exc})"
+        ) from exc
+    except OSError as exc:  # FileNotFoundError, permission errors, ...
+        raise TemplateExtractionError(
+            f"could not read pptx: {pptx_path} ({exc.__class__.__name__}: {exc})"
+        ) from exc
+
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as exc:
+        logger.warning(
+            "embedded schema at %s is malformed (%s); treating as absent",
+            _EMBEDDED_SCHEMA_PATH, exc,
+        )
+        return None
+    if not isinstance(data, dict):
+        logger.warning(
+            "embedded schema at %s is not a JSON object; treating as absent",
+            _EMBEDDED_SCHEMA_PATH,
+        )
+        return None
+    return data
+
+
+# ---------------------------------------------------------------------------
 # Task 7: CLI entry
 # ---------------------------------------------------------------------------
 def main(argv: Optional[List[str]] = None) -> int:
@@ -1064,7 +1208,19 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--input", "-i", required=True, help="path to the input .pptx")
     parser.add_argument("--output", "-o", required=True, help="path to write the schema JSON")
     parser.add_argument("--log-level", default="info", help="log level (debug/info/warn/error)")
+    parser.add_argument(
+        "--embed", action="store_true",
+        help="also embed the schema into a PPTX copy (US-1.5); see --output-pptx",
+    )
+    parser.add_argument(
+        "--output-pptx", default=None,
+        help="destination for the embedded PPTX when --embed is set (default: <input>.templated.pptx)",
+    )
     args = parser.parse_args(argv)
+
+    if args.output_pptx and not args.embed:
+        logger.error("--output-pptx requires --embed")
+        return 2
 
     level_name = str(args.log_level).upper()
     if level_name not in {"DEBUG", "INFO", "WARN", "WARNING", "ERROR"}:
@@ -1092,6 +1248,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         logger.error("could not write output '%s': %s", args.output, exc)
         return 2
     logger.info("wrote schema to %s", args.output)
+
+    if args.embed:
+        out_pptx = args.output_pptx
+        if out_pptx is None:
+            in_pptx = Path(args.input)
+            out_pptx = str(in_pptx.with_name(in_pptx.stem + ".templated.pptx"))
+        try:
+            result = embed_schema(args.input, schema, out_pptx)
+        except (OSError, TemplateExtractionError) as exc:
+            logger.error("embedding failed: %s", exc)
+            return 2
+        logger.info(
+            "wrote embedded PPTX to %s (%d -> %d bytes%+d)",
+            result.output_path, result.original_bytes, result.new_bytes, result.delta_bytes,
+        )
     return 0
 
 

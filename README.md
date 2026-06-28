@@ -54,24 +54,29 @@ pptx-subagent-development/
 ├── .opencode/
 │   ├── agents/
 │   │   └── pptx-subagent.md              # Content-strategist agent (Stage 0–5 workflow)
-│   └── skills/ppt-template-filler/
-│       ├── SKILL.md                       # Engine usage contract
-│       ├── docs/                          # DESIGN-*.md architecture deep-dives
-│       └── scripts/
-│           ├── ppt_builder.py            # ← THE renderer (only .pptx writer)
-│           ├── template_introspector.py   # Fingerprint-contract extraction (renderer-side)
-│           ├── schema_extractor.py        # US-1.1: normalized template-schema extraction (parallel, non-invasive)
-│           ├── schema_validator.py        # JSON schema validation + retry
-│           ├── density_mode.py            # Per-slide word-budget enforcement
-│           ├── outline_store.py           # Outline checkpoint artifact
-│           ├── templates/
-│           │   ├── template.pptx          # Slide Master with named layouts
-│           │   └── template.config.json   # Layout-name overrides
-│           ├── resolvers/                  # chart-data resolver
-│           ├── schemas/                    # Per-slide-type JSON schemas + template_schema.json (US-1.1)
-│           └── tests/                      # pytest suite
+│   └── skills/
+│       ├── ppt-template-filler/          # Template filling engine + SKILL.md
+│       │   ├── SKILL.md                   # Engine usage contract
+│       │   ├── docs/                      # DESIGN-*.md architecture deep-dives
+│       │   └── scripts/
+│       │       ├── ppt_builder.py            # ← THE renderer (only .pptx writer)
+│       │       ├── template_introspector.py   # Fingerprint-contract extraction (renderer-side)
+│       │       ├── schema_extractor.py        # Epic 1: extraction + font detection + zip embed (US-1.1–1.5)
+│       │       ├── schema_validator.py        # JSON schema validation + retry
+│       │       ├── density_mode.py            # Per-slide word-budget enforcement
+│       │       ├── outline_store.py           # Outline checkpoint artifact
+│       │       ├── templates/
+│       │       │   ├── template.pptx          # Slide Master with named layouts
+│       │       │   └── template.config.json   # Layout-name overrides
+│       │       ├── resolvers/                  # chart-data resolver
+│       │       ├── schemas/                    # Per-slide-type JSON schemas + template_schema.json (Epic 1 spec)
+│       │       └── tests/                      # pytest suite (95 tests for schema_extractor alone)
+│       └── template-modifier-skill/      # Template extension (Capability B)
+├── docs/                                 # Activity diagrams, models, use-cases, workflows
+│   └── user-stories/                     # chenyu-user-stories.md + GAP-ANALYSIS.md (+ .zh.md)
+├── PLANS/                                # Phased execution plans (PLAN-GIT-48/50/52/54/55.md)
 ├── output/                               # Generated .pptx files (gitignored)
-├── USER-STORY.md                         # Agile user stories (the "why")
+├── chenyu-user requirement.html          # Original requirements source (HTML)
 ├── requirements.txt                      # Python dependencies
 └── AGENTS.md                             # Agent operating rules
 ```
@@ -138,6 +143,30 @@ Stage 5  Return         absolute path to the .pptx
 
 See `.opencode/agents/pptx-subagent.md` for the full stage contract.
 
+## Template-schema extraction (Epic 1 — complete)
+
+`schema_extractor.py` reads any `.pptx` and emits a normalized JSON schema that
+mirrors the slide master + layouts. **Epic 1 (5 stories) is fully implemented:**
+
+| Story | Capability |
+|---|---|
+| US-1.1 | Slide master + all layouts → structured JSON (`extract_schema`) |
+| US-1.2 | Normalized polygon positioning with winding check |
+| US-1.3 | Component type enum + `type_confidence` + audio/video subtype |
+| US-1.4 | Per-textbox font detection + `missing_fonts` + availability check |
+| US-1.5 | Embed the schema into the PPTX zip at `ppt/template_schema.json` |
+
+**CLI:**
+```bash
+python schema_extractor.py --input template.pptx --output schema.json        # extract only
+python schema_extractor.py --input template.pptx --output schema.json --embed # extract + embed into a .pptx copy
+```
+
+The schema is validated by `validate_template_schema()` (hand-rolled, no
+`jsonschema` dependency). The renderer's fingerprint contract
+(`template_introspector.py`) is **untouched** — the two paths coexist (GAP-ANALYSIS
+§5 Decision 1).
+
 ## Extending the engine
 
 **Add a new slide type** — three places, all under `scripts/`:
@@ -180,7 +209,9 @@ numbers to pass validation is forbidden. Manual images use `image_path` directly
 | Engine usage contract & field reference | `.opencode/skills/ppt-template-filler/SKILL.md` |
 | Multi-stage generation design | `.opencode/skills/ppt-template-filler/docs/DESIGN-multi-stage-generation.md` |
 | Resource resolver design | `.opencode/skills/ppt-template-filler/docs/DESIGN-resource-resolver.md` |
-| Why this exists (user stories) | `USER-STORY.md` |
+| Requirements (user stories) | `docs/user-stories/chenyu-user-stories.md` |
+| Gap analysis (implementation status) | `docs/user-stories/GAP-ANALYSIS.md` |
+| Phased execution plans | `PLANS/PLAN-GIT-*.md` |
 
 ## Scope (project-level resources)
 

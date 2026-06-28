@@ -126,10 +126,10 @@ The system must use a scripted skill (not raw LLM) to open the PPTX zip, locate 
 - The JSON is minified to keep file size impact minimal (typically < 50 KB).
 
 **Acceptance Criteria:**
-- [ ] After embedding, the PPTX opens in PowerPoint without errors or repair prompts.
-- [ ] The JSON is retrievable by re-reading the zip at the known path.
-- [ ] Existing slide content, layouts, and media are untouched.
-- [ ] File size increase is logged to the user.
+- [x] After embedding, the PPTX opens in PowerPoint without errors or repair prompts.
+- [x] The JSON is retrievable by re-reading the zip at the known path.
+- [x] Existing slide content, layouts, and media are untouched.
+- [x] File size increase is logged to the user.
 
 **Tags:** zip-embedding, pptx-safe, portability
 

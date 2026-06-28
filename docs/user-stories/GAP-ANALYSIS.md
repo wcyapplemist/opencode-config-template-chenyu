@@ -16,6 +16,8 @@
 > **Revision 5 (audit-path consistency):** Re-graded Epic 3/5 stories on the **same path used for Epic 1** (`schema_extractor.py`, the proposed-schema extractor) instead of the renderer contract. Corrections: **US-3.2** ❌→🟡 (`_infer_title` emits `title`; AC1 met, AC2/AC3 not), **US-3.4** 🟡→✅ (`_build_theme` maps semantic roles + `font_palette`; all 3 ACs met), **US-5.1** ❌→🟡 (`schema_extractor` is a real CLI with `--input/--output/--log-level` + exit codes 0/1/2; AC3 met, but skill names/decomposition differ), **US-5.2** 🟡 (clarified: `schema_version` IS in the proposed schema; `template_schema.json` exists but is not loaded at runtime), **US-5.3** 🟡 (clarified: `--log-level` DOES exist in `schema_extractor`; still not JSON-lines). Counts: Met 5 / Partial 6 / Not met 7.
 >
 > **Revision 6 (post-US-1.4, issue #54):** US-1.4 now ✅ Met — `_extract_text_fonts` populates per-textbox `font` (explicit-only, Latin-only) + nested `runs[]`, with a guarded RGB `color`; deduped `missing_fonts[]` against a curated `_BUILTIN_FONTS` allowlist (theme-aware `fallback`, AC4 → validator ERROR); `validate_template_schema` emits a non-fatal WARNING per missing font (AC3). Counts: Met 6 / Partial 6 / Not met 6.
+>
+> **Revision 7 (post-US-1.5, issue #55):** US-1.5 now ✅ Met — `embed_schema` writes the schema into the PPTX zip at `ppt/template_schema.json` via an order-preserving rewrite (`[Content_Types].xml` first + injected `json` Default; decompressed-content-identical originals; idempotent; atomic; `EmbeddedSchemaResult` for AC4); `read_embedded_schema` retrieves it; CLI `--embed` + `--output-pptx`. **Epic 1 complete** (all 5 stories Met). Counts: Met 7 / Partial 6 / Not met 5.
 
 ---
 
@@ -28,7 +30,7 @@ This report compares `chenyu-user-stories.md` (the requirements document) agains
 
 Both achieve "fill any template", but they differ on **data model, skill decomposition, and artifact form**.
 
-**Story-by-story summary** (19 stories): Met 6 / Partial 6 / Not met 6 / Architecture differs 1.
+**Story-by-story summary** (19 stories): Met 7 / Partial 6 / Not met 5 / Architecture differs 1.
 
 **The largest gaps** are concentrated in Epic 1 (normalized polygon component model + font detection + zip embedding), Epic 2/3 (header/footer detection + standalone template generator skill), and Epic 5 (skill decomposition into generate-template / generate-slides + CLI).
 
@@ -74,9 +76,9 @@ Status legend: ✅ Met · 🟡 Partial · ❌ Not met · ⚪ Architecture differ
 
 **Met (issue #54).** `schema_extractor._extract_text_fonts()` (`schema_extractor.py`) populates every text-bearing component's `font` (`family`, `size_pt`, `weight`, `color`, `alignment`, `is_available`, `fallback`) — **explicit-only** (inherited values → `null`); Latin/English only (CJK `<a:ea>`/`<a:cs>` out of scope). It captures a nested `runs[]` (`{text, font:{...}}`) and a guarded RGB `color` (`color.type == MSO_COLOR_TYPE.RGB`, else `null`). The deck aggregates a deduped top-level `missing_fonts[]` (`{family, is_available:false, fallback, download_url:null}`) against a curated `_BUILTIN_FONTS` allowlist; `fallback` defaults to the theme body font (if built-in) else `Arial`, always a built-in name (AC4 → validator ERROR). `validate_template_schema` emits a non-fatal `ValidationIssue(severity="warning")` per missing font (AC3); `extract_schema` also `logger.warning`s. All 4 ACs met. 78 tests in `test_schema_extractor.py` (was 65).
 
-#### US-1.5 — JSON Storage Inside PPTX Zip `[Must Have]` — ❌ Not met
+#### US-1.5 — JSON Storage Inside PPTX Zip `[Must Have]` — ✅ Met
 
-Still not met. `schema_extractor` (PR #49) outputs JSON (CLI `--output` or stdout) and authors `schemas/template_schema.json` as the **spec**, but it does **not embed** the JSON into the PPTX zip. The renderer still reads the sidecar `<stem>.pptx.contract.json` (`template_introspector.py:271-275`). No PowerPoint-safe zip-append logic, no file-size logging.
+**Met (issue #55).** `schema_extractor.embed_schema()` (`schema_extractor.py`) writes the schema into the PPTX zip at `ppt/template_schema.json` via an **order-preserving full rewrite**: `[Content_Types].xml` first (with a `<Default Extension="json" ContentType="application/json"/>` injected — strict-safe, architecture review MAJOR-2), every other original entry **decompressed-content-identical** in original order (MAJOR-1; AC3), then the minified schema appended. **Idempotent** (re-embed replaces, never duplicates — MAJOR-3), **atomic** (temp + `os.replace` — MINOR-6), returns an `EmbeddedSchemaResult` (AC4 size delta — MINOR-5). `read_embedded_schema()` retrieves it with a clear error contract (absent→`None`; malformed→`None`+warn; non-zip→`TemplateExtractionError` — MINOR-3/4). CLI `--embed` + `--output-pptx` (additive; without-`--embed`→exit 2). AC1 verified by proxy (`python-pptx` re-opens; `[Content_Types].xml` first + declares `json` + originals intact; all other entries hash-identical — real PowerPoint is manual). 93 tests in `test_schema_extractor.py` (was 80). → **Epic 1 complete**.
 
 ### Epic 2 — Header, Footer & Best Practices
 
@@ -150,21 +152,21 @@ Python's `logging` module is used across the modules. `schema_extractor.py` **do
 
 | Status | Count | Stories |
 |---|---|---|
-| ✅ Met | 6 | US-1.1, US-1.2, US-1.3, US-1.4, US-3.4, US-4.5 |
+| ✅ Met | 7 | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-3.4, US-4.5 |
 | 🟡 Partial | 6 | US-3.2, US-4.1, US-4.2, US-5.1, US-5.2, US-5.3 |
-| ❌ Not met | 6 | US-1.5, US-2.1, US-2.2, US-3.1, US-3.3, US-4.4 |
+| ❌ Not met | 5 | US-2.1, US-2.2, US-3.1, US-3.3, US-4.4 |
 | ⚪ Architecture differs | 1 | US-4.3 |
 
 ### §3.2 Priority × Status Matrix
 
 | | Must Have | Should Have | Could Have |
 |---|---|---|---|
-| ✅ Met | US-1.1, US-1.2, US-1.3, US-1.4 | US-3.4 | US-4.5 |
+| ✅ Met | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5 | US-3.4 | US-4.5 |
 | 🟡 Partial | US-3.2, US-4.1, US-4.2, US-5.1, US-5.2 | US-5.3 | — |
-| ❌ Not met | **US-1.5, US-2.1, US-3.1, US-3.3** | US-2.2, US-4.4 | — |
+| ❌ Not met | **US-2.1, US-3.1, US-3.3** | US-2.2, US-4.4 | — |
 | ⚪ Differs | US-4.3 | — | — |
 
-**Highest-risk gaps** are the 4 unmet **Must-Have** stories (US-1.4 now Met in Rev 6), clustered in Epic 1 (zip), Epic 2 (header/footer), Epic 3 (template generator), and Epic 5 (skill decomposition).
+**Highest-risk gaps** are the 3 unmet **Must-Have** stories (Epic 1 now complete in Rev 7), clustered in Epic 2 (header/footer), Epic 3 (template generator), and Epic 5 (skill decomposition).
 
 ---
 
@@ -180,7 +182,7 @@ These four stories are the foundation everything else builds on. They define the
 |---|---|
 | ~~**US-1.2 Polygon**~~ | **Done (US-1.2):** `polygon` field + 4 normalized 0–1 coords + the cross-product winding check (AC3) are all delivered — see §2 (Met). *Deferred Details (not ACs):* non-rectangular actual vertices (custGeom/triangle) — polygon stays a rectangular bounding box (metadata-only, no consumer). |
 | ~~**US-1.4 Fonts**~~ | **Done (issue #54):** `_extract_text_fonts` populates per-textbox `font` (explicit-only, Latin-only) + nested `runs[]`; deduped `missing_fonts[]` against `_BUILTIN_FONTS` with theme-aware `fallback` (AC4 → validator ERROR); `validate_template_schema` warns per missing font (AC3). RGB `color` guarded by `color.type==RGB`. *Out of scope:* full-cascade inheritance, CJK (`<a:ea>`/`<a:cs>`), theme-color → hex. |
-| **US-1.5 Zip embedding** | Add a `embed_schema(pptx_path, schema)` function that opens the zip, appends `ppt/template_schema.json` (minified), and writes a new zip **without touching `[Content_Types].xml` or any existing entry**. Verify PowerPoint opens it without repair. |
+| ~~**US-1.5 Zip embedding**~~ | **Done (issue #55):** `embed_schema` writes `ppt/template_schema.json` via an order-preserving rewrite (`[Content_Types].xml` first + injected `json` Default; decompressed-content-identical originals; idempotent; atomic); `read_embedded_schema` retrieves it; `EmbeddedSchemaResult` for AC4; CLI `--embed`. *(The original "without touching `[Content_Types].xml`" was revised to "inject the `json` Default" per architecture review MAJOR-2 — strict-safe; the template declares no `json` Default.)* |
 | **US-2.1 Header/Footer** | Stop discarding chrome: record `has_header/has_footer` booleans + component IDs in `header_footer` metadata. Emit a user prompt when both are absent. |
 
 ### P1 — Template Generator Skill & Decomposition (Must-Have)
