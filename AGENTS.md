@@ -12,19 +12,23 @@ pptx-subagent-development/
 │   ├── agents/
 │   │   └── pptx-subagent.md       # Project-level PPT subagent (multi-stage workflow)
 │   └── skills/
-│       └── ppt-template-filler/   # Template filling engine + SKILL.md
-│           ├── scripts/
-│           │   ├── ppt_builder.py          # Engine: layouts, charts, images
-│           │   ├── template_introspector.py # Fingerprint-contract extraction (renderer-side)
-│           │   ├── schema_extractor.py      # US-1.1: normalized proposed-schema extraction (parallel, non-invasive)
-│           │   ├── schema_validator.py      # JSON schema validation + retry (#20)
-│           │   ├── schemas/                 # Per-slide-type schema definitions + template_schema.json (US-1.1 extraction spec)
-│           │   ├── resolvers/               # Resource resolution pipeline (#23)
-│           │   ├── outline_store.py         # Multi-stage outline artifact (#21/#24)
-│           │   └── tests/                   # pytest suite (156 tests)
-│           └── docs/                        # DESIGN-*.md architecture docs
-├── output/                        # Generated .pptx files
-└── AGENTS.md                      # This file
+│       ├── ppt-template-filler/   # Template filling engine + SKILL.md
+│       │   ├── scripts/
+│       │   │   ├── ppt_builder.py          # Engine: layouts, charts, images
+│       │   │   ├── template_introspector.py # Fingerprint-contract extraction (renderer-side)
+│       │   │   ├── schema_extractor.py      # Epic 1: extraction + font detection + zip embed (US-1.1–1.5)
+│       │   │   ├── schema_validator.py      # JSON schema validation + retry (#20)
+│       │   │   ├── density_mode.py          # Per-slide word-budget enforcement
+│       │   │   ├── schemas/                 # Per-slide-type schemas + template_schema.json (Epic 1 spec)
+│       │   │   ├── resolvers/               # Resource resolution pipeline (#23)
+│       │   │   ├── outline_store.py         # Multi-stage outline artifact (#21/#24)
+│       │   │   └── tests/                   # pytest suite (95 tests for schema_extractor)
+│       │   └── docs/                        # DESIGN-*.md architecture docs
+│       └── template-modifier-skill/         # Template extension (Capability B)
+├── docs/user-stories/              # chenyu-user-stories.md + GAP-ANALYSIS.md (+ .zh.md translations)
+├── PLANS/                          # Phased execution plans (PLAN-GIT-48/50/52/54/55.md)
+├── output/                         # Generated .pptx files
+└── AGENTS.md                       # This file
 ```
 
 ## Project-Level Resources
@@ -41,6 +45,18 @@ Global subagents and skills are managed at `~/.config/opencode/` and are availab
 - The `pptx-subagent` uses `ppt_builder.py` from the `ppt-template-filler` skill to populate `template.pptx` layouts
 - Generated files are saved to `output/`
 - The subagent is STRICTLY FORBIDDEN from building PPTX files from scratch
+
+## Epic 1: Template Extraction & JSON Schema (US-1.1–1.5 — COMPLETE)
+
+`schema_extractor.py` extracts a normalized template schema from any `.pptx` and can embed it back into the zip. All 5 Must-Have stories are Met (95 tests in `test_schema_extractor.py`):
+
+- **US-1.1** — `extract_schema()` reads slide master + all layouts → structured JSON conforming to `schemas/template_schema.json`.
+- **US-1.2** — `normalize_polygon()` emits 4 normalized `{x,y}` points; `_signed_area()` + winding check (algebraic CCW).
+- **US-1.3** — `_classify_shape()` applies the full 10-value type enum + always-emitted `type_confidence`; `"audio"` reachable via OOXML `<a:audioFile>`/`<a:videoFile>`; `shape/low` surfaces a non-fatal WARNING.
+- **US-1.4** — `_extract_text_fonts()` populates per-textbox `font` (explicit-only) + nested `runs[]`; deduped `missing_fonts[]` against `_BUILTIN_FONTS` with theme-aware `fallback` (AC4 → ERROR); non-fatal WARNING per missing font (AC3).
+- **US-1.5** — `embed_schema()` writes `ppt/template_schema.json` into the PPTX zip via an order-preserving rewrite (`[Content_Types].xml` first + injected `json` Default; idempotent; atomic); `read_embedded_schema()` retrieves it. CLI: `--embed` + `--output-pptx`.
+
+The extraction path coexists with the renderer's fingerprint contract (`template_introspector.py`) — the renderer still consumes only the sidecar. See GAP-ANALYSIS §5 Decision 1 (Coexist).
 
 ## Phase 1: Content Intelligence & Resource Resolution (issues #17–#25)
 
