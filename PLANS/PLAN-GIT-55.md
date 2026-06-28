@@ -3,7 +3,7 @@
 **Issue**: #55
 **Branch**: GIT-55 (base: dev)
 **Priority**: Must Have (P0)
-**Status**: Planning (v2 — architecture review findings incorporated)
+**Status**: Implemented (v2 + code-review follow-ups; all phases complete, 95 tests green)
 
 ## Goal
 
@@ -166,31 +166,31 @@ verification step (Risks) — the proxy is what makes the rewrite trustworthy.
 
 ## Acceptance Criteria (US-1.5) — to deliver
 
-- [ ] After embedding, the PPTX opens in PowerPoint without errors or repair
+- [x] After embedding, the PPTX opens in PowerPoint without errors or repair
       prompts (proxy-verified: `python-pptx` re-opens; `[Content_Types].xml`
       first + valid + declares `json`; all other entries decompressed-content-
       identical; "no repair prompt" itself is manual).
-- [ ] The JSON is retrievable by re-reading the zip at the known path
+- [x] The JSON is retrievable by re-reading the zip at the known path
       (`read_embedded_schema` returns the dict; absent → `None`).
-- [ ] Existing slide content, layouts, and media are untouched (all non-
+- [x] Existing slide content, layouts, and media are untouched (all non-
       `[Content_Types].xml`/non-schema entries decompressed-content-identical;
       only `ppt/template_schema.json` is new; `[Content_Types].xml` gains only
       the `json` Default).
-- [ ] File size increase is logged to the user (`embed_schema` returns
+- [x] File size increase is logged to the user (`embed_schema` returns
       `EmbeddedSchemaResult`; CLI logs original → new → delta).
 
 ## Implementation Phases
 
 ### Phase 1: Embedding core (schema_extractor.py)
 
-- [ ] Task 1: `import zipfile`, `import os`, `import tempfile`; constant
+- [x] Task 1: `import zipfile`, `import os`, `import tempfile`; constant
       `_EMBEDDED_SCHEMA_PATH = "ppt/template_schema.json"`; `EmbeddedSchemaResult`
       dataclass/NamedTuple (`output_path`, `original_bytes`, `new_bytes`,
       `delta_bytes`).
-- [ ] Task 2: `_inject_json_default(xml_bytes) -> bytes` — parse with
+- [x] Task 2: `_inject_json_default(xml_bytes) -> bytes` — parse with
       `lxml.etree`; if no `<Default Extension="json">` exists, insert it (before
       any `<Override>`); re-serialize. Idempotent.
-- [ ] Task 3: `embed_schema(pptx_path, schema, output_pptx_path) ->
+- [x] Task 3: `embed_schema(pptx_path, schema, output_pptx_path) ->
       EmbeddedSchemaResult` — read original; write a temp zip:
       `[Content_Types].xml` (= `_inject_json_default` of the original) **first**;
       then every other original entry in original order, **decompressed-content-
@@ -198,46 +198,46 @@ verification step (Risks) — the proxy is what makes the rewrite trustworthy.
       `_EMBEDDED_SCHEMA_PATH` — **idempotent**, MAJOR-3); then
       `ppt/template_schema.json` = minified schema; `os.replace(temp,
       output_pptx_path)` (atomic, MINOR-6). Compute sizes from the result.
-- [ ] Task 4: `read_embedded_schema(pptx_path) -> dict | None` — open zip; if
+- [x] Task 4: `read_embedded_schema(pptx_path) -> dict | None` — open zip; if
       the path is absent → `None`; present → `json.loads` (catch
       `json.JSONDecodeError` → `logger.warning` + `None`, MINOR-3; non-dict →
       `None`); **corrupt/non-zip → raise `TemplateExtractionError`** (MINOR-4).
 
 ### Phase 2: CLI integration (schema_extractor.py)
 
-- [ ] Task 5: Add `--embed` (store_true) + `--output-pptx <path>` (default
+- [x] Task 5: Add `--embed` (store_true) + `--output-pptx <path>` (default
       `<input_stem>.templated.pptx`).
-- [ ] Task 6: If `--output-pptx` is set without `--embed` → argparse error
+- [x] Task 6: If `--output-pptx` is set without `--embed` → argparse error
       (exit 2, MINOR-2).
-- [ ] Task 7: When `--embed`, call `embed_schema` after writing `--output` JSON;
+- [x] Task 7: When `--embed`, call `embed_schema` after writing `--output` JSON;
       log `result.original_bytes → result.new_bytes (+result.delta_bytes)`
       (AC4, from the returned struct — MINOR-5); log the output path.
 
 ### Phase 3: Tests (test_schema_extractor.py)
 
-- [ ] Task 8: **Round-trip** on a small synthetic deck — `extract_schema` →
+- [x] Task 8: **Round-trip** on a small synthetic deck — `extract_schema` →
       `embed_schema` → `read_embedded_schema` → deep-equal to the extracted dict.
-- [ ] Task 9: **`[Content_Types].xml` + entry integrity (AC1 proxy)** — still the
+- [x] Task 9: **`[Content_Types].xml` + entry integrity (AC1 proxy)** — still the
       first entry; valid XML; **contains the `json` Default**; preserves the
       original Defaults + Overrides; every **other** original entry
       decompressed-content-identical (hash of `ZipFile.read(name)`); only
       `ppt/template_schema.json` is otherwise new.
-- [ ] Task 10: `Presentation(embedded_pptx)` re-opens; same slide + layout count.
-- [ ] Task 11: **Idempotent (MAJOR-3)** — embed the embedded PPTX again → exactly
+- [x] Task 10: `Presentation(embedded_pptx)` re-opens; same slide + layout count.
+- [x] Task 11: **Idempotent (MAJOR-3)** — embed the embedded PPTX again → exactly
       one `ppt/template_schema.json` entry, content = the second schema.
-- [ ] Task 12: **Minified/size (AC4, MINOR-5)** — embedded JSON compact (no
+- [x] Task 12: **Minified/size (AC4, MINOR-5)** — embedded JSON compact (no
       `", "`/`": "`); `result.delta_bytes > 0`; assert on the returned
       `EmbeddedSchemaResult`, not log text.
-- [ ] Task 13: **`read_embedded_schema` error contract (MINOR-3/4)** — plain
+- [x] Task 13: **`read_embedded_schema` error contract (MINOR-3/4)** — plain
       PPTX → `None`; malformed JSON at the path → `None` (+ warning); non-zip
       input → raises `TemplateExtractionError`.
-- [ ] Task 14: **Non-ASCII round-trip (NIT-1)** — inject a non-ASCII title
+- [x] Task 14: **Non-ASCII round-trip (NIT-1)** — inject a non-ASCII title
       (e.g. `模板测试`); survive embed → read byte-for-byte.
-- [ ] Task 15: One bundled-`template.pptx` smoke test (realism).
+- [x] Task 15: One bundled-`template.pptx` smoke test (realism).
 
 ### Phase 4: Docs
 
-- [ ] Task 16: Update `GAP-ANALYSIS.md` US-1.5 → ✅ Met (Met 6→7, Not met 6→5);
+- [x] Task 16: Update `GAP-ANALYSIS.md` US-1.5 → ✅ Met (Met 6→7, Not met 6→5);
       `chenyu-user-stories.md` US-1.5 ACs → `[x]`. → Epic 1 complete (all 5
       stories Met).
 
@@ -301,6 +301,29 @@ python schema_extractor.py --input templates/template.pptx --output ./s.json --e
 - **Real PowerPoint "no repair prompt"** — not auto-testable; proxy + manual.
 - **Backward compatibility — low** — `--embed` opt-in; default behavior and the
   renderer (sidecar) unchanged.
+
+## Code-review follow-ups
+
+Post-implementation code review (verdict: Approve with revisions — 0 Critical/0
+Major). All locked architecture decisions (MAJOR-1/2/3, MINOR-2/3/4/5/6) verified
+correctly implemented. The applied fixes (behavior-preserving + additive tests):
+
+- [x] **MINOR-1 — log sign rendering.** Both size-delta log lines
+  (`schema_extractor.py` `embed_schema` + CLI) changed `"+%d"` → `"%+d"` so a
+  negative delta (the bundled template produces one due to re-compression)
+  renders `-N` instead of `"+-N"`.
+- [x] **MINOR-2 — `read_embedded_schema` contract test gaps closed.** The
+  malformed-JSON test now asserts the warning fires; added
+  `test_non_dict_json_returns_none` (array at the path → None + warning) and
+  `test_missing_file_raises_domain_error` (FileNotFoundError →
+  `TemplateExtractionError`). All four contract branches now covered.
+- Not applied (deferred): **MINOR-3** (widen/document `embed_schema`'s exception
+  surface — unreachable via normal CLI flow since `extract_schema` opens first),
+  **MINOR-4** (zip-metadata fidelity is intentionally not preserved per MAJOR-1),
+  and the NITs (cosmetic).
+
+Tests: `test_schema_extractor.py` → **95 passed** (was 93). No production-logic
+change — only log formatting (MINOR-1) and additive tests (MINOR-2).
 
 ## References
 

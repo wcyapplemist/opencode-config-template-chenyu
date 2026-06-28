@@ -1028,7 +1028,6 @@ class TestReadEmbeddedSchema:
         assert read_embedded_schema(deck) is None
 
     def test_malformed_json_returns_none(self, tmp_path, caplog):
-        import json as _json
         deck = _save_synthetic_deck(tmp_path)
         bad = str(tmp_path / "bad.pptx")
         # copy deck and write garbage at the schema path
@@ -1038,6 +1037,25 @@ class TestReadEmbeddedSchema:
             z.writestr(_EMBEDDED_SCHEMA_PATH, b"not-json{{")
         with caplog.at_level("WARNING"):
             assert read_embedded_schema(bad) is None
+        # MINOR-2: the warning half of the contract must actually fire.
+        assert any("malformed" in r.message for r in caplog.records), "expected a malformed-JSON warning"
+
+    def test_non_dict_json_returns_none(self, tmp_path, caplog):
+        # MINOR-2: valid JSON but not an object (e.g. an array) -> None + warning.
+        import shutil
+        deck = _save_synthetic_deck(tmp_path)
+        bad = str(tmp_path / "nondict.pptx")
+        shutil.copy(deck, bad)
+        with zipfile.ZipFile(bad, "a") as z:
+            z.writestr(_EMBEDDED_SCHEMA_PATH, b"[1, 2, 3]")
+        with caplog.at_level("WARNING"):
+            assert read_embedded_schema(bad) is None
+        assert any("not a JSON object" in r.message for r in caplog.records)
+
+    def test_missing_file_raises_domain_error(self):
+        # MINOR-2: a missing file -> OSError -> TemplateExtractionError (mirrors extract_schema).
+        with pytest.raises(TemplateExtractionError):
+            read_embedded_schema("does_not_exist.pptx")
 
     def test_non_zip_raises_domain_error(self, tmp_path):
         bad = tmp_path / "not_a_zip.pptx"

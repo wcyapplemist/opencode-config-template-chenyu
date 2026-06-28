@@ -1152,7 +1152,7 @@ def embed_schema(
 
     new_bytes = out_path.stat().st_size
     logger.info(
-        "embedded schema into %s: %d -> %d bytes (+%d)",
+        "embedded schema into %s: %d -> %d bytes (%+d)",
         out_path, original_bytes, new_bytes, new_bytes - original_bytes,
     )
     return EmbeddedSchemaResult(str(out_path), original_bytes, new_bytes, new_bytes - original_bytes)
@@ -1260,7 +1260,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             logger.error("embedding failed: %s", exc)
             return 2
         logger.info(
-            "wrote embedded PPTX to %s (%d -> %d bytes, +%d)",
+            "wrote embedded PPTX to %s (%d -> %d bytes%+d)",
             result.output_path, result.original_bytes, result.new_bytes, result.delta_bytes,
         )
     return 0
