@@ -28,14 +28,18 @@ from schema_extractor import (
     TemplateExtractionError,
     _BUILTIN_FONTS,
     _classify_shape,
+    _EMBEDDED_SCHEMA_PATH,
     _extract_components,
     _extract_text_fonts,
     _font_fallback,
     _IdCounter,
+    _inject_json_default,
     _signed_area,
+    embed_schema,
     extract_schema,
     map_shape_type,
     normalize_polygon,
+    read_embedded_schema,
     validate_template_schema,
 )
 
@@ -897,3 +901,146 @@ class TestNegativePath:
     def test_missing_file_raises_domain_error(self):
         with pytest.raises(TemplateExtractionError):
             extract_schema("does_not_exist.pptx")
+
+
+# ---------------------------------------------------------------------------
+# (11) US-1.5 — embed / read the schema inside the PPTX zip
+# ---------------------------------------------------------------------------
+import hashlib  # noqa: E402
+import zipfile  # noqa: E402
+
+
+def _save_synthetic_deck(tmp_path, title=None):
+    """A small real .pptx on disk (fast, deterministic fixture for zip tests)."""
+    from pptx import Presentation
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    if title is not None:
+        slide.shapes.add_textbox(0, 0, 9144000, 9144000).text_frame.text = title
+    out = tmp_path / "deck.pptx"
+    prs.save(str(out))
+    return str(out)
+
+
+class TestInjectJsonDefault:
+    def test_injects_when_absent(self):
+        xml = b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' \
+              b'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' \
+              b'<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' \
+              b'<Default Extension="xml" ContentType="application/xml"/>' \
+              b'</Types>'
+        out = _inject_json_default(xml)
+        assert b'Extension="json"' in out and b'application/json' in out
+
+    def test_idempotent_when_present(self):
+        xml = b'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' \
+              b'<Default Extension="json" ContentType="application/json"/></Types>'
+        # already declared -> returned unchanged
+        assert _inject_json_default(xml) == xml
+
+
+class TestEmbedSchema:
+    def test_round_trip_deep_equal(self, tmp_path):
+        deck = _save_synthetic_deck(tmp_path)
+        schema = extract_schema(deck)
+        embedded = str(tmp_path / "deck.templated.pptx")
+        embed_schema(deck, schema, embedded)
+        assert read_embedded_schema(embedded) == schema
+
+    def test_content_types_first_valid_json_default_intact(self, tmp_path):
+        deck = _save_synthetic_deck(tmp_path)
+        embedded = str(tmp_path / "deck.templated.pptx")
+        embed_schema(deck, extract_schema(deck), embedded)
+        with zipfile.ZipFile(embedded) as z:
+            names = z.namelist()
+            assert names[0] == "[Content_Types].xml"
+            ct = z.read("[Content_Types].xml").decode("utf-8")
+        assert 'Extension="json"' in ct and 'application/json' in ct
+        # the original Defaults (rels, xml) are preserved
+        assert 'Extension="rels"' in ct and 'Extension="xml"' in ct
+
+    def test_other_entries_decompressed_identical_only_schema_new(self, tmp_path):
+        deck = _save_synthetic_deck(tmp_path)
+        embedded = str(tmp_path / "deck.templated.pptx")
+        embed_schema(deck, extract_schema(deck), embedded)
+        with zipfile.ZipFile(deck) as zo, zipfile.ZipFile(embedded) as ze:
+            onames = set(zo.namelist())
+            enames = set(ze.namelist())
+            assert onames.issubset(enames)                      # nothing dropped
+            assert enames - onames == {_EMBEDDED_SCHEMA_PATH}   # only the schema is new
+            for n in onames:
+                if n == "[Content_Types].xml":
+                    continue
+                assert hashlib.md5(zo.read(n)).hexdigest() == hashlib.md5(ze.read(n)).hexdigest(), n
+
+    def test_python_pptx_reopens_same_counts(self, tmp_path):
+        from pptx import Presentation
+        deck = _save_synthetic_deck(tmp_path)
+        embedded = str(tmp_path / "deck.templated.pptx")
+        embed_schema(deck, extract_schema(deck), embedded)
+        p_o, p_e = Presentation(deck), Presentation(embedded)
+        assert len(p_o.slides) == len(p_e.slides)
+        assert len(p_o.slide_layouts) == len(p_e.slide_layouts)
+
+    def test_idempotent_re_embed(self, tmp_path):
+        deck = _save_synthetic_deck(tmp_path)
+        emb1 = str(tmp_path / "emb1.pptx")
+        schema1 = extract_schema(deck)
+        embed_schema(deck, schema1, emb1)
+        # re-embed the already-embedded PPTX with a different schema
+        schema2 = dict(schema1)
+        schema2["__second__"] = True
+        emb2 = str(tmp_path / "emb2.pptx")
+        embed_schema(emb1, schema2, emb2)
+        with zipfile.ZipFile(emb2) as z:
+            assert z.namelist().count(_EMBEDDED_SCHEMA_PATH) == 1
+        assert read_embedded_schema(emb2) == schema2
+
+    def test_result_struct_and_minified(self, tmp_path):
+        deck = _save_synthetic_deck(tmp_path)
+        embedded = str(tmp_path / "deck.templated.pptx")
+        result = embed_schema(deck, extract_schema(deck), embedded)
+        assert result.output_path == embedded
+        assert result.original_bytes > 0 and result.new_bytes > 0
+        # embedded JSON is minified (no ", " / ": " insignificant whitespace)
+        with zipfile.ZipFile(embedded) as z:
+            payload = z.read(_EMBEDDED_SCHEMA_PATH).decode("utf-8")
+        assert '", "' not in payload and '": "' not in payload
+
+    def test_non_ascii_round_trip(self, tmp_path):
+        deck = _save_synthetic_deck(tmp_path, title="模板测试 — ✓")
+        schema = extract_schema(deck)
+        embedded = str(tmp_path / "deck.templated.pptx")
+        embed_schema(deck, schema, embedded)
+        assert read_embedded_schema(embedded) == schema  # ensure_ascii=False round-trips
+
+    def test_bundled_template_smoke(self, template_path, tmp_path):
+        # realism: the real 620-entry bundled template
+        embedded = str(tmp_path / "template.templated.pptx")
+        result = embed_schema(template_path, extract_schema(template_path), embedded)
+        assert read_embedded_schema(embedded) is not None
+        assert result.delta_bytes != 0
+
+
+class TestReadEmbeddedSchema:
+    def test_absent_returns_none(self, tmp_path):
+        deck = _save_synthetic_deck(tmp_path)
+        assert read_embedded_schema(deck) is None
+
+    def test_malformed_json_returns_none(self, tmp_path, caplog):
+        import json as _json
+        deck = _save_synthetic_deck(tmp_path)
+        bad = str(tmp_path / "bad.pptx")
+        # copy deck and write garbage at the schema path
+        import shutil
+        shutil.copy(deck, bad)
+        with zipfile.ZipFile(bad, "a") as z:
+            z.writestr(_EMBEDDED_SCHEMA_PATH, b"not-json{{")
+        with caplog.at_level("WARNING"):
+            assert read_embedded_schema(bad) is None
+
+    def test_non_zip_raises_domain_error(self, tmp_path):
+        bad = tmp_path / "not_a_zip.pptx"
+        bad.write_bytes(b"definitely not a zip")
+        with pytest.raises(TemplateExtractionError):
+            read_embedded_schema(str(bad))
