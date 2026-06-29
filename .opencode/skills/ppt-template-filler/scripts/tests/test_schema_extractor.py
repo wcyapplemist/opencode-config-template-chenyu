@@ -26,6 +26,8 @@ from schema_extractor import (
     COMPONENT_TYPE_ENUM,
     PLACEHOLDER_TYPE_ENUM,
     TemplateExtractionError,
+    TITLE_SOURCES,
+    TitleInference,
     _BUILTIN_FONTS,
     _classify_shape,
     _EMBEDDED_SCHEMA_PATH,
@@ -33,10 +35,13 @@ from schema_extractor import (
     _extract_text_fonts,
     _font_fallback,
     _IdCounter,
+    _infer_title,
     _inject_json_default,
     _signed_area,
+    build_extraction_summary,
     embed_schema,
     extract_schema,
+    main,
     map_shape_type,
     normalize_polygon,
     read_embedded_schema,
@@ -1062,3 +1067,181 @@ class TestReadEmbeddedSchema:
         bad.write_bytes(b"definitely not a zip")
         with pytest.raises(TemplateExtractionError):
             read_embedded_schema(str(bad))
+
+
+# ---------------------------------------------------------------------------
+# (12) US-3.1 -- title_source provenance + extraction summary + CLI --summary
+# ---------------------------------------------------------------------------
+from pptx import Presentation as _Presentation  # noqa: E402
+
+
+def _deck(tmp_path, name="deck.pptx", core_title=None, slide1_text=None):
+    """Build a 1-slide deck controlling core.xml title and slide-1 text."""
+    prs = _Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    if slide1_text is not None:
+        slide.shapes.add_textbox(0, 0, 9144000, 9144000).text_frame.text = slide1_text
+    if core_title is not None:
+        prs.core_properties.title = core_title
+    out = tmp_path / name
+    prs.save(str(out))
+    return str(out)
+
+
+class TestTitleInferenceSource:
+    """US-3.1 MINOR-5: _infer_title returns a TitleInference with provenance."""
+
+    def test_namedtuple_fields(self):
+        inf = TitleInference("x", "filename")
+        assert inf.title == "x"
+        assert inf.source == "filename"
+
+    def test_core_xml_wins(self, tmp_path):
+        deck = _deck(tmp_path, core_title="Core Doc Title", slide1_text="Slide Title")
+        prs = _Presentation(deck)
+        inf = _infer_title(prs, deck)
+        assert inf.title == "Core Doc Title"
+        assert inf.source == "core_xml"
+
+    def test_slide1_when_no_core_title(self, tmp_path):
+        deck = _deck(tmp_path, slide1_text="First Slide Heading")
+        prs = _Presentation(deck)
+        inf = _infer_title(prs, deck)
+        assert inf.title == "First Slide Heading"
+        assert inf.source == "slide1"
+
+    def test_filename_fallback(self, tmp_path):
+        deck = _deck(tmp_path, name="my_template.pptx")
+        prs = _Presentation(deck)
+        inf = _infer_title(prs, deck)
+        assert inf.title == "my_template"
+        assert inf.source == "filename"
+
+    def test_extract_emits_title_source(self, tmp_path):
+        # extract_schema must carry title_source into template_metadata (Task 2).
+        deck = _deck(tmp_path, core_title="From Core")
+        schema = extract_schema(deck)
+        meta = schema["template_metadata"]
+        assert meta["title"] == "From Core"
+        assert meta["title_source"] == "core_xml"
+
+    def test_skill_write_back_to_user(self, tmp_path):
+        # The skill layer sets title_source="user" after a user override; the
+        # field round-trips through embed -> read unchanged.
+        deck = _deck(tmp_path, core_title="Inferred")
+        schema = extract_schema(deck)
+        schema["template_metadata"]["title"] = "User Renamed"
+        schema["template_metadata"]["title_source"] = "user"
+        embedded = str(tmp_path / "deck.templated.pptx")
+        embed_schema(deck, schema, embedded)
+        back = read_embedded_schema(embedded)
+        assert back["template_metadata"]["title_source"] == "user"
+
+
+class TestTitleSourceValidation:
+    """US-3.1 MAJOR-2: validate_template_schema enforces the title_source enum."""
+
+    @staticmethod
+    def _base_schema():
+        # A minimal valid schema; title_source is the only varying field.
+        return {
+            "template_metadata": {
+                "title": "T", "title_source": "core_xml", "schema_version": "1.0.0",
+                "generated_by": "x", "generated_at": "now",
+                "slide_dimensions": {"width_emu": 1, "height_emu": 1,
+                                     "width_inches": 1.0, "height_inches": 1.0, "aspect_ratio": "1:1"},
+            },
+            "slide_master": {"name": "m", "components": []},
+            "slide_layouts": [],
+            "component_type_enum": list(COMPONENT_TYPE_ENUM),
+            "placeholder_type_enum": list(PLACEHOLDER_TYPE_ENUM),
+        }
+
+    def test_valid_sources_pass(self):
+        for src in TITLE_SOURCES:
+            s = self._base_schema()
+            s["template_metadata"]["title_source"] = src
+            res = validate_template_schema(s)
+            assert res.is_valid, (src, res.error_messages())
+
+    def test_invalid_source_fails(self):
+        s = self._base_schema()
+        s["template_metadata"]["title_source"] = "garbage"
+        res = validate_template_schema(s)
+        assert not res.is_valid
+        assert any("title_source" in m for m in res.error_messages())
+
+    def test_absent_source_ok(self):
+        # title_source is optional (legacy schemas without it still validate).
+        s = self._base_schema()
+        del s["template_metadata"]["title_source"]
+        assert validate_template_schema(s).is_valid
+
+    def test_bundled_template_validates_with_title_source(self, schema):
+        # Regression: the real bundled template now emits title_source and still validates.
+        assert schema["template_metadata"].get("title_source") in TITLE_SOURCES
+        assert validate_template_schema(schema).is_valid
+
+
+class TestExtractionSummary:
+    """US-3.1 / US-3.3 AC2: build_extraction_summary content."""
+
+    def test_contains_key_lines(self, schema):
+        summary = build_extraction_summary(schema)
+        assert isinstance(summary, str)
+        assert "Title:" in summary
+        assert "Layouts:" in summary
+        assert "Slide master:" in summary
+        # theme + fonts sections appear when the template carries them
+        assert "Theme colors:" in summary
+        assert "Font palette:" in summary
+
+    def test_shows_title_source(self, tmp_path):
+        deck = _deck(tmp_path, core_title="Deck Name")
+        schema = extract_schema(deck)
+        summary = build_extraction_summary(schema)
+        assert "source: core_xml" in summary
+
+    def test_pure_no_mutation(self, schema):
+        before = dict(schema)
+        build_extraction_summary(schema)
+        assert schema == before  # the function must not mutate its input
+
+    def test_handles_minimal_schema(self):
+        # Defensive: missing optional keys do not crash.
+        s = {"template_metadata": {"title": "X"}, "slide_master": {}, "slide_layouts": []}
+        out = build_extraction_summary(s)
+        assert "Title: X" in out
+        assert "Layouts: 0" in out
+
+
+class TestCliSummaryFlag:
+    """US-3.1 Task 6: CLI --summary prints to stdout."""
+
+    def test_summary_prints_and_exits_zero(self, template_path, tmp_path, capsys):
+        out_json = str(tmp_path / "out.json")
+        rc = main(["--input", template_path, "--output", out_json, "--summary"])
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "Title:" in captured.out
+        assert "Layouts:" in captured.out
+
+    def test_no_summary_flag_is_silent(self, template_path, tmp_path, capsys):
+        out_json = str(tmp_path / "out.json")
+        rc = main(["--input", template_path, "--output", out_json])
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "Title:" not in captured.out
+
+    def test_embed_with_summary(self, template_path, tmp_path, capsys):
+        # The full end-to-end CLI path (extract + embed + summary) exits 0.
+        out_json = str(tmp_path / "out.json")
+        out_pptx = str(tmp_path / "out.templated.pptx")
+        rc = main([
+            "--input", template_path, "--output", out_json,
+            "--embed", "--output-pptx", out_pptx, "--summary",
+        ])
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "Layouts:" in captured.out
+        assert read_embedded_schema(out_pptx) is not None

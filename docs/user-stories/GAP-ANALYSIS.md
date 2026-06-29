@@ -18,6 +18,8 @@
 > **Revision 6 (post-US-1.4, issue #54):** US-1.4 now ✅ Met — `_extract_text_fonts` populates per-textbox `font` (explicit-only, Latin-only) + nested `runs[]`, with a guarded RGB `color`; deduped `missing_fonts[]` against a curated `_BUILTIN_FONTS` allowlist (theme-aware `fallback`, AC4 → validator ERROR); `validate_template_schema` emits a non-fatal WARNING per missing font (AC3). Counts: Met 6 / Partial 6 / Not met 6.
 >
 > **Revision 7 (post-US-1.5, issue #55):** US-1.5 now ✅ Met — `embed_schema` writes the schema into the PPTX zip at `ppt/template_schema.json` via an order-preserving rewrite (`[Content_Types].xml` first + injected `json` Default; decompressed-content-identical originals; idempotent; atomic; `EmbeddedSchemaResult` for AC4); `read_embedded_schema` retrieves it; CLI `--embed` + `--output-pptx`. **Epic 1 complete** (all 5 stories Met). Counts: Met 7 / Partial 6 / Not met 5.
+>
+> **Revision 8 (post-US-3.1, issue #56):** US-3.1 now ✅ Met — a standalone `generate-template-skill` (`.opencode/skills/generate-template-skill/SKILL.md`) orchestrates the full `extract → validate → (title confirm) → embed → return templated PPTX + summary` pipeline; `pptx-subagent.md` gains a one-line "What NOT to Handle" deferral fixing the NL-routing collision (architecture review MAJOR-1). US-3.2 🟡→✅ — `_infer_title` now returns a `TitleInference(title, source)` NamedTuple and `_build_metadata` emits `title_source`; the skill prompts the user when `title_source == "filename"` and always displays the title for confirmation (AC2/AC3). US-3.3 ❌→✅ (corrects the Rev-7 stale rating — US-1.5 already delivered embed + the round-trip test; this issue adds the downloadable-PPTX surface via the skill + `build_extraction_summary` + CLI `--summary`). `title_source` is runtime-enforced by `validate_template_schema` (MAJOR-2), closing the US-5.2 gap for that field. **Epic 3 complete** (all 4 stories Met). Counts: Met 10 / Partial 5 / Not met 3 / Differs 1.
 
 ---
 
@@ -30,7 +32,7 @@ This report compares `chenyu-user-stories.md` (the requirements document) agains
 
 Both achieve "fill any template", but they differ on **data model, skill decomposition, and artifact form**.
 
-**Story-by-story summary** (19 stories): Met 7 / Partial 6 / Not met 5 / Architecture differs 1.
+**Story-by-story summary** (19 stories): Met 10 / Partial 5 / Not met 3 / Architecture differs 1.
 
 **The largest gaps** are concentrated in Epic 1 (normalized polygon component model + font detection + zip embedding), Epic 2/3 (header/footer detection + standalone template generator skill), and Epic 5 (skill decomposition into generate-template / generate-slides + CLI).
 
@@ -92,17 +94,17 @@ No `common_practices` object exists in the contract. There is **no checks** for 
 
 ### Epic 3 — Skill — Template Generator
 
-#### US-3.1 — End-to-End Template Generation Pipeline `[Must Have]` — ❌ Not met
+#### US-3.1 — End-to-End Template Generation Pipeline `[Must Have]` — ✅ Met (Rev 8)
 
-Introspection is **embedded in the render path** (runs automatically before `generate_ppt_from_data`), not a standalone `generate-template` skill. There is **no** "extract → validate → embed → return templated PPTX" CLI pipeline.
+A standalone `generate-template-skill` (`.opencode/skills/generate-template-skill/SKILL.md`) now orchestrates the full pipeline end-to-end via the `schema_extractor` engine: `extract → validate → (title confirm) → embed → return templated PPTX + summary`. NL intent routing is via the SKILL.md `description` (extraction verbs) + a one-line "What NOT to Handle" deferral in `pptx-subagent.md` (architecture review MAJOR-1 — the agent's greedy `pptx` triggers would otherwise have misrouted extraction requests). All three ACs met.
 
-#### US-3.2 — Template Naming `[Must Have]` — 🟡 Partial
+#### US-3.2 — Template Naming `[Must Have]` — ✅ Met (Rev 8)
 
-The renderer's fingerprint contract (`template_introspector.py`) has only `source_file`/`source_mtime` — no `title`. **But the proposed-schema path implements it**: `schema_extractor._infer_title()` infers `template_metadata.title` (`core.xml` title → first-slide title text → filename stem) and `_build_metadata()` emits it. AC1 (title always non-empty — the filename fallback guarantees it) is **met**; AC2 (inference order ending in a **user prompt**) and AC3 (displayed for confirmation) are **not** (the third fallback is the filename, not a prompt; nothing is surfaced for confirmation). Graded Partial on the `schema_extractor` path.
+`_infer_title` now returns a `TitleInference(title, source)` NamedTuple and `_build_metadata` emits `template_metadata.title_source` (`core_xml` | `slide1` | `filename`); the skill prompts the user to name the template when `title_source == "filename"` and writes back `title_source = "user"` on an override (AC2 — the inference order now ends in a **user prompt**, not just a filename). The skill always displays the title for confirmation (AC3). AC1 (non-empty title via the filename fallback) was already met. All three ACs met.
 
-#### US-3.3 — Return Downloadable Templated PPTX `[Must Have]` — ❌ Not met
+#### US-3.3 — Return Downloadable Templated PPTX `[Must Have]` — ✅ Met (Rev 8)
 
-No PPTX-with-embedded-JSON is produced or returned. The original `.pptx` is **never modified** (the sidecar is the only artifact). No round-trip test exists.
+**Corrects the Rev-7 stale rating.** US-1.5 already delivered `embed_schema` (produces the downloadable templated PPTX) and the round-trip test (`test_round_trip_deep_equal`). This issue adds the skill surface (the downloadable PPTX is returned via `output/<stem>.templated.pptx`, AC1) and `build_extraction_summary(schema) -> str` + CLI `--summary` (AC2 — a human-readable summary of layouts/components/fonts/theme). AC3 (round-trip) was already met. All three ACs met.
 
 #### US-3.4 — Theme & Color Extraction `[Should Have]` — ✅ Met
 
@@ -152,21 +154,21 @@ Python's `logging` module is used across the modules. `schema_extractor.py` **do
 
 | Status | Count | Stories |
 |---|---|---|
-| ✅ Met | 7 | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-3.4, US-4.5 |
-| 🟡 Partial | 6 | US-3.2, US-4.1, US-4.2, US-5.1, US-5.2, US-5.3 |
-| ❌ Not met | 5 | US-2.1, US-2.2, US-3.1, US-3.3, US-4.4 |
+| ✅ Met | 10 | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-3.1, US-3.2, US-3.3, US-3.4, US-4.5 |
+| 🟡 Partial | 5 | US-4.1, US-4.2, US-5.1, US-5.2, US-5.3 |
+| ❌ Not met | 3 | US-2.1, US-2.2, US-4.4 |
 | ⚪ Architecture differs | 1 | US-4.3 |
 
 ### §3.2 Priority × Status Matrix
 
 | | Must Have | Should Have | Could Have |
 |---|---|---|---|
-| ✅ Met | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5 | US-3.4 | US-4.5 |
-| 🟡 Partial | US-3.2, US-4.1, US-4.2, US-5.1, US-5.2 | US-5.3 | — |
-| ❌ Not met | **US-2.1, US-3.1, US-3.3** | US-2.2, US-4.4 | — |
+| ✅ Met | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-3.1, US-3.2, US-3.3 | US-3.4 | US-4.5 |
+| 🟡 Partial | US-4.1, US-4.2, US-5.1, US-5.2 | US-5.3 | — |
+| ❌ Not met | **US-2.1** | US-2.2, US-4.4 | — |
 | ⚪ Differs | US-4.3 | — | — |
 
-**Highest-risk gaps** are the 3 unmet **Must-Have** stories (Epic 1 now complete in Rev 7), clustered in Epic 2 (header/footer), Epic 3 (template generator), and Epic 5 (skill decomposition).
+**Epics 1 and 3 are now complete** (Rev 8). The remaining gaps cluster in Epic 2 (header/footer detection + common practices), Epic 4 (slide-generation polish + template-less style picker), and Epic 5 (skill decomposition / CLI / shared-schema loading). The single unmet Must-Have is **US-2.1** (header/footer).
 
 ---
 
@@ -189,9 +191,9 @@ These four stories are the foundation everything else builds on. They define the
 
 | Story | Suggestion |
 |---|---|
-| **US-3.1 + US-5.1** | Introduce a dedicated `generate-template` skill with a real CLI (`--input/--output`) that runs the full P0 extraction → validation → zip-embed → return. Mirror it as `generate-slides` for the read-JSON-then-render path. Add documented exit codes (0 success / 1 validation / 2 runtime). |
-| **US-3.2** | Infer `title` from `docProps/core.xml` → first-slide title → user prompt, and store it as `template_metadata.title`. |
-| **US-3.3** | Produce the downloadable templated PPTX (P0 embedding) + a human-readable extraction summary. Add a round-trip test (open → re-upload → re-extract → JSON identical). |
+| **US-3.1 + US-5.1** | ~~US-3.1 Done (issue #56):~~ a dedicated `generate-template-skill` now runs the full P0 extraction → validation → zip-embed → return, with documented exit codes (0/1/2) inherited from the `schema_extractor` CLI. *US-5.1 still Partial:* only the `generate-template` half exists — `generate-slides` (the read-JSON-then-render CLI) is not yet built. |
+| ~~**US-3.2**~~ | **Done (issue #56):** `_infer_title` returns `TitleInference(title, source)`; the skill prompts the user when `title_source == "filename"` and stores the result as `template_metadata.title` / `title_source`. |
+| ~~**US-3.3**~~ | **Done (issue #56):** the downloadable templated PPTX (US-1.5 embedding) is surfaced via the skill; `build_extraction_summary` + CLI `--summary` deliver the human-readable summary. The round-trip test already exists (`test_round_trip_deep_equal`). |
 
 ### P2 — Polish & Best Practices (Should/Could-Have)
 

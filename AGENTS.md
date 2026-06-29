@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-PPTX subagent development — iterating and testing the `pptx-subagent` and `ppt-template-filler` skill.
+PPTX subagent development — iterating and testing the `pptx-subagent` agent plus three skills: `ppt-template-filler` (fill), `template-modifier-skill` (extend), and `generate-template-skill` (extract).
 
 ## Project Structure
 
@@ -16,39 +16,42 @@ pptx-subagent-development/
 │       │   ├── scripts/
 │       │   │   ├── ppt_builder.py          # Engine: layouts, charts, images
 │       │   │   ├── template_introspector.py # Fingerprint-contract extraction (renderer-side)
-│       │   │   ├── schema_extractor.py      # Epic 1: extraction + font detection + zip embed (US-1.1–1.5)
+    │       │   │   ├── schema_extractor.py      # Epic 1: extraction + font detection + zip embed (US-1.1–1.5); US-3.1: title_source + build_extraction_summary
 │       │   │   ├── schema_validator.py      # JSON schema validation + retry (#20)
 │       │   │   ├── density_mode.py          # Per-slide word-budget enforcement
 │       │   │   ├── schemas/                 # Per-slide-type schemas + template_schema.json (Epic 1 spec)
 │       │   │   ├── resolvers/               # Resource resolution pipeline (#23)
 │       │   │   ├── outline_store.py         # Multi-stage outline artifact (#21/#24)
-│       │   │   └── tests/                   # pytest suite (95 tests for schema_extractor)
+    │       │   │   └── tests/                   # pytest suite (112 tests for schema_extractor)
 │       │   └── docs/                        # DESIGN-*.md architecture docs
+│       ├── generate-template-skill/         # Template extraction + embed (US-3.1; wraps schema_extractor)
 │       └── template-modifier-skill/         # Template extension (Capability B)
 ├── docs/user-stories/              # chenyu-user-stories.md + GAP-ANALYSIS.md (+ .zh.md translations)
-├── PLANS/                          # Phased execution plans (PLAN-GIT-48/50/52/54/55.md)
+├── PLANS/                          # Phased execution plans (PLAN-GIT-48/50/52/54/55/56.md)
 ├── output/                         # Generated .pptx files
 └── AGENTS.md                       # This file
 ```
 
 ## Project-Level Resources
 
-| Resource              | Type  | Scope             |
-| --------------------- | ----- | ----------------- |
-| `pptx-subagent`       | Agent | This project only |
-| `ppt-template-filler` | Skill | This project only |
+| Resource                  | Type  | Scope             |
+| ------------------------- | ----- | ----------------- |
+| `pptx-subagent`           | Agent | This project only |
+| `ppt-template-filler`     | Skill | This project only |
+| `generate-template-skill` | Skill | This project only |
 
 Global subagents and skills are managed at `~/.config/opencode/` and are available in all projects.
 
 ## Development Notes
 
 - The `pptx-subagent` uses `ppt_builder.py` from the `ppt-template-filler` skill to populate `template.pptx` layouts
+- The `generate-template-skill` extracts a template into JSON and embeds it back (`schema_extractor`); it is a peer of the fill and extend skills, invoked directly by the primary agent for "extract/generate template" requests
 - Generated files are saved to `output/`
 - The subagent is STRICTLY FORBIDDEN from building PPTX files from scratch
 
 ## Epic 1: Template Extraction & JSON Schema (US-1.1–1.5 — COMPLETE)
 
-`schema_extractor.py` extracts a normalized template schema from any `.pptx` and can embed it back into the zip. All 5 Must-Have stories are Met (95 tests in `test_schema_extractor.py`):
+`schema_extractor.py` extracts a normalized template schema from any `.pptx` and can embed it back into the zip. All 5 Must-Have stories are Met (112 tests in `test_schema_extractor.py`):
 
 - **US-1.1** — `extract_schema()` reads slide master + all layouts → structured JSON conforming to `schemas/template_schema.json`.
 - **US-1.2** — `normalize_polygon()` emits 4 normalized `{x,y}` points; `_signed_area()` + winding check (algebraic CCW).
@@ -57,6 +60,17 @@ Global subagents and skills are managed at `~/.config/opencode/` and are availab
 - **US-1.5** — `embed_schema()` writes `ppt/template_schema.json` into the PPTX zip via an order-preserving rewrite (`[Content_Types].xml` first + injected `json` Default; idempotent; atomic); `read_embedded_schema()` retrieves it. CLI: `--embed` + `--output-pptx`.
 
 The extraction path coexists with the renderer's fingerprint contract (`template_introspector.py`) — the renderer still consumes only the sidecar. See GAP-ANALYSIS §5 Decision 1 (Coexist).
+
+## Epic 3: Template Generator (US-3.1–3.4 — COMPLETE)
+
+A standalone `generate-template-skill` (`.opencode/skills/generate-template-skill/SKILL.md`) extracts any `.pptx` into a normalized schema and returns a self-describing "templated" PPTX with the JSON embedded at `ppt/template_schema.json`. All 4 stories are Met (112 tests in `test_schema_extractor.py`):
+
+- **US-3.1** — `generate-template-skill` orchestrates the full pipeline end-to-end: extract → validate → (title confirm) → embed → return templated PPTX + summary. NL intent routing is via the SKILL.md `description` (extraction verbs) + a one-line "What NOT to Handle" deferral in `pptx-subagent.md` (architecture review MAJOR-1).
+- **US-3.2** — `_infer_title` returns a `TitleInference(title, source)` NamedTuple; `_build_metadata` emits `title_source`; the skill prompts the user when `source == "filename"` and always displays the title for confirmation.
+- **US-3.3** — the skill returns a downloadable templated PPTX (`embed_schema`) + a human-readable summary (`build_extraction_summary` + CLI `--summary`); the round-trip test (`test_round_trip_deep_equal`) already exists.
+- **US-3.4** — `_build_theme()` maps semantic color roles + `font_palette`; sensible defaults on a missing/malformed theme.
+
+The extraction path coexists with the renderer's fingerprint contract (`template_introspector.py`) — the renderer still consumes only the sidecar (GAP-ANALYSIS §5 Decision 1, Coexist). `title_source` is runtime-enforced by `validate_template_schema` keyed off the shared `TITLE_SOURCES` constant (architecture review MAJOR-2).
 
 ## Phase 1: Content Intelligence & Resource Resolution (issues #17–#25)
 

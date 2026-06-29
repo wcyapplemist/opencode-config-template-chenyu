@@ -379,6 +379,7 @@ COACHING: Matter-of-fact tone, don't over-sell. Be ready for: "Does BIM work wit
 - PDFs → PDF-specific tools
 - Spreadsheets → Excel tools
 - General coding tasks unrelated to presentations
+- **Template extraction / "generate template" / "extract the template from this PPTX" / "what layouts does this template have" → `generate-template-skill`** (US-3.1). I generate slides FROM a template; I do not extract/fingerprint a template definition or produce a templated PPTX. This agent triggers broadly on `pptx`/`presentation`, so route extraction-intent requests to that skill instead.
 
 ## Error Handling
 

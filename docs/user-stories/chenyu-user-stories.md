@@ -193,9 +193,9 @@ The first of two core skills: taking an existing PPTX, extracting its structure 
 This skill is the entry point. The user says something like "extract the template from this PPTX" and the subagent routes to this skill. The skill orchestrates: zip read → XML parse → JSON build → validate → embed → return file.
 
 **Acceptance Criteria:**
-- [ ] Skill is invocable by natural language intent detection (no special command needed).
-- [ ] Full pipeline runs end-to-end without manual intermediate steps.
-- [ ] Validation errors (e.g., no slide master found) are reported clearly to the user.
+- [x] Skill is invocable by natural language intent detection (no special command needed).
+- [x] Full pipeline runs end-to-end without manual intermediate steps.
+- [x] Validation errors (e.g., no slide master found) are reported clearly to the user.
 
 **Tags:** skill, template-generator, pipeline
 
@@ -211,9 +211,9 @@ This skill is the entry point. The user says something like "extract the templat
 The title is inferred from the PPTX file metadata (document title property), or from the first slide's title text, or — if neither exists — the subagent prompts the user to name it.
 
 **Acceptance Criteria:**
-- [ ] `template_metadata.title` is always a non-empty string.
-- [ ] Inference order: core.xml title → slide 1 title text → user prompt.
-- [ ] The title is displayed to the user for confirmation after extraction.
+- [x] `template_metadata.title` is always a non-empty string.
+- [x] Inference order: core.xml title → slide 1 title text → user prompt.
+- [x] The title is displayed to the user for confirmation after extraction.
 
 **Tags:** metadata, naming, queryable
 
@@ -229,9 +229,9 @@ The title is inferred from the PPTX file metadata (document title property), or 
 The returned file is the original PPTX plus `ppt/template_schema.json`. The subagent provides a download link and a summary of what was extracted (number of layouts, components, fonts, etc.).
 
 **Acceptance Criteria:**
-- [ ] Downloadable PPTX is provided via OpenCode's file output mechanism.
-- [ ] A human-readable extraction summary is printed to the user.
-- [ ] File passes a round-trip test: open in PowerPoint, re-upload, re-extract → identical JSON.
+- [x] Downloadable PPTX is provided via OpenCode's file output mechanism.
+- [x] A human-readable extraction summary is printed to the user.
+- [x] File passes a round-trip test: open in PowerPoint, re-upload, re-extract → identical JSON.
 
 **Tags:** output, download, round-trip
 

@@ -75,6 +75,21 @@ class EmbeddedSchemaResult(NamedTuple):
     new_bytes: int
     delta_bytes: int
 
+
+# US-3.1: title-inference provenance. ``TITLE_SOURCES`` is the single source of
+# truth consumed by :func:`_infer_title`, :func:`validate_template_schema`'s enum
+# check, and ``template_schema.json``'s enum — keeping all three in sync
+# (architecture review MINOR-5 / MAJOR-2). ``"user"`` is only ever set by the
+# generate-template-skill layer after a user override, never by inference itself.
+TITLE_SOURCES: frozenset = frozenset({"core_xml", "slide1", "filename", "user"})
+
+
+class TitleInference(NamedTuple):
+    """Result of :func:`_infer_title`: the inferred title plus its provenance."""
+
+    title: str
+    source: str
+
 # Self-documenting enums (mirrors chenyu-user-stories.md Reference schema).
 COMPONENT_TYPE_ENUM: List[str] = [
     "textbox", "image", "table", "video", "shape",
@@ -440,12 +455,18 @@ def _build_theme(prs: Presentation) -> Dict[str, Any]:
     return theme
 
 
-def _infer_title(prs: Presentation, path: str) -> str:
-    """title inference: core.xml title -> first slide title -> filename."""
+def _infer_title(prs: Presentation, path: str) -> TitleInference:
+    """Infer the template title plus its provenance.
+
+    Order (US-3.2 AC2): ``docProps/core.xml`` title -> first slide title text ->
+    filename stem. The returned :class:`TitleInference.source` is one of
+    ``TITLE_SOURCES`` (minus ``"user"``, which is only set by the skill layer
+    after a user override). The filename fallback guarantees a non-empty title.
+    """
     try:
         title = prs.core_properties.title
         if title and title.strip():
-            return title.strip()
+            return TitleInference(title.strip(), "core_xml")
     except Exception:
         pass
     try:
@@ -455,15 +476,17 @@ def _infer_title(prs: Presentation, path: str) -> str:
                 if shape.has_text_frame:
                     txt = shape.text_frame.text.strip()
                     if txt:
-                        return txt[:100]
+                        return TitleInference(txt[:100], "slide1")
     except Exception:
         pass
-    return Path(path).stem
+    return TitleInference(Path(path).stem, "filename")
 
 
 def _build_metadata(prs: Presentation, path: str) -> Dict[str, Any]:
+    inferred = _infer_title(prs, path)
     return {
-        "title": _infer_title(prs, path),
+        "title": inferred.title,
+        "title_source": inferred.source,
         "schema_version": SCHEMA_VERSION,
         "generated_by": GENERATED_BY,
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -1013,6 +1036,15 @@ def validate_template_schema(schema_dict: Any) -> ValidationResult:
                     ))
         if "title" in meta and (not isinstance(meta["title"], str) or not meta["title"].strip()):
             result.add(ValidationIssue("title must be a non-empty string", field_path="template_metadata.title"))
+        # US-3.1 (MAJOR-2): title_source is runtime-enforced (unlike the general
+        # additionalProperties case) so the spec's enum and the validator stay in
+        # sync for this field. Keyed off the shared TITLE_SOURCES constant.
+        ts = meta.get("title_source")
+        if ts is not None and ts not in TITLE_SOURCES:
+            result.add(ValidationIssue(
+                f"title_source '{ts}' not in {sorted(TITLE_SOURCES)}",
+                field_path="template_metadata.title_source",
+            ))
 
     # slide_master
     master = schema_dict.get("slide_master")
@@ -1199,6 +1231,65 @@ def read_embedded_schema(pptx_path: str) -> Optional[Dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
+# US-3.1: human-readable extraction summary (US-3.3 AC2)
+# ---------------------------------------------------------------------------
+def build_extraction_summary(schema: Dict[str, Any]) -> str:
+    """Render a multi-line, human-readable summary of an extracted schema.
+
+    Pure (no I/O, no logging) so it stays unit-testable. Consumed by the
+    generate-template-skill (Stage 4) and the CLI ``--summary`` flag. The exact
+    wording is **not** part of any contract; callers may reformat.
+    """
+    meta = schema.get("template_metadata") or {}
+    dims = meta.get("slide_dimensions") or {}
+    master = schema.get("slide_master") or {}
+    master_comps = master.get("components") or []
+    layouts = schema.get("slide_layouts") or []
+    theme = schema.get("theme") or {}
+    palette = theme.get("font_palette") or {}
+    missing = meta.get("missing_fonts") or []
+
+    lines: List[str] = []
+    title = meta.get("title") or "(untitled)"
+    source = meta.get("title_source")
+    lines.append(f"Title: {title}" + (f"  [source: {source}]" if source else ""))
+    w = dims.get("width_inches")
+    h = dims.get("height_inches")
+    ar = dims.get("aspect_ratio")
+    size_str = ""
+    if w is not None and h is not None:
+        size_str = f"{w:g} x {h:g} in"
+    if ar:
+        size_str = f"{size_str}  ({ar})" if size_str else str(ar)
+    if size_str:
+        lines.append(f"Slide size: {size_str}")
+    lines.append(f"Slide master: {master.get('name') or '(unnamed)'} "
+                 f"({len(master_comps)} component{'s' if len(master_comps) != 1 else ''})")
+    lines.append(f"Layouts: {len(layouts)}")
+    for layout in layouts:
+        if isinstance(layout, dict):
+            name = layout.get("layout_name") or layout.get("layout_id") or "(unnamed)"
+            ncomp = len(layout.get("components") or [])
+            lines.append(f"  - {name}: {ncomp} component{'s' if ncomp != 1 else ''}")
+
+    color_keys = ("primary_color", "secondary_color", "accent_color", "background_color", "text_color")
+    colors = [f"{k.replace('_color', '')}={theme[k]}" for k in color_keys if theme.get(k)]
+    if colors:
+        lines.append("Theme colors: " + ", ".join(colors))
+    font_keys = ("heading", "body", "accent")
+    fonts = [f"{k}={palette[k]}" for k in font_keys if palette.get(k)]
+    if fonts:
+        lines.append("Font palette: " + ", ".join(fonts))
+
+    if missing:
+        names = ", ".join(str(m.get("family")) for m in missing if isinstance(m, dict) and m.get("family"))
+        lines.append(f"Missing fonts: {len(missing)}" + (f" ({names})" if names else ""))
+    else:
+        lines.append("Missing fonts: 0")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Task 7: CLI entry
 # ---------------------------------------------------------------------------
 def main(argv: Optional[List[str]] = None) -> int:
@@ -1215,6 +1306,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument(
         "--output-pptx", default=None,
         help="destination for the embedded PPTX when --embed is set (default: <input>.templated.pptx)",
+    )
+    parser.add_argument(
+        "--summary", action="store_true",
+        help="print a human-readable extraction summary to stdout (US-3.1 / US-3.3 AC2)",
     )
     args = parser.parse_args(argv)
 
@@ -1248,6 +1343,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         logger.error("could not write output '%s': %s", args.output, exc)
         return 2
     logger.info("wrote schema to %s", args.output)
+
+    if args.summary:
+        print(build_extraction_summary(schema))
 
     if args.embed:
         out_pptx = args.output_pptx
