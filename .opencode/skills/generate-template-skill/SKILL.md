@@ -82,6 +82,8 @@ except TemplateExtractionError as exc:
 res = validate_template_schema(schema)
 print('VALID' if res.is_valid else 'INVALID')
 for m in res.error_messages(): print('  -', m)
+if not res.is_valid:
+    print('VALIDATION_FAILED'); sys.exit(1)  # hard stop — never embed an invalid schema
 # stash the schema to a temp JSON for the next stages
 import tempfile, os
 p = os.path.join(tempfile.gettempdir(), 'gen_tpl_schema.json')
