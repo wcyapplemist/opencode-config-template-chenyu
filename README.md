@@ -6,12 +6,14 @@ template instead of building slides by hand.
 
 ## What this project does
 
-A two-layer system for generating PowerPoint presentations:
+A system for generating and templating PowerPoint presentations, built on three project-level skills and one agent:
 
-- A **content strategist** (an OpenCode agent) turns a plain-language request into
+- A **content strategist** (the `pptx-subagent` agent) turns a plain-language request into
   structured slide content (a JSON array).
-- A **rendering engine** (`ppt_builder.py`) fills a `template.pptx` Slide Master
+- A **rendering engine** (`ppt-template-filler` / `ppt_builder.py`) fills a `template.pptx` Slide Master
   with that content and writes a `.pptx` to `output/`.
+- A **template extractor** (`generate-template-skill` / `schema_extractor.py`) reads any `.pptx`,
+  emits a normalized JSON schema, and returns a self-describing "templated" PPTX with that JSON embedded.
 
 Everything in the output is a native, editable PowerPoint object (text runs,
 charts, pictures) — double-click a chart and it opens live in PowerPoint.
@@ -35,8 +37,13 @@ charts, pictures) — double-click a chart and it opens live in PowerPoint.
                        └──────────────────┬───────────────────┘
                                           │
                                           ▼
-                              output/<deck>.pptx   (100% native, editable)
+                               output/<deck>.pptx   (100% native, editable)
 ```
+
+> **Template extraction is a separate path:** `generate-template-skill` reads any `.pptx` →
+> `schema_extractor` JSON → embeds it back as `ppt/template_schema.json` (a "templated" PPTX).
+> It does not render slides; it only extracts and packages a template definition. A third skill,
+> `template-modifier-skill`, clones extended layouts when content exceeds the base template.
 
 ### Separation of concerns (why the strategist never calls python-pptx directly)
 
@@ -70,11 +77,12 @@ pptx-subagent-development/
 │       │       │   └── template.config.json   # Layout-name overrides
 │       │       ├── resolvers/                  # chart-data resolver
 │       │       ├── schemas/                    # Per-slide-type JSON schemas + template_schema.json (Epic 1 spec)
-│       │       └── tests/                      # pytest suite (95 tests for schema_extractor alone)
-│       └── template-modifier-skill/      # Template extension (Capability B)
+    │       │       └── tests/                      # pytest suite (112 tests for schema_extractor alone)
+    │       ├── generate-template-skill/    # Template extraction + embed (US-3.1; wraps schema_extractor)
+    │       └── template-modifier-skill/      # Template extension (Capability B)
 ├── docs/                                 # Activity diagrams, models, use-cases, workflows
 │   └── user-stories/                     # chenyu-user-stories.md + GAP-ANALYSIS.md (+ .zh.md)
-├── PLANS/                                # Phased execution plans (PLAN-GIT-48/50/52/54/55.md)
+├── PLANS/                                # Phased execution plans (PLAN-GIT-48/50/52/54/55/56.md)
 ├── output/                               # Generated .pptx files (gitignored)
 ├── chenyu-user requirement.html          # Original requirements source (HTML)
 ├── requirements.txt                      # Python dependencies
@@ -128,7 +136,9 @@ Open the printed path in PowerPoint. Text and charts are fully editable.
 
 **Alternative — natural language:** if you use OpenCode, just ask
 `"Create a 5-page PPT about ..."` and the `pptx-subagent` agent runs the full
-multi-stage pipeline (outline → critique → detail → render) for you.
+multi-stage pipeline (outline → critique → detail → render) for you. To turn an
+existing deck into a reusable template, ask `"Extract the template from this PPTX"`
+and the `generate-template-skill` produces a self-describing templated `.pptx`.
 
 ## How it works (pipeline)
 
@@ -143,7 +153,7 @@ Stage 5  Return         absolute path to the .pptx
 
 See `.opencode/agents/pptx-subagent.md` for the full stage contract.
 
-## Template-schema extraction (Epic 1 — complete)
+## Template-schema extraction (Epic 1) + Template Generator skill (Epic 3)
 
 `schema_extractor.py` reads any `.pptx` and emits a normalized JSON schema that
 mirrors the slide master + layouts. **Epic 1 (5 stories) is fully implemented:**
@@ -156,14 +166,22 @@ mirrors the slide master + layouts. **Epic 1 (5 stories) is fully implemented:**
 | US-1.4 | Per-textbox font detection + `missing_fonts` + availability check |
 | US-1.5 | Embed the schema into the PPTX zip at `ppt/template_schema.json` |
 
+**Epic 3 (4 stories) is also complete** — the `generate-template-skill` wraps the engine
+into a full `extract → validate → (title confirm) → embed → return templated PPTX + summary`
+pipeline (US-3.1). It surfaces `title_source` provenance (`core_xml`/`slide1`/`filename`/`user`,
+US-3.2) and a human-readable extraction summary (US-3.3). Ask "extract the template from this
+PPTX" in natural language to invoke it.
+
 **CLI:**
 ```bash
 python schema_extractor.py --input template.pptx --output schema.json        # extract only
 python schema_extractor.py --input template.pptx --output schema.json --embed # extract + embed into a .pptx copy
+python schema_extractor.py --input template.pptx --output schema.json --embed --summary # + print a human-readable summary
 ```
 
 The schema is validated by `validate_template_schema()` (hand-rolled, no
-`jsonschema` dependency). The renderer's fingerprint contract
+`jsonschema` dependency); `title_source` is additionally runtime-enforced via an enum check
+keyed off the shared `TITLE_SOURCES` constant. The renderer's fingerprint contract
 (`template_introspector.py`) is **untouched** — the two paths coexist (GAP-ANALYSIS
 §5 Decision 1).
 
@@ -207,6 +225,8 @@ numbers to pass validation is forbidden. Manual images use `image_path` directly
 |---|---|
 | Content-strategist workflow (all stages) | `.opencode/agents/pptx-subagent.md` |
 | Engine usage contract & field reference | `.opencode/skills/ppt-template-filler/SKILL.md` |
+| Template extraction skill (US-3.1) | `.opencode/skills/generate-template-skill/SKILL.md` |
+| Template extension skill (Capability B) | `.opencode/skills/template-modifier-skill/SKILL.md` |
 | Multi-stage generation design | `.opencode/skills/ppt-template-filler/docs/DESIGN-multi-stage-generation.md` |
 | Resource resolver design | `.opencode/skills/ppt-template-filler/docs/DESIGN-resource-resolver.md` |
 | Requirements (user stories) | `docs/user-stories/chenyu-user-stories.md` |
@@ -215,10 +235,12 @@ numbers to pass validation is forbidden. Manual images use `image_path` directly
 
 ## Scope (project-level resources)
 
-Both resources are scoped to this repository only — they are **not** installed
+All resources are scoped to this repository only — they are **not** installed
 globally:
 
 | Resource | Location |
 |---|---|
 | `pptx-subagent` | `.opencode/agents/` |
 | `ppt-template-filler` | `.opencode/skills/` |
+| `generate-template-skill` | `.opencode/skills/` |
+| `template-modifier-skill` | `.opencode/skills/` |
