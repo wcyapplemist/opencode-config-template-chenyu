@@ -268,14 +268,37 @@ The second core skill: reading the embedded JSON template and using it to genera
 **so that** every generated slide places content in the correct positions with the correct styling, rather than relying on LLM hallucination of coordinates.
 
 **Details:**
-The skill reads the JSON, identifies which slide layout to use based on the user's intent (e.g., "title slide", "content slide", "two-column"), denormalizes the polygon coordinates back to EMUs using the stored slide dimensions, and creates OOXML elements at those exact positions.
+The skill reads the JSON **from the zip** (it does not re-extract or re-parse the PPTX XML), identifies which slide layout to use based on the user's intent (e.g., "title slide", "content slide", "two-column") via `layout_name` matching, and generates new slides **using the slide master's own layouts** (`add_slide(layout)`) — NOT by manually placing OOXML elements at polygon coordinates. The embedded JSON is the faithful, portable description of the template (layout names, component types, fonts, theme, normalized positions) that drives layout selection and consistency; the template's layouts themselves carry the actual positioning and inherited styling (bullets, theme, master defaults). The normalized `polygon` coordinates (US-1.2) remain a faithful geometric description and may feed an optional consistency/conformance check — they are **not** a placement data source.
+
+> **Clarification (2026-06-29):** Re-confirmed against chenyu's original requirement — chenyu's #4 specifies generation "using the slide master's slide template" (`add_slide(layout)`) and never asked for coordinate placement. The earlier "creates OOXML elements at those exact positions" wording was an over-elaboration; see the historical note below and GAP-ANALYSIS §5 Decision 2 (clarified).
 
 **Acceptance Criteria:**
 - [ ] Skill reads JSON from the zip — does not re-extract or re-parse XML.
 - [ ] Layout selection is based on `layout_name` matching or user confirmation.
-- [ ] Denormalized EMU coordinates are within 1% of the original element positions.
+- [ ] Generated slides use the template's own layouts (via `add_slide`); the embedded JSON drives layout selection, not element placement at polygon coordinates. (A polygon-fidelity consistency check is optional and non-fatal.)
 
-**Tags:** slide-generation, layout-matching, denormalization
+**Tags:** slide-generation, layout-matching, embedded-json
+
+<!--
+  HISTORICAL — original US-4.1 wording (superseded 2026-06-29, retained for traceability).
+  This coordinate-placement reading was an over-elaboration beyond chenyu's actual
+  requirement (chenyu #4: "generate slides ... using the slide master's slide template").
+  See GAP-ANALYSIS §5 Decision 2 (clarified). Do NOT re-introduce coordinate placement
+  as an AC without explicit owner sign-off.
+
+  ORIGINAL Details (superseded):
+  The skill reads the JSON, identifies which slide layout to use based on the user's
+  intent (e.g., "title slide", "content slide", "two-column"), denormalizes the polygon
+  coordinates back to EMUs using the stored slide dimensions, and creates OOXML elements
+  at those exact positions.
+
+  ORIGINAL Acceptance Criteria (superseded):
+  - Skill reads JSON from the zip — does not re-extract or re-parse XML.
+  - Layout selection is based on `layout_name` matching or user confirmation.
+  - Denormalized EMU coordinates are within 1% of the original element positions.
+
+  ORIGINAL Tags (superseded): slide-generation, layout-matching, denormalization
+-->
 
 ---
 

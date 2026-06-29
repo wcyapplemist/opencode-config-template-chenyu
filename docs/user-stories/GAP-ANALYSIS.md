@@ -223,8 +223,8 @@ Before any build work, these route questions need a decision:
 
 > **Status (Revision 2):** Decision 1 is now **(a) Coexist — implemented**. `schema_extractor.py` (PR #49) coexists with the fingerprint contract; the renderer still consumes only the contract. The full migration (deprecating the introspector / bridging the polygon model into rendering) remains open via Decision 2.
 
-**2. Who consumes the polygon schema**
-The requirements assume the slide generator denormalizes polygons back to EMU and places OOXML at exact positions. The current engine delegates positioning to python-pptx `add_slide(layout)` (the layout's own placeholders). If the polygon model is built, does the renderer switch to manual coordinate placement, or do polygons stay metadata-only?
+**2. Who consumes the polygon schema — CLARIFIED (2026-06-29)**
+Re-confirmed against chenyu's original requirement: chenyu's #4 states generation "uses the slide master's slide template" (`add_slide(layout)`) and **never asked for coordinate placement**. The earlier reading ("the slide generator denormalizes polygons back to EMU and places OOXML at exact positions") was an over-elaboration in US-4.1's original Details/AC3 — since corrected (see the US-4.1 historical note). **Resolution:** the polygon model (US-1.2) is the faithful, portable self-description of the template that chenyu explicitly requested; the slide generator consumes the embedded JSON for layout selection/consistency and generates via the template's own layouts. Coordinate placement is **not a requirement** — neither "locked out" nor "deferred," it was simply never asked for. This makes US-4.1's source-swap approach (PLAN-GIT-58) faithful to the requirement (not a compromise), and dissolves the architecture-review M1/M2 premise (those assumed a chenyu "coordinate-driven vision" that the source text does not support).
 
 **3. Priority confirmation**
 Are the 8 unmet Must-Have stories still Must-Have, or has the fingerprint-contract path made some of them obsolete in practice (e.g. US-4.3 is arguably superseded by automatic introspection)?

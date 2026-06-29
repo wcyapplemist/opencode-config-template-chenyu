@@ -7,22 +7,22 @@
 
 ## Goal
 
-Migrate the slide-generation render path to read the embedded `ppt/template_schema.json` (produced by Epic 1/3) instead of the sidecar fingerprint contract (`template_introspector.get_contract`), via a **source-swap adapter**. The renderer keeps `prs.slides.add_slide(layout)` + fingerprint/name matching (low risk, output quality unchanged) and satisfies US-4.1's three ACs. **AC3 is satisfied as a conformance assertion** — denormalized polygons are verified ≤1% from the live placeholder geometry (and `add_slide` inherits the exact original geometry at 0% drift, so this is more accurate than manual coordinate placement).
+Migrate the slide-generation render path to read the embedded `ppt/template_schema.json` (produced by Epic 1/3) instead of the sidecar fingerprint contract (`template_introspector.get_contract`), via a **source-swap adapter**. The renderer keeps `prs.slides.add_slide(layout)` + fingerprint/name matching (low risk, output quality unchanged) and satisfies US-4.1's three ACs. Per the US-4.1 clarification (chenyu's #4: generation "uses the slide master's slide template"), generation uses `add_slide(layout)` and the embedded JSON drives layout selection — **coordinate placement was never a requirement** (see GAP-ANALYSIS §5 Decision 2, clarified). An optional polygon-fidelity consistency check may run, but is not an acceptance gate.
 
-This closes the "write-only" gap: after US-4.1 the embedded JSON is consumed by generation (no longer write-only), and the sidecar degrades to a backward-compat fallback (GAP-ANALYSIS architecture review MAJOR-3 / §5 Decision 1 Coexist → Decision 2 resolved as "source swap, polygons metadata-only").
+This closes the "write-only" gap: after US-4.1 the embedded JSON is consumed by generation (no longer write-only), and the sidecar degrades to a backward-compat fallback (GAP-ANALYSIS architecture review MAJOR-3 / §5 Decision 1 Coexist; Decision 2 clarified — coordinate placement was never required, so "source swap, polygons as faithful metadata" is the faithful path, not a compromise).
 
 ## Strategic Context
 
 Epic 1 (`extract_schema` / `embed_schema`) and Epic 3 (`generate-template-skill`) produce a self-describing templated PPTX with the schema embedded at `ppt/template_schema.json`. But the renderer (`ppt_builder.py:859`) still reads the sidecar `template.pptx.contract.json` via `template_introspector.get_contract` — the embedded JSON has **no production consumer** (referenced only in tests). US-4.1 is the story that makes the renderer consume it.
 
-Research (render-path + data-model map) confirmed: the embedded JSON carries **all raw inputs** the renderer needs; only two *derived* rollups (`fingerprint`, `content_area_in2`) and a few renamed fields are absent. A faithful adapter bridges the gap with **no renderer rewrite forced**. The literal alternative (coordinate placement, abandoning `add_slide`) was rejected as high-risk and lossy (breaks placeholder inheritance, bullets/theme defaults, the image fast-path, and the entire `template-modifier-skill` clone contract).
+Research (render-path + data-model map) confirmed: the embedded JSON carries **all raw inputs** the renderer needs; only two *derived* rollups (`fingerprint`, `content_area_in2`) and a few renamed fields are absent. A faithful adapter bridges the gap with **no renderer rewrite forced**. Coordinate placement (abandoning `add_slide`) is **not a requirement** — chenyu's #4 specifies "using the slide master's slide template"; it would also be high-risk and lossy (breaks placeholder inheritance, bullets/theme defaults, the image fast-path, and the entire `template-modifier-skill` clone contract), so it is out of scope (see US-4.1 clarification + GAP-ANALYSIS §5 Decision 2).
 
 ## Architecture Decisions (locked)
 
 1. **Source-swap adapter** — new `embedded_schema_to_contract(schema) -> dict` (in `ppt-template-filler/scripts/contract_adapter.py`) produces a dict structurally identical to the sidecar contract. `_resolve_layout_by_fingerprint`, `servable_slide_types`, and `constraint_checker` consume it unchanged (they already take a `contract`).
 2. **Prefer embedded, fallback sidecar** — new `get_render_contract(template)` in `ppt_builder.py`: try `read_embedded_schema` → adapter; on absence/`None`/error, fall back to `get_contract` (sidecar). Replaces the single call site at `ppt_builder.py:859`. Backward compatible.
 3. **Adapter derivation rules** — `fingerprint`: filter `components` to `type=="placeholder"`, drop chrome (`placeholder_type ∈ {date, slide_number, footer, header}`), map `body`→`OBJECT`, uppercase. `content_area_in2`: sum denormalized polygon area of `placeholder_type=="body"` components (EMU → inches² via `/914400`). Renames: `layout_name`/`layout_index` ← embedded; `slide_size` ← `template_metadata.slide_dimensions`.
-4. **AC3 as conformance assertion (not placement)** — after `add_slide`, denormalize each placeholder component's polygon to EMU and assert ≤1% from the live placeholder's `left/top/width/height` (`ppt_builder.py:435-454`). Warn (non-fatal) on drift. Satisfies AC3 more accurately than manual placement (0% drift via inheritance).
+4. **Generate via layouts (chenyu's intent); polygon fidelity is an optional consistency check, not placement** — re-confirmed against chenyu's #4 ("using the slide master's slide template"), generation uses `add_slide(layout)` (inheriting exact positioning/styling); the embedded JSON drives layout selection. The polygon model (US-1.2) is a faithful description, NOT a placement source. A denormalization consistency check (denormalized polygon vs live placeholder geometry, ≤1%) may run post-`add_slide` as a non-fatal conformance signal, but is **not** an acceptance gate. (US-4.1's original AC3 "creates OOXML at exact positions" was an over-elaboration — corrected; see the chenyu-user-stories US-4.1 historical note + GAP-ANALYSIS §5 Decision 2.)
 5. **Templated default template** — `embed_schema` the bundled `templates/template.pptx` and commit the templated version, so the default render path uses embedded JSON (not the sidecar fallback).
 6. **Consumers migrated together (single source of truth)** — agent Stage 0 (`servable_slide_types(get_contract(...))` in `pptx-subagent.md`) and `template-modifier-skill` (`state_machine.py` / `template_reader.py` / `constraint_checker.py` `get_contract` call sites) all switch to `get_render_contract`. No two-track.
 7. **`read_embedded_schema` provenance** — it reads from the *same* PPTX being rendered (embed put it there), so schema/template mismatch is not a normal-flow risk. The adapter still guards on `slide_dimensions` sanity.
@@ -55,7 +55,7 @@ Research (render-path + data-model map) confirmed: the embedded JSON carries **a
 
 - [ ] AC1 — Engine reads JSON from the zip (`read_embedded_schema`); does not re-extract or re-parse XML.
 - [ ] AC2 — Layout selection based on `layout_name` matching (fingerprint/name matching preserved via the adapter).
-- [ ] AC3 — Denormalized EMU coordinates within 1% of original positions (conformance assertion; warns on deviation).
+- [ ] AC3 — Generated slides use the template's own layouts (`add_slide`); the embedded JSON drives layout selection, not element placement at polygon coordinates. (A polygon-fidelity consistency check is optional and non-fatal.)
 
 ## Implementation Phases
 
@@ -63,10 +63,10 @@ Research (render-path + data-model map) confirmed: the embedded JSON carries **a
 - [ ] Task 1: `embedded_schema_to_contract(schema)` + `_derive_fingerprint` + `_derive_content_area` + `denormalize_polygon`.
 - [ ] Task 2: Parity test — adapter output == sidecar contract per-layout on the bundled template (fingerprint, content_area, name).
 
-### Phase 2: Wire ppt_builder + AC3 assertion
+### Phase 2: Wire ppt_builder + AC3 (uses-layouts) check
 - [ ] Task 3: `get_render_contract(template)` (prefer embedded → adapter; fallback sidecar).
 - [ ] Task 4: Replace `ppt_builder.py:859` call site; add end-to-end + fallback tests.
-- [ ] Task 5: `_assert_polygon_fidelity` (AC3 conformance check, post-add_slide, warn on drift) + AC3 test.
+- [ ] Task 5: AC3 assertion — verify generation uses `add_slide(layout)` and the embedded JSON drives selection (not coordinate placement). An optional `_assert_polygon_fidelity` consistency check may run post-`add_slide` (warn on drift); it is non-fatal and not an AC gate.
 
 ### Phase 3: Migrate downstream consumers
 - [ ] Task 6: `pptx-subagent.md` Stage 0 call site → `get_render_contract`.
@@ -81,7 +81,8 @@ Research (render-path + data-model map) confirmed: the embedded JSON carries **a
 | Case | Expected |
 | --- | --- |
 | adapter parity (bundled template) | per-layout `fingerprint`/`content_area_in2`/`name` == sidecar |
-| AC3 denormalization | denormalized polygons ≤1% from live placeholder geometry |
+| AC3 (uses-layouts) | generation uses `add_slide(layout)`; embedded JSON drives selection, not coordinate placement |
+| polygon-fidelity consistency check (optional) | denormalized polygons ≤1% from live placeholder geometry (non-fatal, warn-only) |
 | render from templated PPTX | consumes embedded JSON; sidecar not triggered |
 | non-templated PPTX | falls back to sidecar; renders normally |
 | existing schema_extractor + render suites | green (no regression) |
@@ -96,10 +97,10 @@ python -c "import sys; sys.path.insert(0,'.opencode/skills/ppt-template-filler/s
 
 ## Out of Scope / Open Questions
 
-- **Literal coordinate placement (Option A)** — rejected (high risk, lossy, breaks template-modifier-skill clone chain).
+- **Coordinate placement** — not a requirement (chenyu's #4 specifies "using the slide master's slide template" / `add_slide`); out of scope. The earlier "Option A — rejected" framing assumed it was a live alternative, which the US-4.1 clarification corrects (see GAP-ANALYSIS §5 Decision 2). It would also be high-risk and lossy (breaks placeholder inheritance + the template-modifier-skill clone chain).
 - **Full sidecar removal** — this issue degrades it to a fallback; a separate issue removes `template_introspector` once all templates are templated.
 - **Chart-theme semantic-role → clrScheme fine mapping** — adapter does best-effort; fidelity verified in Phase 1 parity tests.
-- **Non-rectangular polygon vertices** — out of scope (polygons are rectangular bounding boxes); coordinate placement of rotated shapes stays deferred.
+- **Non-rectangular polygon vertices** — a known polygon-model limitation (rectangular bounding boxes only); this affects metadata fidelity, not placement (placement is layout-inherited via `add_slide`).
 
 ## Risks
 
