@@ -3,7 +3,7 @@
 **Issue**: #56
 **Branch**: GIT-56 (base: dev)
 **Priority**: Must Have (P1)
-**Status**: Planned (rev 2 — architecture-review MAJOR-1 / MAJOR-2 / MINOR-5 incorporated)
+**Status**: Implemented (all phases complete; 112 schema_extractor tests green. The 26 failures in the broader suite are pre-existing in `template_introspector`/`resource_pipeline`, confirmed via `git stash` — unrelated to US-3.1.)
 
 ## Goal
 
@@ -65,46 +65,46 @@ Aligned with GAP-ANALYSIS §5 **Decision 1 = Coexist**: the skill wraps `schema_
 - `docs/user-stories/GAP-ANALYSIS.md` (Revision 8): US-3.1 ❌→✅; US-3.2 🟡→✅; US-3.3 stale ❌→✅ (note the Rev-7 miss); counts **Met 7→10 / Partial 6→5 / Not met 5→3 / Differs 1**; **Epic 3 complete**.
 - `AGENTS.md` (project root) — add `generate-template-skill` to the Project-Level Resources table + structure diagram; one-line responsibility note.
 
-## Acceptance Criteria (US-3.1) — to deliver
+## Acceptance Criteria (US-3.1) — delivered
 
-- [ ] AC1 — Skill is invocable by natural-language intent detection (SKILL.md `description` triggers; no special command needed).
-- [ ] AC2 — Full pipeline runs end-to-end without manual intermediate steps.
-- [ ] AC3 — Validation errors (e.g. "no slide master found") are reported clearly to the user.
+- [x] AC1 — Skill is invocable by natural-language intent detection (SKILL.md `description` triggers; no special command needed).
+- [x] AC2 — Full pipeline runs end-to-end without manual intermediate steps.
+- [x] AC3 — Validation errors (e.g. "no slide master found") are reported clearly to the user.
 
 **Collateral Must-Have ACs (same workflow)**
-- [ ] US-3.2 AC2 — Title inference order: `core.xml` → slide 1 title → user prompt.
-- [ ] US-3.2 AC3 — The title is displayed to the user for confirmation after extraction.
-- [ ] US-3.3 AC1 — A downloadable templated PPTX (original + embedded JSON) is returned.
-- [ ] US-3.3 AC2 — A human-readable extraction summary is printed (layouts, components, fonts, theme).
+- [x] US-3.2 AC2 — Title inference order: `core.xml` → slide 1 title → user prompt.
+- [x] US-3.2 AC3 — The title is displayed to the user for confirmation after extraction.
+- [x] US-3.3 AC1 — A downloadable templated PPTX (original + embedded JSON) is returned.
+- [x] US-3.3 AC2 — A human-readable extraction summary is printed (layouts, components, fonts, theme).
 - (US-3.3 AC3 — round-trip — already met.)
 
 ## Implementation Phases
 
 ### Phase 1: Engine enhancements (schema_extractor.py + spec + validator)
-- [ ] Task 1: `TitleInference(NamedTuple)` (`title: str`, `source: str`); `TITLE_SOURCES = frozenset({"core_xml","slide1","filename","user"})` constant; `_infer_title(prs, path) -> TitleInference` (MINOR-5).
-- [ ] Task 2: `_build_metadata` emits `title_source` (after `title`); `extract_schema` adapts the single call site.
-- [ ] Task 3: `build_extraction_summary(schema) -> str` (pure).
-- [ ] Task 4: `schemas/template_schema.json` adds `title_source` (enum of 4, optional).
-- [ ] Task 5: `validate_template_schema` adds the `title_source` enum check keyed off `TITLE_SOURCES` (MAJOR-2) — reject values outside the set.
-- [ ] Task 6: CLI `main()` adds `--summary`.
+- [x] Task 1: `TitleInference(NamedTuple)` (`title: str`, `source: str`); `TITLE_SOURCES = frozenset({"core_xml","slide1","filename","user"})` constant; `_infer_title(prs, path) -> TitleInference` (MINOR-5).
+- [x] Task 2: `_build_metadata` emits `title_source` (after `title`); `extract_schema` adapts the single call site.
+- [x] Task 3: `build_extraction_summary(schema) -> str` (pure).
+- [x] Task 4: `schemas/template_schema.json` adds `title_source` (enum of 4, optional).
+- [x] Task 5: `validate_template_schema` adds the `title_source` enum check keyed off `TITLE_SOURCES` (MAJOR-2) — reject values outside the set.
+- [x] Task 6: CLI `main()` adds `--summary`.
 
 ### Phase 2: Skill + agent routing
-- [ ] Task 7: SKILL.md frontmatter (name / description **leading with extraction verbs** / license / compatibility / metadata).
-- [ ] Task 8: "What I do" / "When to use me" (extraction-verb triggers) / "Do NOT use" (cross-reference filler + modifier).
-- [ ] Task 9: Stage 0–4 workflow (with `python -c` invocation templates + headless branch); explicitly call `validate_template_schema` between Stage 1 and Stage 2.
-- [ ] Task 10: Error-handling table + output-path section.
-- [ ] Task 11: `pptx-subagent.md` — add one line to `## What NOT to Handle` routing template-extraction requests to `generate-template-skill` (MAJOR-1).
+- [x] Task 7: SKILL.md frontmatter (name / description **leading with extraction verbs** / license / compatibility / metadata).
+- [x] Task 8: "What I do" / "When to use me" (extraction-verb triggers) / "Do NOT use" (cross-reference filler + modifier).
+- [x] Task 9: Stage 0–4 workflow (with `python -c` invocation templates + headless branch); explicitly call `validate_template_schema` between Stage 1 and Stage 2.
+- [x] Task 10: Error-handling table + output-path section.
+- [x] Task 11: `pptx-subagent.md` — add one line to `## What NOT to Handle` routing template-extraction requests to `generate-template-skill` (MAJOR-1).
 
 ### Phase 3: Tests
-- [ ] Task 12: `title_source` — three inference branches (core.xml / slide1 / filename); NamedTuple unpacking.
-- [ ] Task 13: `validate_template_schema` **enforces** `title_source` — valid values pass; invalid value → error (both directions, MAJOR-2).
-- [ ] Task 14: skill write-back sets `title_source == "user"`.
-- [ ] Task 15: `build_extraction_summary` content assertions.
-- [ ] Task 16: CLI `--summary` smoke test.
-- [ ] Task 17: regression — existing schema-extractor tests unaffected.
+- [x] Task 12: `title_source` — three inference branches (core.xml / slide1 / filename); NamedTuple unpacking.
+- [x] Task 13: `validate_template_schema` **enforces** `title_source` — valid values pass; invalid value → error (both directions, MAJOR-2).
+- [x] Task 14: skill write-back sets `title_source == "user"`.
+- [x] Task 15: `build_extraction_summary` content assertions.
+- [x] Task 16: CLI `--summary` smoke test.
+- [x] Task 17: regression — existing schema-extractor tests unaffected.
 
 ### Phase 4: Docs
-- [ ] Task 18: `chenyu-user-stories.md` AC checkboxes; `GAP-ANALYSIS.md` Revision 8 (re-grade + counts + Epic 3 complete); `AGENTS.md` resources table.
+- [x] Task 18: `chenyu-user-stories.md` AC checkboxes; `GAP-ANALYSIS.md` Revision 8 (re-grade + counts + Epic 3 complete); `AGENTS.md` resources table.
 
 ## Test matrix
 

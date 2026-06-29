@@ -29,6 +29,11 @@
           "minLength": 1,
           "description": "Inferred from docProps/core.xml title, then first slide title, then filename."
         },
+        "title_source": {
+          "type": "string",
+          "enum": ["core_xml", "slide1", "filename", "user"],
+          "description": "Provenance of the title (US-3.1). core_xml/slide1/filename come from inference; 'user' is set by the generate-template-skill after a user override. Runtime-enforced by validate_template_schema (KEY_SOURCES), unlike the general additionalProperties case."
+        },
         "schema_version": {
           "type": "string",
           "description": "Semantic version of this schema (e.g. 1.0.0)."
