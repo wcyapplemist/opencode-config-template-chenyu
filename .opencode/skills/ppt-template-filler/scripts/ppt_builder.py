@@ -37,6 +37,8 @@ from pptx.util import Inches, Pt
 from schema_validator import ValidationError, validate_slide_data_list
 from resolvers import resolve_slide_data_list
 from template_introspector import get_contract
+from contract_adapter import embedded_schema_to_contract
+from schema_extractor import read_embedded_schema, TemplateExtractionError
 
 logging.basicConfig(
     level=logging.INFO,
@@ -773,6 +775,65 @@ def _ensure_default_closing(
     return list(slide_data_list) + [closing]
 
 
+def get_render_contract(template_path: str) -> Dict[str, Any]:
+    """Return the render contract for ``template_path`` (US-4.1).
+
+    Prefers the embedded ``ppt/template_schema.json`` (via the
+    :mod:`contract_adapter` bridge) and falls back to the mtime-cached sidecar
+    introspection contract (:func:`get_contract`). Provenance is tagged on the
+    returned dict as ``_source ∈ {"embedded", "sidecar"}`` and logged.
+
+    Failure handling (architecture review M4):
+      - embedded JSON absent (legacy template) -> silent sidecar fallback.
+      - embedded JSON malformed -> ``read_embedded_schema`` already warns;
+        sidecar fallback.
+      - corrupt/non-zip input -> ``TemplateExtractionError`` caught here, warned,
+        sidecar fallback.
+
+    May raise if the sidecar contract itself fails (the caller's try/except then
+    degrades to name-based layout matching — backward compatible).
+    """
+    try:
+        schema = read_embedded_schema(template_path)
+    except TemplateExtractionError as exc:
+        logger.warning(
+            "Embedded schema unreadable for %s (%s); falling back to sidecar contract",
+            template_path, exc,
+        )
+        schema = None
+    except Exception as exc:  # defensive — never block the render
+        logger.warning(
+            "Embedded schema read failed for %s (%s); sidecar fallback",
+            template_path, exc,
+        )
+        schema = None
+
+    if schema is not None:
+        try:
+            contract = embedded_schema_to_contract(schema)
+            contract["_source"] = "embedded"
+            logger.info(
+                "Render contract (embedded): %d layouts, ratio %s",
+                len(contract.get("layouts", [])),
+                contract.get("slide_size", {}).get("ratio", "?"),
+            )
+            return contract
+        except Exception as exc:
+            logger.warning(
+                "Embedded schema -> contract failed for %s (%s); sidecar fallback",
+                template_path, exc,
+            )
+
+    contract = get_contract(str(template_path))
+    contract["_source"] = "sidecar"
+    logger.info(
+        "Render contract (sidecar): %d layouts, ratio %s",
+        len(contract.get("layouts", [])),
+        contract.get("slide_size", {}).get("ratio", "?"),
+    )
+    return contract
+
+
 def generate_ppt_from_data(
     slide_data_list: List[Dict[str, Any]],
     template_path: Optional[str] = None,
@@ -851,19 +912,15 @@ def generate_ppt_from_data(
     logger.info("Template: %d slides, %d layouts", len(prs.slides), len(prs.slide_layouts))
 
     # #43 (P0): auto-introspect the template into a JSON contract before render.
-    # Produces a mtime-cached contract next to the template. Non-fatal: on any
-    # failure the engine falls back to name-based layout matching (backward
-    # compatible). Full *consumption* of the contract is P1 (#44).
+    # US-4.1: prefer the embedded JSON (via the adapter); fall back to the
+    # mtime-cached sidecar contract. Non-fatal: on any failure the engine falls
+    # back to name-based layout matching (backward compatible). Provenance is
+    # tagged on the contract as ``_source`` and logged inside get_render_contract.
     contract = None
     try:
-        contract = get_contract(str(template))
-        logger.info(
-            "Introspected contract: %d layouts, ratio %s",
-            len(contract.get("layouts", [])),
-            contract.get("slide_size", {}).get("ratio", "?"),
-        )
+        contract = get_render_contract(str(template))
     except Exception as exc:  # pragma: no cover - defensive; never block render
-        logger.warning("Template introspection skipped (%s); using name matching", exc)
+        logger.warning("Template contract unavailable (%s); using name matching", exc)
 
     removed = _remove_all_slides(prs)
     logger.info("Cleared %d example slides", removed)
