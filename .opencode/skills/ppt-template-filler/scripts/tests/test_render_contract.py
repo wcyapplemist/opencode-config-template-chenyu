@@ -31,9 +31,9 @@ def _templated(tmp_path, template_path, name="templated.pptx"):
 
 
 def _corrupt_embedded(tmp_path, template_path, name="corrupt.pptx"):
-    """A copy of the template with GARBAGE at the embedded-schema path."""
-    out = str(tmp_path / name)
-    shutil.copy(template_path, out)
+    """A fresh PPTX with GARBAGE at the embedded-schema path (no prior embed, so
+    no duplicate-entry warning vs the now-pre-templated bundled template)."""
+    out = _fresh_deck(tmp_path, name)
     with zipfile.ZipFile(out, "a") as z:
         z.writestr(_EMBEDDED_SCHEMA_PATH, b"not-json{{")
     return out

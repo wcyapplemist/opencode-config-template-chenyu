@@ -157,12 +157,21 @@ def _derive_content_area(
 
 
 def _build_slide_size(dims: Dict[str, Any]) -> Dict[str, Any]:
-    """Map embedded ``slide_dimensions`` -> sidecar ``slide_size`` shape."""
+    """Map embedded ``slide_dimensions`` -> sidecar ``slide_size`` shape.
+
+    ``width_in``/``height_in`` are recomputed from EMU with the introspector's
+    2-dp rounding (the embedded schema stores them at 4 dp) so the adapter's
+    ``slide_size`` is byte-identical to ``template_introspector`` — keeping
+    parity assertions exact. ``ratio`` reuses the embedded ``aspect_ratio``
+    (both sides compute it via the same gcd-based ``_compute_ratio``).
+    """
+    w_emu = dims.get("width_emu") or 0
+    h_emu = dims.get("height_emu") or 0
     return {
-        "width_emu": dims.get("width_emu"),
-        "height_emu": dims.get("height_emu"),
-        "width_in": dims.get("width_inches"),
-        "height_in": dims.get("height_inches"),
+        "width_emu": w_emu,
+        "height_emu": h_emu,
+        "width_in": round(w_emu / _EMU_PER_INCH, 2),
+        "height_in": round(h_emu / _EMU_PER_INCH, 2),
         "ratio": dims.get("aspect_ratio"),
     }
 
