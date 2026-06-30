@@ -40,9 +40,8 @@ The engine is **template-agnostic**: it accepts **any** `.pptx`, not just the bu
    ```bash
    python -c "
    import sys, json; sys.path.insert(0,'.opencode/skills/ppt-template-filler/scripts')
-   from template_introspector import get_contract
-   from ppt_builder import servable_slide_types
-   contract = get_contract('.opencode/skills/ppt-template-filler/scripts/templates/template.pptx')
+   from ppt_builder import servable_slide_types, get_render_contract
+   contract = get_render_contract('.opencode/skills/ppt-template-filler/scripts/templates/template.pptx')
    print(json.dumps(servable_slide_types(contract), indent=2, ensure_ascii=False))
    "
    ```

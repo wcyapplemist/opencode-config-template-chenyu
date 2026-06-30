@@ -20,6 +20,8 @@
 > **Revision 7 (post-US-1.5, issue #55):** US-1.5 now ✅ Met — `embed_schema` writes the schema into the PPTX zip at `ppt/template_schema.json` via an order-preserving rewrite (`[Content_Types].xml` first + injected `json` Default; decompressed-content-identical originals; idempotent; atomic; `EmbeddedSchemaResult` for AC4); `read_embedded_schema` retrieves it; CLI `--embed` + `--output-pptx`. **Epic 1 complete** (all 5 stories Met). Counts: Met 7 / Partial 6 / Not met 5.
 >
 > **Revision 8 (post-US-3.1, issue #56):** US-3.1 now ✅ Met — a standalone `generate-template-skill` (`.opencode/skills/generate-template-skill/SKILL.md`) orchestrates the full `extract → validate → (title confirm) → embed → return templated PPTX + summary` pipeline; `pptx-subagent.md` gains a one-line "What NOT to Handle" deferral fixing the NL-routing collision (architecture review MAJOR-1). US-3.2 🟡→✅ — `_infer_title` now returns a `TitleInference(title, source)` NamedTuple and `_build_metadata` emits `title_source`; the skill prompts the user when `title_source == "filename"` and always displays the title for confirmation (AC2/AC3). US-3.3 ❌→✅ (corrects the Rev-7 stale rating — US-1.5 already delivered embed + the round-trip test; this issue adds the downloadable-PPTX surface via the skill + `build_extraction_summary` + CLI `--summary`). `title_source` is runtime-enforced by `validate_template_schema` (MAJOR-2), closing the US-5.2 gap for that field. **Epic 3 complete** (all 4 stories Met). Counts: Met 10 / Partial 5 / Not met 3 / Differs 1.
+>
+> **Revision 9 (post-US-4.1, issue #58):** US-4.1 now ✅ Met — the renderer reads the embedded `ppt/template_schema.json` via a source-swap adapter (`contract_adapter.embedded_schema_to_contract` → `ppt_builder.get_render_contract`), preferring embedded JSON and falling back to the sidecar. Generation keeps `add_slide(layout)` (chenyu's #4); the embedded JSON drives layout selection, not coordinate placement (AC3 clarified — see US-4.1 historical note; coordinate placement is deferred to US-4.6). Architecture-review findings addressed: C1 (clone path re-embeds the schema into `template_new.pptx`), M3 (`chart`→`OBJECT` canonical map + top-level placeholder filtering; parity-tested), M4 (`_source` provenance + absent/corrupt-distinction), M5 (templated default template + staleness guard), M6 (adapter as a bridge → US-4.6), m1/m2/m3 (consumer migration + grep audit). The bundled `template.pptx` now ships pre-templated. Counts: Met 11 / Partial 4 / Not met 3 / Differs 1.
 
 ---
 
@@ -32,7 +34,7 @@ This report compares `chenyu-user-stories.md` (the requirements document) agains
 
 Both achieve "fill any template", but they differ on **data model, skill decomposition, and artifact form**.
 
-**Story-by-story summary** (19 stories): Met 10 / Partial 5 / Not met 3 / Architecture differs 1.
+**Story-by-story summary** (19 stories): Met 11 / Partial 4 / Not met 3 / Architecture differs 1.
 
 **The largest gaps** are concentrated in Epic 1 (normalized polygon component model + font detection + zip embedding), Epic 2/3 (header/footer detection + standalone template generator skill), and Epic 5 (skill decomposition into generate-template / generate-slides + CLI).
 
@@ -112,9 +114,9 @@ The renderer's `_build_theme()` (`template_introspector.py`) extracts only raw O
 
 ### Epic 4 — Skill — Slide Generator
 
-#### US-4.1 — Read Embedded JSON as Layout Reference `[Must Have]` — 🟡 Partial
+#### US-4.1 — Read Embedded JSON as Layout Reference `[Must Have]` — ✅ Met (Rev 9)
 
-The engine reads the **sidecar contract** (not zip-embedded JSON) via `get_contract`, then resolves layouts by fingerprint (`_resolve_layout_by_fingerprint`, `ppt_builder.py:298`). So it does "read a contract as layout reference" — but the contract is a sidecar, and matching is fingerprint-based rather than polygon-denormalization. The "<1% EMU accuracy" criterion does not apply (it never denormalizes polygons).
+The renderer now reads the **embedded** `ppt/template_schema.json` (not the sidecar) via `ppt_builder.get_render_contract` → `contract_adapter.embedded_schema_to_contract` (US-4.1, issue #58). Layout selection still uses `layout_name`/fingerprint matching (`_resolve_layout_by_fingerprint`); generation keeps `add_slide(layout)` (chenyu's #4 — "using the slide master's slide template"). AC3 ("within 1%") was clarified: coordinate placement was never required (see the US-4.1 historical note + §5 Decision 2); it is deferred to US-4.6 (multi-aspect-ratio). Architecture-review findings C1/M3/M4/M5/M6/m1-m3 all addressed. All three ACs met.
 
 #### US-4.2 — Visually Pleasing Output with Text Fitting `[Must Have]` — 🟡 Partial
 
@@ -154,8 +156,8 @@ Python's `logging` module is used across the modules. `schema_extractor.py` **do
 
 | Status | Count | Stories |
 |---|---|---|
-| ✅ Met | 10 | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-3.1, US-3.2, US-3.3, US-3.4, US-4.5 |
-| 🟡 Partial | 5 | US-4.1, US-4.2, US-5.1, US-5.2, US-5.3 |
+| ✅ Met | 11 | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-3.1, US-3.2, US-3.3, US-3.4, US-4.1, US-4.5 |
+| 🟡 Partial | 4 | US-4.2, US-5.1, US-5.2, US-5.3 |
 | ❌ Not met | 3 | US-2.1, US-2.2, US-4.4 |
 | ⚪ Architecture differs | 1 | US-4.3 |
 
@@ -163,8 +165,8 @@ Python's `logging` module is used across the modules. `schema_extractor.py` **do
 
 | | Must Have | Should Have | Could Have |
 |---|---|---|---|
-| ✅ Met | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-3.1, US-3.2, US-3.3 | US-3.4 | US-4.5 |
-| 🟡 Partial | US-4.1, US-4.2, US-5.1, US-5.2 | US-5.3 | — |
+| ✅ Met | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-3.1, US-3.2, US-3.3, US-4.1 | US-3.4 | US-4.5 |
+| 🟡 Partial | US-4.2, US-5.1, US-5.2 | US-5.3 | — |
 | ❌ Not met | **US-2.1** | US-2.2, US-4.4 | — |
 | ⚪ Differs | US-4.3 | — | — |
 
@@ -223,8 +225,10 @@ Before any build work, these route questions need a decision:
 
 > **Status (Revision 2):** Decision 1 is now **(a) Coexist — implemented**. `schema_extractor.py` (PR #49) coexists with the fingerprint contract; the renderer still consumes only the contract. The full migration (deprecating the introspector / bridging the polygon model into rendering) remains open via Decision 2.
 
-**2. Who consumes the polygon schema**
-The requirements assume the slide generator denormalizes polygons back to EMU and places OOXML at exact positions. The current engine delegates positioning to python-pptx `add_slide(layout)` (the layout's own placeholders). If the polygon model is built, does the renderer switch to manual coordinate placement, or do polygons stay metadata-only?
+**2. Who consumes the polygon schema — CLARIFIED (2026-06-29)**
+Re-confirmed against chenyu's original requirement: chenyu's #4 states generation "uses the slide master's slide template" (`add_slide(layout)`) and **never asked for coordinate placement**. The earlier reading ("the slide generator denormalizes polygons back to EMU and places OOXML at exact positions") was an over-elaboration in US-4.1's original Details/AC3 — since corrected (see the US-4.1 historical note). **Resolution:** the polygon model (US-1.2) is the faithful, portable self-description of the template that chenyu explicitly requested; the slide generator consumes the embedded JSON for layout selection/consistency and generates via the template's own layouts. Coordinate placement is **not a requirement** — neither "locked out" nor "deferred," it was simply never asked for. This makes US-4.1's source-swap approach (PLAN-GIT-58) faithful to the requirement (not a compromise), and dissolves the architecture-review M1/M2 premise (those assumed a chenyu "coordinate-driven vision" that the source text does not support).
+
+> **Update (2026-06-29, US-4.6 scheduled):** chenyu subsequently confirmed he wants **multi-aspect-ratio output** (e.g., render 4:3 from a 16:9 template, elements scaling proportionally) — the one use case where coordinate placement is genuinely needed, because US-4.1's `add_slide(layout)` path renders only at the template's native size. This is now scheduled as **US-4.6 — Multi-Aspect-Ratio Rendering `[Should Have]`**, which uses the coordinate-placement mechanism scoped to the size-mismatch case. Coordinate placement is therefore **deferred to US-4.6** (after the Epic 4 base), not permanently foreclosed — resolving architecture-review M2. US-4.1's native-size source-swap path is unaffected. The "within 1%" accuracy bar (originally US-4.1's AC3) is relocated to US-4.6's AC, where it legitimately applies.
 
 **3. Priority confirmation**
 Are the 8 unmet Must-Have stories still Must-Have, or has the fingerprint-contract path made some of them obsolete in practice (e.g. US-4.3 is arguably superseded by automatic introspection)?

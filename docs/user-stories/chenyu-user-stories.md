@@ -268,14 +268,35 @@ The second core skill: reading the embedded JSON template and using it to genera
 **so that** every generated slide places content in the correct positions with the correct styling, rather than relying on LLM hallucination of coordinates.
 
 **Details:**
-The skill reads the JSON, identifies which slide layout to use based on the user's intent (e.g., "title slide", "content slide", "two-column"), denormalizes the polygon coordinates back to EMUs using the stored slide dimensions, and creates OOXML elements at those exact positions.
+The skill reads the JSON **from the zip** (it does not re-extract or re-parse the PPTX XML), identifies which slide layout to use based on the user's intent (e.g., "title slide", "content slide", "two-column") via `layout_name` matching, and generates new slides **using the slide master's own layouts** (`add_slide(layout)`) — NOT by manually placing OOXML elements at polygon coordinates. The embedded JSON is the faithful, portable description of the template (layout names, component types, fonts, theme, normalized positions) that drives layout selection and consistency; the template's layouts themselves carry the actual positioning and inherited styling (bullets, theme, master defaults). The normalized `polygon` coordinates (US-1.2) remain a faithful geometric description and may feed an optional consistency/conformance check — they are **not** a placement data source.
 
 **Acceptance Criteria:**
-- [ ] Skill reads JSON from the zip — does not re-extract or re-parse XML.
-- [ ] Layout selection is based on `layout_name` matching or user confirmation.
-- [ ] Denormalized EMU coordinates are within 1% of the original element positions.
+- [x] Skill reads JSON from the zip — does not re-extract or re-parse XML.
+- [x] Layout selection is based on `layout_name` matching or user confirmation.
+- [x] Generated slides use the template's own layouts (via `add_slide`); the embedded JSON drives layout selection, not element placement at polygon coordinates. (A polygon-fidelity consistency check is optional and non-fatal.)
 
-**Tags:** slide-generation, layout-matching, denormalization
+**Tags:** slide-generation, layout-matching, embedded-json
+
+<!--
+  Superseded 2026-06-29 (retained for traceability): the coordinate-placement reading
+  was an over-elaboration; chenyu #4 specifies "using the slide master's slide template"
+  (add_slide(layout)), so coordinate placement was never required. Authoritative
+  resolution: GAP-ANALYSIS §5 Decision 2 (clarified) + commit 44c2100. Do NOT re-introduce
+  coordinate placement as an AC without explicit owner sign-off.
+
+  ORIGINAL Details (superseded):
+  The skill reads the JSON, identifies which slide layout to use based on the user's
+  intent (e.g., "title slide", "content slide", "two-column"), denormalizes the polygon
+  coordinates back to EMUs using the stored slide dimensions, and creates OOXML elements
+  at those exact positions.
+
+  ORIGINAL Acceptance Criteria (superseded):
+  - Skill reads JSON from the zip — does not re-extract or re-parse XML.
+  - Layout selection is based on `layout_name` matching or user confirmation.
+  - Denormalized EMU coordinates are within 1% of the original element positions.
+
+  ORIGINAL Tags (superseded): slide-generation, layout-matching, denormalization
+-->
 
 ---
 
@@ -352,6 +373,26 @@ The LLM plans the slide order and content outline first (as a structured array),
 - [x] The LLM outline is shown to the user before generation begins, with an option to edit.
 
 **Tags:** batch, multi-slide, outline
+
+---
+
+### US-4.6 — Multi-Aspect-Ratio Rendering `[Should Have]`
+
+**As a** OpenCode user,
+**I want** to generate a deck at a different slide size or aspect ratio than the template (e.g., render a 4:3 deck from a 16:9 template), with every element — textboxes, images, shapes — scaling proportionally to the new dimensions,
+**so that** I can reuse one template across multiple output formats (16:9, 4:3, square) without redesigning the template or getting a misaligned layout.
+
+**Details:**
+When the target slide dimensions differ from the template's native size, the slide-generation skill deviates from the default US-4.1 path (`add_slide(layout)`, which renders at the template's native size) and switches to a **coordinate-placement path**: it reads the embedded JSON's normalized `polygon` coordinates (US-1.2, 0.0–1.0), denormalizes them against the **target** slide dimensions, and creates OOXML elements at the resulting EMU positions — yielding proportional scaling of every element to the new size. This is possible because US-1.2's normalized coordinate model is resolution-independent by design. The skill prompts the user for (or infers) the target aspect ratio. Because layout placeholders are not used on this path, styling that python-pptx would otherwise inherit (fonts, theme colors, bullets) is re-applied from the embedded JSON's `theme` and per-component `font` metadata.
+
+**Acceptance Criteria:**
+- [ ] Given a 16:9 templated PPTX, the skill renders an equivalent deck at 4:3 on request (and vice versa), via the coordinate-placement path.
+- [ ] Every element (textboxes, images, shapes) scales proportionally to the new dimensions — no clipping or misalignment beyond the US-4.2 text-fitting tolerance.
+- [ ] Normalized `polygon` coordinates are denormalized against the **target** slide size; resulting positions are within 1% of the proportionally-scaled originals.
+- [ ] Fonts/theme/bullets are re-applied from the embedded JSON metadata so the output stays on-brand despite bypassed layout inheritance.
+- [ ] When the target size equals the template's native size, the default US-4.1 `add_slide(layout)` path is used (this story is a no-op in that case).
+
+**Tags:** multi-aspect-ratio, coordinate-placement, proportional-scaling, resolution-independent
 
 ---
 
