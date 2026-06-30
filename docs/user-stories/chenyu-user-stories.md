@@ -376,6 +376,26 @@ The LLM plans the slide order and content outline first (as a structured array),
 
 ---
 
+### US-4.6 — Multi-Aspect-Ratio Rendering `[Should Have]`
+
+**As a** OpenCode user,
+**I want** to generate a deck at a different slide size or aspect ratio than the template (e.g., render a 4:3 deck from a 16:9 template), with every element — textboxes, images, shapes — scaling proportionally to the new dimensions,
+**so that** I can reuse one template across multiple output formats (16:9, 4:3, square) without redesigning the template or getting a misaligned layout.
+
+**Details:**
+When the target slide dimensions differ from the template's native size, the slide-generation skill deviates from the default US-4.1 path (`add_slide(layout)`, which renders at the template's native size) and switches to a **coordinate-placement path**: it reads the embedded JSON's normalized `polygon` coordinates (US-1.2, 0.0–1.0), denormalizes them against the **target** slide dimensions, and creates OOXML elements at the resulting EMU positions — yielding proportional scaling of every element to the new size. This is possible because US-1.2's normalized coordinate model is resolution-independent by design. The skill prompts the user for (or infers) the target aspect ratio. Because layout placeholders are not used on this path, styling that python-pptx would otherwise inherit (fonts, theme colors, bullets) is re-applied from the embedded JSON's `theme` and per-component `font` metadata.
+
+**Acceptance Criteria:**
+- [ ] Given a 16:9 templated PPTX, the skill renders an equivalent deck at 4:3 on request (and vice versa), via the coordinate-placement path.
+- [ ] Every element (textboxes, images, shapes) scales proportionally to the new dimensions — no clipping or misalignment beyond the US-4.2 text-fitting tolerance.
+- [ ] Normalized `polygon` coordinates are denormalized against the **target** slide size; resulting positions are within 1% of the proportionally-scaled originals.
+- [ ] Fonts/theme/bullets are re-applied from the embedded JSON metadata so the output stays on-brand despite bypassed layout inheritance.
+- [ ] When the target size equals the template's native size, the default US-4.1 `add_slide(layout)` path is used (this story is a no-op in that case).
+
+**Tags:** multi-aspect-ratio, coordinate-placement, proportional-scaling, resolution-independent
+
+---
+
 ## Epic 5: Skill Architecture & Scripts
 
 The technical foundation: how the two skills are implemented as OpenCode agent skills with executable scripts, consistent schema validation, and clean interoperability.
