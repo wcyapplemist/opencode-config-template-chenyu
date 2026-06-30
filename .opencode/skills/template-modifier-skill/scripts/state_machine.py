@@ -18,6 +18,7 @@ template, and emits the notification.
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -181,10 +182,11 @@ def resolve_and_clone(
     # the unmodeled ppt/template_schema.json part from template_new.pptx. Re-embed
     # so the derived file carries a schema describing the CLONED layout — otherwise
     # the extend workflow silently falls back to the sidecar (two-track). Non-fatal.
-    # Guard on ``active != template_path``: clone_for_over_limit returns the BASE
-    # path (not template_new) when it skips cloning (no donor), and we must NOT
-    # write embedded JSON into the user's base template.
-    if active != template_path:
+    # Guard on a normalized path comparison: clone_for_over_limit returns the
+    # BASE path (not template_new) when it skips cloning (no donor), and we must
+    # NOT write embedded JSON into the user's base template. normcase/abspath
+    # makes the comparison robust to slash direction / drive-letter case (Windows).
+    if os.path.normcase(os.path.abspath(active)) != os.path.normcase(os.path.abspath(template_path)):
         try:
             from schema_extractor import extract_schema, embed_schema
             embed_schema(active, extract_schema(active), active)

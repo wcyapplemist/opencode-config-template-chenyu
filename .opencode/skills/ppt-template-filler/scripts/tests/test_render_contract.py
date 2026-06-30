@@ -76,6 +76,21 @@ class TestRenderContractSource:
             for r in caplog.records
         ), "expected a warning naming the fallback / malformed payload"
 
+    def test_stale_embedded_warns_on_layout_count_mismatch(self, tmp_path, template_path, caplog):
+        """M5 staleness guard: warn when the embedded schema's layout count != the
+        live template's (catches edit-without-re-embed). The guard is warn-only —
+        the embedded contract is still used (no fallback)."""
+        # A fresh deck (~11 default layouts) carrying the BUNDLED schema (63 layouts)
+        # -> the live layout count != the embedded count -> staleness warning.
+        out = _fresh_deck(tmp_path, "stale.pptx")
+        embed_schema(out, extract_schema(template_path), out)
+        with caplog.at_level("WARNING"):
+            c = get_render_contract(out)
+        assert c["_source"] == "embedded"  # guard is warn-only, not a fallback
+        assert any("Stale embedded schema" in r.message for r in caplog.records), (
+            "expected a 'Stale embedded schema' warning on layout-count mismatch"
+        )
+
 
 # ---------------------------------------------------------------------------
 # End-to-end: render from a templated PPTX (AC1/AC3 — embedded consumed, layouts used)
