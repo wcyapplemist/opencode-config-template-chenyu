@@ -775,6 +775,25 @@ def _ensure_default_closing(
     return list(slide_data_list) + [closing]
 
 
+def _warn_if_embedded_stale(template_path: str, contract: Dict[str, Any]) -> None:
+    """M5 staleness guard: warn if the embedded schema's layout count diverges
+    from the live template (catches edit-without-re-embed — the embedded JSON has
+    no mtime-invalidation, unlike the sidecar cache). Cheap structural check;
+    non-fatal (never blocks the render, never falls back).
+    """
+    try:
+        live = len(Presentation(template_path).slide_layouts)
+    except Exception:  # pragma: no cover - defensive; never block
+        return
+    embedded = len(contract.get("layouts", []))
+    if live != embedded:
+        logger.warning(
+            "Stale embedded schema in %s: describes %d layouts, live template has %d "
+            "(template may have been edited after embed); re-run generate-template-skill",
+            template_path, embedded, live,
+        )
+
+
 def get_render_contract(template_path: str) -> Dict[str, Any]:
     """Return the render contract for ``template_path`` (US-4.1).
 
@@ -812,6 +831,7 @@ def get_render_contract(template_path: str) -> Dict[str, Any]:
         try:
             contract = embedded_schema_to_contract(schema)
             contract["_source"] = "embedded"
+            _warn_if_embedded_stale(template_path, contract)
             logger.info(
                 "Render contract (embedded): %d layouts, ratio %s",
                 len(contract.get("layouts", [])),

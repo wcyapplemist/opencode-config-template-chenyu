@@ -100,13 +100,15 @@ class TestRenderFromTemplated:
         assert len(prs.slides) == 2
 
     def test_render_from_non_templated_still_works(self, tmp_path, template_path):
-        # Backward-compat: the bundled template (no embedded JSON here) renders
-        # via the sidecar fallback and produces a valid deck.
+        # Backward-compat: rendering against the bundled template still produces a
+        # valid deck. NB: since US-4.1 the bundled template ships pre-templated, so
+        # this exercises the EMBEDDED path; the sidecar fallback is covered by
+        # test_non_templated_silent_sidecar (fresh, genuinely non-templated deck).
         slide_data = [
-            {"slide_type": "title_slide", "title": "Sidecar Render", "notes": "KEY MESSAGE: fallback."},
+            {"slide_type": "title_slide", "title": "Bundled Render", "notes": "KEY MESSAGE: embedded path."},
             {"slide_type": "closing_slide", "title": "Thank You", "notes": "KEY MESSAGE: done."},
         ]
-        out = str(tmp_path / "rendered_sidecar.pptx")
+        out = str(tmp_path / "rendered_bundled.pptx")
         result = generate_ppt_from_data(slide_data, template_path=template_path, output_path=out)
         prs = Presentation(result)
         assert len(prs.slides) == 2

@@ -1020,11 +1020,13 @@ class TestEmbedSchema:
         assert read_embedded_schema(embedded) == schema  # ensure_ascii=False round-trips
 
     def test_bundled_template_smoke(self, template_path, tmp_path):
-        # realism: the real 620-entry bundled template
+        # realism: the real bundled template. NB: since US-4.1 the bundled
+        # template ships PRE-TEMPLATED (embed_schema ran on it once), so re-
+        # embedding is idempotent and delta_bytes may be 0 (a US-1.5 guarantee).
+        # The load-bearing assertion is that the output carries a readable schema.
         embedded = str(tmp_path / "template.templated.pptx")
-        result = embed_schema(template_path, extract_schema(template_path), embedded)
+        embed_schema(template_path, extract_schema(template_path), embedded)
         assert read_embedded_schema(embedded) is not None
-        assert result.delta_bytes != 0
 
 
 class TestReadEmbeddedSchema:
