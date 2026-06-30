@@ -27,7 +27,7 @@ _FILLER_SCRIPTS = Path(__file__).resolve().parents[2] / "ppt-template-filler" / 
 if str(_FILLER_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_FILLER_SCRIPTS))
 
-from template_introspector import get_contract  # noqa: E402
+from ppt_builder import get_render_contract  # noqa: E402  (US-4.1: prefer embedded JSON)
 from constraint_checker import Verdict, evaluate_slide  # noqa: E402 (same package dir)
 
 logger = logging.getLogger(__name__)
@@ -104,7 +104,7 @@ def plan_resolution(
         original full Capability B behaviour.
     """
     delete_leftover(template_path)  # ①
-    contract = get_contract(template_path)  # ②
+    contract = get_render_contract(template_path)  # ② (US-4.1: embedded-preferred)
 
     kwargs = {}
     if words_per_in2 is not None:
@@ -168,7 +168,7 @@ def resolve_and_clone(
     if not plan.needs_cloning:
         return template_path, {}, None
 
-    contract = get_contract(template_path)
+    contract = get_render_contract(template_path)
     try:
         from layout_creator import clone_for_over_limit  # lazy: avoid circular import
         active, overrides = clone_for_over_limit(template_path, plan, contract)
@@ -177,4 +177,20 @@ def resolve_and_clone(
             "Layout cloning failed (%s); rendering against the base template", exc
         )
         return template_path, {}, None
+    # C1 (architecture review): python-pptx's prs.save() inside the clone strips
+    # the unmodeled ppt/template_schema.json part from template_new.pptx. Re-embed
+    # so the derived file carries a schema describing the CLONED layout — otherwise
+    # the extend workflow silently falls back to the sidecar (two-track). Non-fatal.
+    # Guard on ``active != template_path``: clone_for_over_limit returns the BASE
+    # path (not template_new) when it skips cloning (no donor), and we must NOT
+    # write embedded JSON into the user's base template.
+    if active != template_path:
+        try:
+            from schema_extractor import extract_schema, embed_schema
+            embed_schema(active, extract_schema(active), active)
+            logger.info("Re-embedded schema into cloned template %s", active)
+        except Exception as exc:  # pragma: no cover - non-fatal; sidecar fallback still works
+            logger.warning(
+                "Re-embed of cloned template failed (%s); sidecar fallback may apply", exc
+            )
     return active, overrides, plan.notification

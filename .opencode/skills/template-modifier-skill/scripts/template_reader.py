@@ -18,7 +18,8 @@ _FILLER_SCRIPTS = Path(__file__).resolve().parents[2] / "ppt-template-filler" / 
 if str(_FILLER_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_FILLER_SCRIPTS))
 
-from template_introspector import get_contract, placeholder_record  # noqa: E402
+from template_introspector import placeholder_record  # noqa: E402
+from ppt_builder import get_render_contract  # noqa: E402  (US-4.1: prefer embedded JSON)
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ def read_master(template_path: str) -> Dict[str, Any]:
     introspection; only the master-level placeholders (not present in the
     per-layout contract) are read here.
     """
-    contract = get_contract(template_path)
+    contract = get_render_contract(template_path)
     prs = Presentation(template_path)
     master_placeholders: List[Dict[str, Any]] = []
     try:

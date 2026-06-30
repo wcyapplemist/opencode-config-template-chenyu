@@ -58,9 +58,8 @@ cp "<user_template>.pptx" scripts/templates/template.pptx
 ```bash
 python -c "
 import sys, json; sys.path.insert(0,'scripts')
-from template_introspector import get_contract
-from ppt_builder import servable_slide_types
-print(json.dumps(servable_slide_types(get_contract('scripts/templates/template.pptx')), indent=2))
+from ppt_builder import servable_slide_types, get_render_contract
+print(json.dumps(servable_slide_types(get_render_contract('scripts/templates/template.pptx')), indent=2))
 "
 ```
 
@@ -391,9 +390,8 @@ cp ~/my_company_template.pptx scripts/templates/template.pptx
 # 2. Learn what the template can serve (which slide_types, content areas).
 python -c "
 import sys, json; sys.path.insert(0,'scripts')
-from template_introspector import get_contract
-from ppt_builder import servable_slide_types
-print(json.dumps(servable_slide_types(get_contract('scripts/templates/template.pptx')), indent=2))
+from ppt_builder import servable_slide_types, get_render_contract
+print(json.dumps(servable_slide_types(get_render_contract('scripts/templates/template.pptx')), indent=2))
 "
 # → e.g. {"content_slide": {"available": true, "layout": "Content Page", "content_area_in2": 42.1}, ...}
 #   Note the layout NAME differs from the default ("Title and Content") — fingerprint

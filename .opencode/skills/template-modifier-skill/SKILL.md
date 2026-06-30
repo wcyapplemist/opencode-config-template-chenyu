@@ -18,7 +18,7 @@ I do **not** fill templates myself. Normal filling is the `ppt-template-filler` 
 
 My pipeline mirrors the four steps a human designer performs:
 
-1. **Read the template** — reuse the P0 introspection engine (`template_introspector.get_contract`) to get the full contract: layouts, placeholder fingerprints, `content_area_in2`, theme, slide size.
+1. **Read the template** — resolve the render contract via `ppt_builder.get_render_contract` (US-4.1: prefers the embedded JSON, falls back to the P0 introspection engine `template_introspector`) to get the full contract: layouts, placeholder fingerprints, `content_area_in2`, theme, slide size.
 2. **Read the Slide Master** — `template_reader.read_master()` reads master-level placeholders + theme (on top of the contract).
 3. **Understand the requirement** — `constraint_checker.evaluate_slide()` estimates the content area a slide needs (from its word count) and compares it against the layout's `content_area_in2`, yielding a **fits / over-limit** verdict. It also flags a `slide_type` whose layout is missing.
 4. **Over-limit → create** — when a slide is over-limit (or its layout is missing), `state_machine.plan_resolution()` plans a clone; P4's `layout_creator` performs the actual XML/part clone into `template_new.pptx`.
@@ -35,7 +35,7 @@ Two file roles:
 On **every** generation request, the state machine runs:
 
 1. **① Delete leftover** — if `template_new.pptx` exists, delete it (force freshness; the base is re-evaluated each request).
-2. **② Introspect base** — `get_contract` (mtime-cached).
+2. **② Introspect base** — `get_render_contract` (embedded-preferred, sidecar fallback).
 3. **③ Scan** — for each slide, check its fingerprint + content size against the contract; collect any over-limit / missing-layout slides into a clone plan.
 4. **④ Clone** (P4) — produce `template_new.pptx` with the extended layout(s); swap the active template.
 5. **⑤ Notify** — whenever `template_new.pptx` is used, emit a **mandatory** user notice naming the template + the reason (`template.pptx could not fit <reason>`).
