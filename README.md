@@ -172,6 +172,13 @@ pipeline (US-3.1). It surfaces `title_source` provenance (`core_xml`/`slide1`/`f
 US-3.2) and a human-readable extraction summary (US-3.3). Ask "extract the template from this
 PPTX" in natural language to invoke it.
 
+**US-4.1 — the renderer now consumes the embedded JSON.** `ppt_builder.get_render_contract`
+reads `ppt/template_schema.json` via a source-swap adapter (`contract_adapter`), preferring
+the embedded schema and falling back to the sidecar introspection contract for legacy
+templates. Generation keeps `add_slide(layout)` (chenyu's intent); the embedded JSON drives
+layout selection. The bundled `template.pptx` ships pre-templated. Coordinate placement
+(rendering at a different aspect ratio) is deferred to US-4.6.
+
 **CLI:**
 ```bash
 python schema_extractor.py --input template.pptx --output schema.json        # extract only

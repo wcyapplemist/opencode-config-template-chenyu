@@ -271,9 +271,9 @@ The second core skill: reading the embedded JSON template and using it to genera
 The skill reads the JSON **from the zip** (it does not re-extract or re-parse the PPTX XML), identifies which slide layout to use based on the user's intent (e.g., "title slide", "content slide", "two-column") via `layout_name` matching, and generates new slides **using the slide master's own layouts** (`add_slide(layout)`) — NOT by manually placing OOXML elements at polygon coordinates. The embedded JSON is the faithful, portable description of the template (layout names, component types, fonts, theme, normalized positions) that drives layout selection and consistency; the template's layouts themselves carry the actual positioning and inherited styling (bullets, theme, master defaults). The normalized `polygon` coordinates (US-1.2) remain a faithful geometric description and may feed an optional consistency/conformance check — they are **not** a placement data source.
 
 **Acceptance Criteria:**
-- [ ] Skill reads JSON from the zip — does not re-extract or re-parse XML.
-- [ ] Layout selection is based on `layout_name` matching or user confirmation.
-- [ ] Generated slides use the template's own layouts (via `add_slide`); the embedded JSON drives layout selection, not element placement at polygon coordinates. (A polygon-fidelity consistency check is optional and non-fatal.)
+- [x] Skill reads JSON from the zip — does not re-extract or re-parse XML.
+- [x] Layout selection is based on `layout_name` matching or user confirmation.
+- [x] Generated slides use the template's own layouts (via `add_slide`); the embedded JSON drives layout selection, not element placement at polygon coordinates. (A polygon-fidelity consistency check is optional and non-fatal.)
 
 **Tags:** slide-generation, layout-matching, embedded-json
 

@@ -14,8 +14,9 @@ pptx-subagent-development/
 │   └── skills/
 │       ├── ppt-template-filler/   # Template filling engine + SKILL.md
 │       │   ├── scripts/
-│       │   │   ├── ppt_builder.py          # Engine: layouts, charts, images
-│       │   │   ├── template_introspector.py # Fingerprint-contract extraction (renderer-side)
+│       │   │   ├── ppt_builder.py          # Engine: layouts, charts, images; US-4.1: get_render_contract (embedded-preferred)
+│       │   │   ├── contract_adapter.py     # US-4.1: bridge — embedded JSON -> sidecar-shape render contract
+│       │   │   ├── template_introspector.py # Fingerprint-contract extraction (sidecar fallback)
     │       │   │   ├── schema_extractor.py      # Epic 1: extraction + font detection + zip embed (US-1.1–1.5); US-3.1: title_source + build_extraction_summary
 │       │   │   ├── schema_validator.py      # JSON schema validation + retry (#20)
 │       │   │   ├── density_mode.py          # Per-slide word-budget enforcement
