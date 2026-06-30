@@ -36,7 +36,7 @@ Both achieve "fill any template", but they differ on **data model, skill decompo
 
 **Story-by-story summary** (19 stories): Met 11 / Partial 4 / Not met 3 / Architecture differs 1.
 
-**The largest gaps** are concentrated in Epic 1 (normalized polygon component model + font detection + zip embedding), Epic 2/3 (header/footer detection + standalone template generator skill), and Epic 5 (skill decomposition into generate-template / generate-slides + CLI).
+**Epics 1, 3, and US-4.1 are now complete** (Rev 9). The remaining gaps cluster in **Epic 2** (header/footer detection + common practices), the rest of **Epic 4** (US-4.2 text-fitting, US-4.4 template-less style picker, US-4.6 multi-aspect-ratio), and **Epic 5** (skill decomposition / CLI / shared-schema runtime loading). The single unmet Must-Have is **US-2.1** (header/footer).
 
 For the full comparison see §2; for remediation suggestions see §4.
 
@@ -170,7 +170,7 @@ Python's `logging` module is used across the modules. `schema_extractor.py` **do
 | ❌ Not met | **US-2.1** | US-2.2, US-4.4 | — |
 | ⚪ Differs | US-4.3 | — | — |
 
-**Epics 1 and 3 are now complete** (Rev 8). The remaining gaps cluster in Epic 2 (header/footer detection + common practices), Epic 4 (slide-generation polish + template-less style picker), and Epic 5 (skill decomposition / CLI / shared-schema loading). The single unmet Must-Have is **US-2.1** (header/footer).
+**Epics 1, 3, and US-4.1 are now complete** (Rev 9). The remaining gaps cluster in Epic 2 (header/footer detection + common practices), the rest of Epic 4 (US-4.2 text-fitting, US-4.4 template-less style picker, US-4.6 multi-aspect-ratio), and Epic 5 (skill decomposition / CLI / shared-schema loading). The single unmet Must-Have is **US-2.1** (header/footer).
 
 ---
 
