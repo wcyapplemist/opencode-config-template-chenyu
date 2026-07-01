@@ -39,6 +39,14 @@ from resolvers import resolve_slide_data_list
 from template_introspector import get_contract
 from contract_adapter import embedded_schema_to_contract
 from schema_extractor import read_embedded_schema, TemplateExtractionError
+from text_fit import (
+    LINE_SPACING_DEFAULT,
+    MIN_FONT_SIZE_PT,
+    ROLE_BASE_PT,
+    TEXT_PADDING_IN,
+    FontFit,
+    fit_font_size,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,6 +65,18 @@ _SUBTITLE_TYPE = PP_PLACEHOLDER.SUBTITLE
 _BODY_TYPE = PP_PLACEHOLDER.BODY
 _OBJECT_TYPE = PP_PLACEHOLDER.OBJECT
 _PICTURE_TYPE = PP_PLACEHOLDER.PICTURE
+
+# EMU per inch (914400) — used to convert live-placeholder geometry to the
+# inches the text-fit estimator consumes.
+_EMU_PER_INCH = 914400
+
+# Maps the embedded-schema ``placeholder_type`` enum to a text-fit role
+# (US-4.2). Only text-bearing placeholders participate in font-fitting.
+_PT_TO_ROLE = {"title": "title", "subtitle": "subtitle", "body": "body"}
+
+# Body desc-run size as a fraction of the title-run size — preserves the
+# historical 12/14 visual hierarchy (0.857) now that sizes are template-derived.
+_BODY_DESC_RATIO = 0.85
 
 _REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
@@ -461,17 +481,200 @@ def _find_body_placeholder(slide: Any) -> Optional[Any]:
     return objects[0] if objects else None
 
 
-def _set_text(shape: Any, text: str) -> bool:
+def _matching_layout_placeholder(shape: Any, layout: Any) -> Optional[Any]:
+    """The layout placeholder matching ``shape`` by ``placeholder_format.idx``.
+
+    Returns ``None`` for non-placeholder shapes (textboxes — python-pptx raises
+    on ``.placeholder_format``), an absent idx, no layout, or no match. Shared by
+    the M1 base-size and line-spacing readers to avoid duplicating the idx walk
+    (and the ``is_placeholder`` guard that avoids the ValueError).
+    """
+    if not getattr(shape, "is_placeholder", False) or layout is None:
+        return None
+    pf = getattr(shape, "placeholder_format", None)
+    idx = pf.idx if pf is not None else None
+    if idx is None:
+        return None
+    try:
+        for ph in layout.placeholders:
+            lpf = getattr(ph, "placeholder_format", None)
+            if lpf is not None and lpf.idx == idx:
+                return ph
+    except Exception:  # best-effort; never block the render
+        return None
+    return None
+
+
+def _layout_sample_font_pt(shape: Any, layout: Any) -> Optional[float]:
+    """Probe the **layout's** matching placeholder for an explicit run size.
+
+    Layout placeholders usually carry "Click to add…" sample text with an
+    explicit font size — far more reliable than the post-``add_slide`` empty
+    slide placeholder, which python-pptx does not resolve through ``lstStyle``
+    inheritance. Returns ``None`` when no explicit size is found.
+    (US-4.2 / arch-review M1 tier 2.)
+    """
+    ph = _matching_layout_placeholder(shape, layout)
+    if ph is None or not getattr(ph, "has_text_frame", False):
+        return None
+    try:
+        for p in ph.text_frame.paragraphs:
+            for run in p.runs:
+                size = run.font.size
+                if size is not None:
+                    return float(size.pt)
+    except Exception:  # best-effort; never block the render
+        return None
+    return None
+
+
+def _build_schema_font_map(schema: Optional[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
+    """Build ``{layout_name: {role: size_pt}}`` from an embedded schema.
+
+    Only the first explicit ``font.size_pt`` per role per layout is kept. Empty
+    when the schema is absent (the caller then relies on layout-sample → role
+    ceilings). (US-4.2 / arch-review M1 tier 1.)
+    """
+    result: Dict[str, Dict[str, float]] = {}
+    if not schema:
+        return result
+    for layout in schema.get("slide_layouts") or []:
+        name = layout.get("layout_name")
+        role_map: Dict[str, float] = {}
+        for comp in layout.get("components") or []:
+            if comp.get("type") != "placeholder":
+                continue
+            role = _PT_TO_ROLE.get(comp.get("placeholder_type") or "")
+            if not role or role in role_map:
+                continue
+            size = (comp.get("font") or {}).get("size_pt")
+            if size:
+                role_map[role] = float(size)
+        if name:
+            result[name] = role_map
+    return result
+
+
+def _resolve_base_font_pt(
+    shape: Any,
+    role: str,
+    schema_font_map: Dict[str, Dict[str, float]],
+    layout: Any,
+) -> Tuple[float, str]:
+    """Resolve the base font size (pt) for ``role`` via the M1 chain.
+
+    Returns ``(base_pt, source)`` where ``source ∈ {"schema","layout_sample",
+    "role_ceiling"}``. The conservative role ceilings (body 14 / title 28 /
+    subtitle 18) ensure the resolved base never exceeds a typical template's
+    real size when the upper tiers miss.
+    """
+    role_map = (schema_font_map or {}).get(getattr(layout, "name", "") or "") or {}
+    schema_pt = role_map.get(role)
+    if schema_pt and schema_pt > 0:
+        return float(schema_pt), "schema"
+    sample_pt = _layout_sample_font_pt(shape, layout)
+    if sample_pt and sample_pt > 0:
+        return float(sample_pt), "layout_sample"
+    return ROLE_BASE_PT.get(role, ROLE_BASE_PT["body"]), "role_ceiling"
+
+
+def _layout_line_spacing(shape: Any, layout: Any) -> float:
+    """Best-effort line-spacing factor from the layout placeholder (else 1.2).
+
+    Reads the matched layout placeholder's first explicit ``paragraph
+    .line_spacing``. python-pptx returns ``None`` for ``lstStyle``-inherited
+    spacing, so this almost always falls back to the default — but when a
+    layout sets spacing explicitly it is honoured (US-4.2 Details). Returns a
+    float multiplier (single spacing = 1.0).
+    """
+    ph = _matching_layout_placeholder(shape, layout)
+    if ph is None or not getattr(ph, "has_text_frame", False):
+        return LINE_SPACING_DEFAULT
+    try:
+        for p in ph.text_frame.paragraphs:
+            ls = p.line_spacing
+            if ls is not None:
+                # python-pptx: a plain ``float`` is a line-height multiple
+                # (e.g. 1.2); a ``Length`` (Pt/Centipoints) is an *exact
+                # points* value and is an ``int`` subclass — NOT expressible
+                # as a multiplier without the font size, so fall back to the
+                # default rather than misusing the EMU/centipoint integer
+                # (e.g. Pt(18) -> 228600) as a 228600x multiplier.
+                return float(ls) if isinstance(ls, float) else LINE_SPACING_DEFAULT
+    except Exception:
+        pass
+    return LINE_SPACING_DEFAULT
+
+
+def _box_inches(shape: Any) -> Tuple[float, float]:
+    """Return ``(width_in, height_in)`` of a shape; (0,0) if unavailable."""
+    try:
+        w = int(shape.width or 0) / _EMU_PER_INCH
+        h = int(shape.height or 0) / _EMU_PER_INCH
+        return w, h
+    except Exception:
+        return 0.0, 0.0
+
+
+def _effective_box_height(h_in: float, base_pt: float, line_spacing: float) -> float:
+    """Height used for vertical fit-checking, with an auto-grow guard.
+
+    python-pptx reports ``None`` for an inherited ``text_frame.auto_size``
+    (it does not resolve the ``lstStyle`` cascade), so auto-grow placeholders
+    (titles/subtitles that expand to fit) can't be detected directly. Their
+    reported base height is often smaller than a single line at the base size.
+    When that happens we treat the box as **unbounded** (returns ``inf``) so the
+    estimator does not false-shrink — the placeholder grows instead, and only
+    ``word_wrap`` governs width. Tall fixed boxes (body content) keep their real
+    height and shrink normally.
+    """
+    one_line_in = base_pt * line_spacing / 72.0
+    if h_in <= 0 or (h_in - 2 * TEXT_PADDING_IN) < one_line_in:
+        return float("inf")
+    return h_in
+
+
+def _set_text(
+    shape: Any,
+    text: str,
+    *,
+    role: str = "title",
+    schema_font_map: Optional[Dict[str, Dict[str, float]]] = None,
+    layout: Any = None,
+) -> Optional[FontFit]:
+    """Fill a single-string placeholder (title/subtitle) with text-fitting.
+
+    Resolves the base size (M1 chain), shrinks in −2pt steps to the 8pt floor
+    when the text overflows the box, and **writes an explicit ``run.font.size``
+    only when the estimator actually shrank** (M3) — otherwise the placeholder
+    keeps inheriting the layout/master size (today's behaviour), which preserves
+    title/subtitle appearance on the common non-overflow path. Sets
+    ``word_wrap=True``. Returns the :class:`FontFit` (or ``None`` on failure).
+    """
     if not shape or not shape.has_text_frame:
-        return False
+        return None
     try:
         tf = shape.text_frame
         tf.clear()
-        tf.paragraphs[0].text = text
-        return True
+        tf.word_wrap = True
+        if not (text or "").strip():
+            return None
+        base, source = _resolve_base_font_pt(shape, role, schema_font_map or {}, layout)
+        w_in, h_in = _box_inches(shape)
+        ls = _layout_line_spacing(shape, layout)
+        fit = fit_font_size(
+            text, base, w_in, _effective_box_height(h_in, base, ls),
+            line_spacing=ls, base_source=source,
+        )
+        p = tf.paragraphs[0]
+        p.text = text
+        if fit.adjusted:  # M3: explicit size only on actual shrink
+            for run in p.runs:
+                run.font.size = Pt(fit.applied_size_pt)
+        return fit
     except Exception as exc:
         logger.warning("Failed to set text: %s", exc)
-        return False
+        return None
 
 
 def _parse_line(line: str) -> Tuple[str, str]:
@@ -497,13 +700,44 @@ def _set_notes(slide: Any, notes_text: str) -> bool:
         return False
 
 
-def _set_body_text(shape: Any, text: str) -> bool:
+def _set_body_text(
+    shape: Any,
+    text: str,
+    *,
+    role: str = "body",
+    schema_font_map: Optional[Dict[str, Dict[str, float]]] = None,
+    layout: Any = None,
+) -> Optional[FontFit]:
+    """Fill a body placeholder with text-fitting (US-4.2).
+
+    Body base size is **template-derived** (M1 chain), replacing the previous
+    ``Pt(14)``/``Pt(12)`` hardcode (Q2). Each line keeps the bold-title/desc
+    split: the title run is sized at the fitted ``applied_pt`` (bold), the desc
+    run at ``applied_pt × 0.85`` (preserving the historical 12/14 hierarchy).
+    Because body is the primary text-fitting target, an explicit size is always
+    written here (template-derived); when the estimator does not shrink,
+    ``applied == base``, so non-overflow bodies are appearance-stable whenever
+    the resolved base matches the historical ceiling (body 14 → 12/14). Sets
+    ``word_wrap=True``. Returns the :class:`FontFit` (or ``None`` on failure).
+    """
     if not shape or not shape.has_text_frame:
-        return False
+        return None
     try:
-        lines = [l for l in text.split("\n") if l.strip()]
+        lines = [l for l in (text or "").split("\n") if l.strip()]
         tf = shape.text_frame
         tf.clear()
+        tf.word_wrap = True
+        if not lines:
+            return None
+        base, source = _resolve_base_font_pt(shape, role, schema_font_map or {}, layout)
+        w_in, h_in = _box_inches(shape)
+        ls = _layout_line_spacing(shape, layout)
+        fit = fit_font_size(
+            text, base, w_in, _effective_box_height(h_in, base, ls),
+            line_spacing=ls, base_source=source,
+        )
+        title_size = fit.applied_size_pt
+        desc_size = max(title_size * _BODY_DESC_RATIO, MIN_FONT_SIZE_PT)
 
         for i, line in enumerate(lines):
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
@@ -513,16 +747,16 @@ def _set_body_text(shape: Any, text: str) -> bool:
                 run = p.add_run()
                 run.text = title_part
                 run.font.bold = True
-                run.font.size = Pt(14)
+                run.font.size = Pt(title_size)
             if desc_part:
                 run = p.add_run()
                 run.text = f" \u2014 {desc_part}" if title_part else desc_part
-                run.font.size = Pt(12)
+                run.font.size = Pt(desc_size)
 
-        return True
+        return fit
     except Exception as exc:
         logger.warning("Failed to set body text: %s", exc)
-        return False
+        return None
 
 
 def _apply_series_colors(chart: Any, chart_type_key: str) -> None:
@@ -854,6 +1088,58 @@ def get_render_contract(template_path: str) -> Dict[str, Any]:
     return contract
 
 
+def _font_fit_report_entry(
+    role: str, field: str, fit: Optional[FontFit]
+) -> Optional[Dict[str, Any]]:
+    """Convert a :class:`FontFit` into a render-report placeholder record."""
+    if fit is None:
+        return None
+    return {
+        "role": role,
+        "field": field,
+        "template_size_pt": round(fit.base_size_pt, 2),
+        "applied_size_pt": round(fit.applied_size_pt, 2),
+        "base_source": fit.base_source,
+        "font_size_adjusted": fit.adjusted,
+        "fits": fit.fits,
+        "lines_estimated": fit.lines_estimated,
+    }
+
+
+def _write_render_report(pptx_path: str, report: Dict[str, Any]) -> None:
+    """Write the US-4.2 render report sidecar ``<output>.render.json``.
+
+    Records per-slide per-placeholder font-fit decisions (the
+    ``font_size_adjusted`` flag + original/applied sizes). Failure is debug-log
+    only — it never blocks a successful render. Written atomically
+    (temp + rename) so a stale report from a failed prior run never persists
+    (arch-review m3).
+    """
+    import json
+    import os
+    import tempfile
+
+    out = Path(pptx_path)
+    report_path = out.with_name(out.stem + ".render.json")
+    try:
+        fd, tmp = tempfile.mkstemp(
+            prefix=out.stem + ".render.", suffix=".json", dir=str(out.parent)
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(report, fh, indent=2, ensure_ascii=False)
+            os.replace(tmp, str(report_path))
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+        logger.info("Render report: %s", report_path)
+    except Exception as exc:  # pragma: no cover - never block the render
+        logger.debug("Render report not written (%s): %s", report_path, exc)
+
+
 def generate_ppt_from_data(
     slide_data_list: List[Dict[str, Any]],
     template_path: Optional[str] = None,
@@ -942,6 +1228,17 @@ def generate_ppt_from_data(
     except Exception as exc:  # pragma: no cover - defensive; never block render
         logger.warning("Template contract unavailable (%s); using name matching", exc)
 
+    # US-4.2: build a {layout_name: {role: size_pt}} map from the embedded
+    # schema (best-effort) for the M1 base-size resolution chain. Absent/corrupt
+    # → empty → the chain falls back to layout-sample → role ceilings.
+    schema_font_map: Dict[str, Dict[str, float]] = {}
+    try:
+        schema_font_map = _build_schema_font_map(read_embedded_schema(str(template)))
+    except Exception as exc:  # pragma: no cover - best-effort
+        logger.debug("Schema font map unavailable (%s); using role ceilings", exc)
+
+    render_report: Dict[str, Any] = {"slides": []}
+
     removed = _remove_all_slides(prs)
     logger.info("Cleared %d example slides", removed)
 
@@ -962,13 +1259,24 @@ def generate_ppt_from_data(
             slide = prs.slides.add_slide(layout)
             logger.info("Page %d: added slide from layout[%d] '%s'", page_num, layout_idx, layout.name)
 
+            slide_report: List[Dict[str, Any]] = []
             title_text = slide_data.get("title", "")
 
             # Always try to fill title placeholder
             if title_text:
                 title_ph = _find_title_placeholder(slide)
                 if title_ph:
-                    _set_text(title_ph, title_text)
+                    fit = _set_text(
+                        title_ph, title_text,
+                        role="title", schema_font_map=schema_font_map, layout=layout,
+                    )
+                    if fit and fit.adjusted:
+                        logger.info(
+                            "  Title auto-shrunk %g→%gpt", fit.base_size_pt, fit.applied_size_pt
+                        )
+                    entry = _font_fit_report_entry("title", "title", fit)
+                    if entry:
+                        slide_report.append(entry)
                     logger.info("  Title: \"%s\"", title_text)
 
             # Fill subtitle (for title, agenda, closing, section-header-sub)
@@ -977,7 +1285,18 @@ def generate_ppt_from_data(
                 if subtitle_text:
                     sub_ph = _find_placeholder(slide, _SUBTITLE_TYPE)
                     if sub_ph:
-                        _set_text(sub_ph, subtitle_text)
+                        fit = _set_text(
+                            sub_ph, subtitle_text,
+                            role="subtitle", schema_font_map=schema_font_map, layout=layout,
+                        )
+                        if fit and fit.adjusted:
+                            logger.info(
+                                "  Subtitle auto-shrunk %g→%gpt",
+                                fit.base_size_pt, fit.applied_size_pt,
+                            )
+                        entry = _font_fit_report_entry("subtitle", "subtitle", fit)
+                        if entry:
+                            slide_report.append(entry)
                         logger.info("  Subtitle: \"%s\"", subtitle_text[:50])
 
             # Fill body text (for content slides)
@@ -986,7 +1305,24 @@ def generate_ppt_from_data(
                 if body_text:
                     body_ph = _find_body_placeholder(slide)
                     if body_ph:
-                        _set_body_text(body_ph, body_text)
+                        fit = _set_body_text(
+                            body_ph, body_text,
+                            role="body", schema_font_map=schema_font_map, layout=layout,
+                        )
+                        if fit:
+                            entry = _font_fit_report_entry("body", "body", fit)
+                            if entry:
+                                slide_report.append(entry)
+                            if fit.adjusted:
+                                logger.info(
+                                    "  Body auto-shrunk %g→%gpt",
+                                    fit.base_size_pt, fit.applied_size_pt,
+                                )
+                            if not fit.fits:
+                                logger.warning(
+                                    "  Body still overflows at %gpt floor (AC1 best-effort)",
+                                    fit.applied_size_pt,
+                                )
                         logger.info("  Body: %d lines", len([l for l in body_text.split("\n") if l.strip()]))
 
             # Fill two body areas (for two-content slides)
@@ -1004,13 +1340,31 @@ def generate_ppt_from_data(
                         objects = body_phs
                 if len(objects) >= 2:
                     if body_left:
-                        _set_body_text(objects[0], body_left)
+                        fit = _set_body_text(
+                            objects[0], body_left,
+                            role="body", schema_font_map=schema_font_map, layout=layout,
+                        )
+                        entry = _font_fit_report_entry("body", "body_left", fit)
+                        if entry:
+                            slide_report.append(entry)
                         logger.info("  Body-left: %d lines", len([l for l in body_left.split("\n") if l.strip()]))
                     if body_right:
-                        _set_body_text(objects[1], body_right)
+                        fit = _set_body_text(
+                            objects[1], body_right,
+                            role="body", schema_font_map=schema_font_map, layout=layout,
+                        )
+                        entry = _font_fit_report_entry("body", "body_right", fit)
+                        if entry:
+                            slide_report.append(entry)
                         logger.info("  Body-right: %d lines", len([l for l in body_right.split("\n") if l.strip()]))
                 elif len(objects) == 1 and (body_left or body_right):
-                    _set_body_text(objects[0], body_left or body_right)
+                    fit = _set_body_text(
+                        objects[0], body_left or body_right,
+                        role="body", schema_font_map=schema_font_map, layout=layout,
+                    )
+                    entry = _font_fit_report_entry("body", "body_left", fit)
+                    if entry:
+                        slide_report.append(entry)
                     logger.warning(
                         "  Two-content slide has only 1 content placeholder; "
                         "body_left/body_right merged into one")
@@ -1032,11 +1386,21 @@ def generate_ppt_from_data(
             if _set_notes(slide, notes_text):
                 logger.info("  Notes: %d chars", len(notes_text))
 
+            render_report["slides"].append({
+                "index": page_num,
+                "slide_type": slide_type,
+                "placeholders": slide_report,
+            })
+
         except Exception as exc:
             logger.error("Page %d failed: %s", page_num, exc)
 
     prs.save(str(output))
     logger.info("Saved: %s (%d slides)", output.resolve(), len(prs.slides))
+
+    # US-4.2: write the per-slide font-fit render report sidecar (AC3). Never
+    # blocks a successful render.
+    _write_render_report(str(output), render_report)
 
     # Auto-cleanup pipeline temp artifacts (outline checkpoints, agent-written
     # temp JSON) so they never accumulate on disk. Lazy import + try/except keeps

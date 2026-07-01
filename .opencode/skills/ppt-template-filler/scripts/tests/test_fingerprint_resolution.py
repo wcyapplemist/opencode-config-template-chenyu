@@ -150,13 +150,20 @@ class TestSelectLayoutPrecedence:
 
     def test_config_pin_overrides_fingerprint(self, template_path):
         prs, contract, exact, norm = self._setup(template_path)
-        # Pin content_slide to a different content-bearing layout than the
-        # fingerprint-preferred one (name from the current bundled template).
-        pinned_name = "TITLE_AND_TWO_COLUMNS"
+        # Pin content_slide to a *different* content-bearing layout than the
+        # fingerprint-preferred one. Chosen dynamically so the test does not
+        # couple to any particular template's layout names.
+        default_idx, _ = _resolve_layout_by_fingerprint("content_slide", contract)
+        default_name = prs.slide_layouts[default_idx].name
+        pinned_name = next(
+            L["name"] for L in contract["layouts"]
+            if "OBJECT" in (L.get("fingerprint") or []) and L["name"] != default_name
+        )
         config = {"content_slide_layout": pinned_name}
         layout = _select_layout("content_slide", contract, config, prs, exact, norm, 1)
         assert layout is not None
         assert layout.name == pinned_name
+        assert pinned_name != default_name  # the pin overrode the fingerprint default
 
     def test_unknown_slide_type_skipped(self, template_path):
         prs, contract, exact, norm = self._setup(template_path)

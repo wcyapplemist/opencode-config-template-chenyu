@@ -71,6 +71,7 @@ pptx-subagent-development/
 │       │       ├── schema_extractor.py        # Epic 1: extraction + font detection + zip embed (US-1.1–1.5)
 │       │       ├── schema_validator.py        # JSON schema validation + retry
 │       │       ├── density_mode.py            # Per-slide word-budget enforcement
+│       │       ├── text_fit.py                # US-4.2: reactive font auto-shrink estimator (pure)
 │       │       ├── outline_store.py           # Outline checkpoint artifact
 │       │       ├── templates/
 │       │       │   ├── template.pptx          # Slide Master with named layouts
@@ -178,6 +179,16 @@ the embedded schema and falling back to the sidecar introspection contract for l
 templates. Generation keeps `add_slide(layout)` (chenyu's intent); the embedded JSON drives
 layout selection. The bundled `template.pptx` ships pre-templated. Coordinate placement
 (rendering at a different aspect ratio) is deferred to US-4.6.
+
+**US-4.2 — reactive text-fitting.** `text_fit.py` is a pure heuristic estimator
+that, at render time, shrinks a placeholder's font in −2pt steps (8pt floor) when
+text would overflow its box. Base size is template-derived (schema `size_pt` →
+layout sample-run → conservative role ceiling); an explicit `run.font.size` is
+written only on actual shrink (else inherited). Per-slide per-placeholder fit
+decisions — including the `font_size_adjusted` flag (AC3) — are written to a
+`<output>.render.json` sidecar. AC1 (no overflow) is best-effort: python-pptx
+has no layout engine, so a hard guarantee needs an external render oracle
+(see GAP-ANALYSIS §US-4.2 Rev 10).
 
 **CLI:**
 ```bash

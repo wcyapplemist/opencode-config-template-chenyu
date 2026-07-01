@@ -312,9 +312,9 @@ The skill reads the JSON **from the zip** (it does not re-extract or re-parse th
 - Bullet points use the template's bullet style if detected; otherwise, a clean default is applied.
 
 **Acceptance Criteria:**
-- [ ] No generated slide has text overflowing its bounding box.
-- [ ] Font size is only reduced when necessary — never increased beyond the template's defined size.
-- [ ] A `font_size_adjusted` flag is set in the component when auto-sizing occurs.
+- [ ] No generated slide has text overflowing its bounding box. *(AC1 — best-effort / verification deferred: python-pptx has no layout engine, so this cannot be proven without an external render oracle; delivered via a conservative estimator + `word_wrap=True` (horizontal-only backstop). See GAP-ANALYSIS §US-4.2 Rev 10.)*
+- [x] Font size is only reduced when necessary — never increased beyond the template's defined size. *(AC2 — delivered: base size resolved via schema `size_pt` → layout sample-run → conservative role ceiling (body 14 / title 28 / subtitle 18); only −2pt downward steps. Re-framed to "≤ resolved base" per arch-review M1.)*
+- [x] A `font_size_adjusted` flag is set in the component when auto-sizing occurs. *(AC3 — delivered: written to the `<output>.render.json` render-report sidecar per placeholder; the engine's return type is unchanged.)*
 
 **Tags:** text-fitting, visual-quality, auto-sizing
 
