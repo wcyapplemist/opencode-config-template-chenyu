@@ -197,3 +197,100 @@ class TestRenderReport:
         assert Path(output_path).with_name(
             Path(output_path).stem + ".render.json"
         ).exists()
+
+
+# ============================================================
+# _build_schema_font_map (M1 tier 1) — pure unit
+# ============================================================
+class TestSchemaFontMap:
+    def test_builds_role_to_size_first_wins(self):
+        from ppt_builder import _build_schema_font_map
+        schema = {"slide_layouts": [{
+            "layout_name": "Content",
+            "components": [
+                {"type": "placeholder", "placeholder_type": "title", "font": {"size_pt": 32}},
+                {"type": "placeholder", "placeholder_type": "body", "font": {"size_pt": 16}},
+                {"type": "placeholder", "placeholder_type": "picture", "font": {"size_pt": 99}},
+                {"type": "placeholder", "placeholder_type": "body", "font": {"size_pt": 20}},
+                {"type": "shape", "font": {"size_pt": 5}},
+                {"type": "placeholder", "placeholder_type": "subtitle"},
+            ],
+        }]}
+        m = _build_schema_font_map(schema)
+        # only text roles (title/subtitle/body); picture excluded; first body wins
+        assert m == {"Content": {"title": 32.0, "body": 16.0}}
+
+    def test_empty_on_missing_schema(self):
+        from ppt_builder import _build_schema_font_map
+        assert _build_schema_font_map(None) == {}
+        assert _build_schema_font_map({}) == {}
+
+
+# ============================================================
+# _layout_line_spacing — Major regression: exact-point spacing
+# ============================================================
+class TestLayoutLineSpacing:
+    def _slide_and_layout_ph(self, template_path):
+        from ppt_builder import _matching_layout_placeholder
+        prs = Presentation(template_path)
+        layout = prs.slide_layouts[0]
+        slide = prs.slides.add_slide(layout)
+        ph = next(p for p in slide.placeholders if getattr(p, "is_placeholder", False))
+        layout_ph = _matching_layout_placeholder(ph, layout)
+        assert layout_ph is not None, "layout[0] must have a matchable placeholder"
+        return ph, layout, layout_ph
+
+    def test_exact_point_spacing_falls_back_to_default(self, template_path):
+        # Regression for the Major bug: an exact-point (Length/int-subclass)
+        # line_spacing must NOT be misused as a 228600x multiplier.
+        from pptx.util import Pt
+        from ppt_builder import _layout_line_spacing
+        from text_fit import LINE_SPACING_DEFAULT
+        ph, layout, layout_ph = self._slide_and_layout_ph(template_path)
+        layout_ph.text_frame.paragraphs[0].line_spacing = Pt(18)
+        ls = _layout_line_spacing(ph, layout)
+        assert ls == LINE_SPACING_DEFAULT, (
+            f"exact-point spacing must fall back to {LINE_SPACING_DEFAULT}, got {ls}"
+        )
+
+    def test_multiple_spacing_is_honoured(self, template_path):
+        from ppt_builder import _layout_line_spacing
+        ph, layout, layout_ph = self._slide_and_layout_ph(template_path)
+        layout_ph.text_frame.paragraphs[0].line_spacing = 1.5
+        assert _layout_line_spacing(ph, layout) == 1.5
+
+    def test_inherited_none_falls_back_to_default(self, template_path):
+        from ppt_builder import _layout_line_spacing
+        from text_fit import LINE_SPACING_DEFAULT
+        ph, layout, layout_ph = self._slide_and_layout_ph(template_path)
+        layout_ph.text_frame.paragraphs[0].line_spacing = None
+        assert _layout_line_spacing(ph, layout) == LINE_SPACING_DEFAULT
+
+
+# ============================================================
+# Two-content body fit — both bodies recorded in the report
+# ============================================================
+class TestTwoContentFit:
+    def test_both_bodies_recorded(self, template_path, output_path):
+        data = [{
+            "slide_type": "two_content_slide",
+            "title": "Compare",
+            "body_left": "**Left** - " + "word " * 40,
+            "body_right": "**Right** - " + "word " * 40,
+            "notes": "n",
+        }]
+        generate_ppt_from_data(
+            data, template_path=template_path, output_path=output_path
+        )
+        report = json.loads(
+            Path(output_path).with_name(
+                Path(output_path).stem + ".render.json"
+            ).read_text(encoding="utf-8")
+        )
+        body_entries = [
+            p for s in report["slides"] for p in s["placeholders"] if p["role"] == "body"
+        ]
+        fields = {p["field"] for p in body_entries}
+        assert {"body_left", "body_right"} <= fields, (
+            f"both two-content bodies must be recorded, got {fields}"
+        )

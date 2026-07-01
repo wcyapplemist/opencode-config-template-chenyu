@@ -230,6 +230,12 @@ def fit_font_size(
     ):
         size = max(min_pt, round(size - step_pt, 2))
 
+    # applied respects the readability floor (>= min_pt) above all. In the
+    # normal case (base_pt >= min_pt — role ceilings are 14/28/18) ``size``
+    # already stays within [min_pt, base_pt], so applied <= base (AC2). A
+    # pathological sub-floor base (e.g. a 6pt layout sample run) yields
+    # applied = min_pt > base: the floor wins over AC2's letter, since rendering
+    # below the floor would defeat US-4.2's readability intent.
     applied = max(size, min_pt)
     final_fits = fits_at_size(text, applied, box_width_in, box_height_in, line_spacing)
     adjusted = applied < base_pt - 1e-9

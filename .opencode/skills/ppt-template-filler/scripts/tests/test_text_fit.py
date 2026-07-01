@@ -154,6 +154,13 @@ class TestFitFontSize:
             fit = fit_font_size(text, base, 9.0, 2.0)
             assert fit.applied_size_pt <= base + 1e-9
 
+    def test_floor_wins_over_sub_floor_base(self):
+        # Pathological base < min (e.g. a 6pt layout sample run): the
+        # readability floor wins — applied stays at min, not the sub-floor base.
+        fit = fit_font_size("hello world", 6, 9.0, 4.0)
+        assert fit.applied_size_pt == MIN_FONT_SIZE_PT
+        assert fit.applied_size_pt >= MIN_FONT_SIZE_PT
+
     def test_cjk_triggers_shrink(self):
         # 100 CJK chars in a short box cannot fit at 18 → shrinks
         fit = fit_font_size("字" * 100, 18, 9.0, 0.8)

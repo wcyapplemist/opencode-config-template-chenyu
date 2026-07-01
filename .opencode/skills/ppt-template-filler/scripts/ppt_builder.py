@@ -74,6 +74,10 @@ _EMU_PER_INCH = 914400
 # (US-4.2). Only text-bearing placeholders participate in font-fitting.
 _PT_TO_ROLE = {"title": "title", "subtitle": "subtitle", "body": "body"}
 
+# Body desc-run size as a fraction of the title-run size — preserves the
+# historical 12/14 visual hierarchy (0.857) now that sizes are template-derived.
+_BODY_DESC_RATIO = 0.85
+
 _REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
 _LAYOUT_NAME_MAP: Dict[str, List[str]] = {
@@ -477,35 +481,48 @@ def _find_body_placeholder(slide: Any) -> Optional[Any]:
     return objects[0] if objects else None
 
 
+def _matching_layout_placeholder(shape: Any, layout: Any) -> Optional[Any]:
+    """The layout placeholder matching ``shape`` by ``placeholder_format.idx``.
+
+    Returns ``None`` for non-placeholder shapes (textboxes — python-pptx raises
+    on ``.placeholder_format``), an absent idx, no layout, or no match. Shared by
+    the M1 base-size and line-spacing readers to avoid duplicating the idx walk
+    (and the ``is_placeholder`` guard that avoids the ValueError).
+    """
+    if not getattr(shape, "is_placeholder", False) or layout is None:
+        return None
+    pf = getattr(shape, "placeholder_format", None)
+    idx = pf.idx if pf is not None else None
+    if idx is None:
+        return None
+    try:
+        for ph in layout.placeholders:
+            lpf = getattr(ph, "placeholder_format", None)
+            if lpf is not None and lpf.idx == idx:
+                return ph
+    except Exception:  # best-effort; never block the render
+        return None
+    return None
+
+
 def _layout_sample_font_pt(shape: Any, layout: Any) -> Optional[float]:
     """Probe the **layout's** matching placeholder for an explicit run size.
 
     Layout placeholders usually carry "Click to add…" sample text with an
     explicit font size — far more reliable than the post-``add_slide`` empty
     slide placeholder, which python-pptx does not resolve through ``lstStyle``
-    inheritance. Matches the slide placeholder to the layout placeholder by
-    ``placeholder_format.idx``. Returns ``None`` when no explicit size is found.
+    inheritance. Returns ``None`` when no explicit size is found.
     (US-4.2 / arch-review M1 tier 2.)
     """
-    if not getattr(shape, "is_placeholder", False):
-        return None  # textboxes have no placeholder_format (python-pptx raises)
-    pf = getattr(shape, "placeholder_format", None)
-    idx = pf.idx if pf is not None else None
-    if idx is None or layout is None:
+    ph = _matching_layout_placeholder(shape, layout)
+    if ph is None or not getattr(ph, "has_text_frame", False):
         return None
     try:
-        for ph in layout.placeholders:
-            lpf = getattr(ph, "placeholder_format", None)
-            if lpf is None or lpf.idx != idx:
-                continue
-            if not getattr(ph, "has_text_frame", False):
-                break
-            for p in ph.text_frame.paragraphs:
-                for run in p.runs:
-                    size = run.font.size
-                    if size is not None:
-                        return float(size.pt)
-            break
+        for p in ph.text_frame.paragraphs:
+            for run in p.runs:
+                size = run.font.size
+                if size is not None:
+                    return float(size.pt)
     except Exception:  # best-effort; never block the render
         return None
     return None
@@ -570,23 +587,20 @@ def _layout_line_spacing(shape: Any, layout: Any) -> float:
     layout sets spacing explicitly it is honoured (US-4.2 Details). Returns a
     float multiplier (single spacing = 1.0).
     """
-    if not getattr(shape, "is_placeholder", False) or layout is None:
-        return LINE_SPACING_DEFAULT
-    pf = getattr(shape, "placeholder_format", None)
-    idx = pf.idx if pf is not None else None
-    if idx is None:
+    ph = _matching_layout_placeholder(shape, layout)
+    if ph is None or not getattr(ph, "has_text_frame", False):
         return LINE_SPACING_DEFAULT
     try:
-        for ph in layout.placeholders:
-            lpf = getattr(ph, "placeholder_format", None)
-            if lpf is None or lpf.idx != idx:
-                continue
-            for p in ph.text_frame.paragraphs:
-                ls = p.line_spacing
-                if ls is not None:
-                    # python-pptx returns a float (multiple) or Pt; normalise
-                    return float(ls) if isinstance(ls, (int, float)) else LINE_SPACING_DEFAULT
-            break
+        for p in ph.text_frame.paragraphs:
+            ls = p.line_spacing
+            if ls is not None:
+                # python-pptx: a plain ``float`` is a line-height multiple
+                # (e.g. 1.2); a ``Length`` (Pt/Centipoints) is an *exact
+                # points* value and is an ``int`` subclass — NOT expressible
+                # as a multiplier without the font size, so fall back to the
+                # default rather than misusing the EMU/centipoint integer
+                # (e.g. Pt(18) -> 228600) as a 228600x multiplier.
+                return float(ls) if isinstance(ls, float) else LINE_SPACING_DEFAULT
     except Exception:
         pass
     return LINE_SPACING_DEFAULT
@@ -723,7 +737,7 @@ def _set_body_text(
             line_spacing=ls, base_source=source,
         )
         title_size = fit.applied_size_pt
-        desc_size = max(title_size * 0.85, MIN_FONT_SIZE_PT)
+        desc_size = max(title_size * _BODY_DESC_RATIO, MIN_FONT_SIZE_PT)
 
         for i, line in enumerate(lines):
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
