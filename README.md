@@ -78,12 +78,12 @@ pptx-subagent-development/
 │       │       │   └── template.config.json   # Layout-name overrides
 │       │       ├── resolvers/                  # chart-data resolver
 │       │       ├── schemas/                    # Per-slide-type JSON schemas + template_schema.json (Epic 1 spec)
-    │       │       └── tests/                      # pytest suite (112 tests for schema_extractor alone)
+    │       │       └── tests/                      # pytest suite (389 tests; 112 for schema_extractor alone)
     │       ├── generate-template-skill/    # Template extraction + embed (US-3.1; wraps schema_extractor)
     │       └── template-modifier-skill/      # Template extension (Capability B)
 ├── docs/                                 # Activity diagrams, models, use-cases, workflows
 │   └── user-stories/                     # chenyu-user-stories.md + GAP-ANALYSIS.md (+ .zh.md)
-├── PLANS/                                # Phased execution plans (PLAN-GIT-48/50/52/54/55/56.md)
+├── PLANS/                                # Phased execution plans (PLAN-GIT-48/50/52/54/55/56/58/60/63.md)
 ├── output/                               # Generated .pptx files (gitignored)
 ├── chenyu-user requirement.html          # Original requirements source (HTML)
 ├── requirements.txt                      # Python dependencies
@@ -190,6 +190,15 @@ decisions — including the `font_size_adjusted` flag (AC3) — are written to a
 has no layout engine, so a hard guarantee needs an external render oracle
 (see GAP-ANALYSIS §US-4.2 Rev 10).
 
+**US-4.3 — auto-chain / templated output.** Every generated `.pptx` is
+**self-describing**: after `prs.save` (which strips the unmodeled part),
+`generate_ppt_from_data(auto_template=True)` re-embeds `ppt/template_schema.json`
+into the output, sourced from the input template (so it describes the template,
+not the rendered deck's cover) and skipping a stale embedded input schema. The
+agent detects a non-templated input at Stage 0 and emits *"No template found —
+extracting first, then generating slides..."*. One prompt → a templated, reusable
+deck; the render report gains an additive `templating` field.
+
 **CLI:**
 ```bash
 python schema_extractor.py --input template.pptx --output schema.json        # extract only
@@ -199,8 +208,10 @@ python schema_extractor.py --input template.pptx --output schema.json --embed --
 
 The schema is validated by `validate_template_schema()` (hand-rolled, no
 `jsonschema` dependency); `title_source` is additionally runtime-enforced via an enum check
-keyed off the shared `TITLE_SOURCES` constant. The renderer's fingerprint contract
-(`template_introspector.py`) is **untouched** — the two paths coexist (GAP-ANALYSIS
+keyed off the shared `TITLE_SOURCES` constant. Since US-4.1 the renderer
+**prefers the embedded JSON** (`get_render_contract` → `contract_adapter`) and
+falls back to the sidecar introspection contract (`template_introspector.py`)
+for legacy/non-templated templates — the two paths coexist (GAP-ANALYSIS
 §5 Decision 1).
 
 ## Extending the engine

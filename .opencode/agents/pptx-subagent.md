@@ -46,6 +46,19 @@ The engine is **template-agnostic**: it accepts **any** `.pptx`, not just the bu
    "
    ```
    This prints, for each of the 8 slide types, whether the template provides a matching layout (and its `content_area_in2`).
+3. **Is the template templated? (US-4.3)** — check whether the file already carries an embedded `ppt/template_schema.json`:
+   ```bash
+   python -c "
+   import sys; sys.path.insert(0,'.opencode/skills/ppt-template-filler/scripts')
+   from schema_extractor import read_embedded_schema, TemplateExtractionError
+   tpl = '.opencode/skills/ppt-template-filler/scripts/templates/template.pptx'
+   try:
+       print('TEMPLATED' if read_embedded_schema(tpl) is not None else 'NOT_TEMPLATED')
+   except TemplateExtractionError:
+       print('NOT_TEMPLATED')   # corrupt/unreadable -> treat as absent; never crash Stage 0
+   "
+   ```
+   If `NOT_TEMPLATED`, **tell the user** (AC3): *"No template found — extracting first, then generating slides..."* You do **not** run a second command: the engine's `auto_template` (default on) extracts the schema and embeds it into the **output** `.pptx` after save, so the generated deck is self-describing/reusable. Detection is informational only; generation works either way (the engine falls back to sidecar introspection for layout resolution).
 
 ### Template-aware content (MANDATORY)
 
@@ -379,6 +392,7 @@ COACHING: Matter-of-fact tone, don't over-sell. Be ready for: "Does BIM work wit
 - Spreadsheets → Excel tools
 - General coding tasks unrelated to presentations
 - **Template extraction / "generate template" / "extract the template from this PPTX" / "what layouts does this template have" → `generate-template-skill`** (US-3.1). I generate slides FROM a template; I do not extract/fingerprint a template definition or produce a templated PPTX. This agent triggers broadly on `pptx`/`presentation`, so route extraction-intent requests to that skill instead.
+  - **Boundary (US-4.3):** generating slides **from a non-templated file** IS this agent's job — the engine's `auto_template` embeds the schema into the *output* automatically, and you only emit the one-line status message. That is distinct from a pure *"extract/fingerprint this template"* request (no slides wanted), which still routes to `generate-template-skill`.
 
 ## Error Handling
 

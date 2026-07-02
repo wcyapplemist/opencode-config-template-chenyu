@@ -330,9 +330,9 @@ The skill reads the JSON **from the zip** (it does not re-extract or re-parse th
 The subagent detects the absence of `ppt/template_schema.json`, automatically chains the Template Generator skill first, then proceeds to Slide Generation. The user is informed of the two-step process but doesn't need to manually trigger each step.
 
 **Acceptance Criteria:**
-- [ ] Single user prompt triggers both skills in sequence without error.
-- [ ] Intermediate JSON is embedded in the output PPTX.
-- [ ] User sees a status message like "No template found — extracting first, then generating slides..."
+- [x] Single user prompt triggers both skills in sequence without error. *(AC1 — functionally met post-US-4.1: `get_render_contract` falls back to sidecar introspection, so any PPTX renders in one `generate_ppt_from_data` call; the engine's `auto_template` then guarantees a templated output.)*
+- [x] Intermediate JSON is embedded in the output PPTX. *(AC2 — delivered: `_ensure_output_templated` re-embeds `ppt/template_schema.json` into the output after save, sourced from the input template; `read_embedded_schema(output)` is non-None.)*
+- [x] User sees a status message like "No template found — extracting first, then generating slides...". *(AC3 — delivered: the agent detects a non-templated input at Stage 0 (`read_embedded_schema`, exception-safe) and emits the one-line message before proceeding.)*
 
 **Tags:** chaining, auto-detect, ux
 

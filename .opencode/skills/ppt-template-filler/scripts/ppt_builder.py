@@ -38,7 +38,12 @@ from schema_validator import ValidationError, validate_slide_data_list
 from resolvers import resolve_slide_data_list
 from template_introspector import get_contract
 from contract_adapter import embedded_schema_to_contract
-from schema_extractor import read_embedded_schema, TemplateExtractionError
+from schema_extractor import (
+    TemplateExtractionError,
+    embed_schema,
+    extract_schema,
+    read_embedded_schema,
+)
 from text_fit import (
     LINE_SPACING_DEFAULT,
     MIN_FONT_SIZE_PT,
@@ -1009,22 +1014,42 @@ def _ensure_default_closing(
     return list(slide_data_list) + [closing]
 
 
+def _live_layout_count(template_path: str) -> Optional[int]:
+    """The live template's layout count, or ``None`` if it can't be read."""
+    try:
+        return len(Presentation(template_path).slide_layouts)
+    except Exception:  # pragma: no cover - defensive
+        return None
+
+
+def _embedded_schema_stale(template_path: str, embedded_layout_count: int) -> bool:
+    """True if the live template's layout count diverges from the embedded
+    schema's (edit-without-re-embed — the embedded JSON has no mtime-invalidation,
+    unlike the sidecar cache). Cheap structural check; returns ``False`` if the
+    live count cannot be determined (never forces a re-extract on uncertainty).
+    Shared by the M5 staleness warning and US-4.3's auto-template (M2).
+    """
+    live = _live_layout_count(template_path)
+    return live is not None and live != embedded_layout_count
+
+
 def _warn_if_embedded_stale(template_path: str, contract: Dict[str, Any]) -> None:
     """M5 staleness guard: warn if the embedded schema's layout count diverges
     from the live template (catches edit-without-re-embed — the embedded JSON has
     no mtime-invalidation, unlike the sidecar cache). Cheap structural check;
     non-fatal (never blocks the render, never falls back).
+
+    Opens the template **once** (via :func:`_live_layout_count`) and reuses the
+    count for both the check and the message (code-review MINOR-1 — the prior
+    refactor opened it twice).
     """
-    try:
-        live = len(Presentation(template_path).slide_layouts)
-    except Exception:  # pragma: no cover - defensive; never block
-        return
-    embedded = len(contract.get("layouts", []))
-    if live != embedded:
+    n_embedded = len(contract.get("layouts", []))
+    live = _live_layout_count(template_path)
+    if live is not None and live != n_embedded:
         logger.warning(
             "Stale embedded schema in %s: describes %d layouts, live template has %d "
             "(template may have been edited after embed); re-run generate-template-skill",
-            template_path, embedded, live,
+            template_path, n_embedded, live,
         )
 
 
@@ -1140,6 +1165,57 @@ def _write_render_report(pptx_path: str, report: Dict[str, Any]) -> None:
         logger.debug("Render report not written (%s): %s", report_path, exc)
 
 
+def _ensure_output_templated(
+    output_path: str, template_path: str, auto_template: bool
+) -> Dict[str, Any]:
+    """US-4.3: embed ``ppt/template_schema.json`` into the OUTPUT pptx after save.
+
+    python-pptx drops the unmodeled part on ``prs.save``, so the output never
+    carries embedded JSON unless re-embedded here (PLAN-GIT-63). The schema is
+    sourced from the **input template** (arch-review M1 — never the rendered
+    output, so ``_infer_title`` reads the template's own identity, not the deck's
+    cover slide): copy the input's embedded schema when valid **and** non-stale
+    (arch-review M2 — a stale embedded schema is not laundered into a trusted
+    output), else extract fresh from the input. ``embed_schema`` is already
+    atomic (temp + ``os.replace``), so it is called in place (m3). Non-fatal.
+    Returns a ``templating`` report fragment.
+    """
+    result: Dict[str, Any] = {
+        "input_template_embedded": False,
+        "output_templated": False,
+        "schema_source": "failed",
+        "message": "",
+    }
+    if not auto_template:
+        result["schema_source"] = "disabled"
+        result["message"] = "auto_template disabled"
+        return result
+    try:
+        embedded = read_embedded_schema(template_path)
+        result["input_template_embedded"] = embedded is not None
+        if embedded is not None and not _embedded_schema_stale(
+            template_path, len(embedded.get("slide_layouts") or [])
+        ):
+            schema = embedded
+            source = "copied_input"
+        else:
+            # M1: extract from the INPUT template (its master+layouts are
+            # byte-identical to the output's; _infer_title reads the template's
+            # own slides[0], not the rendered deck's cover).
+            schema = extract_schema(template_path)
+            source = "extracted_input"
+        embed_schema(output_path, schema, output_path)  # m3: atomic, in place
+        result["output_templated"] = True
+        result["schema_source"] = source
+        result["message"] = f"output templated ({source})"
+        logger.info("US-4.3 auto-template: %s (%s)", output_path, source)
+    except Exception as exc:  # never block the render
+        result["schema_source"] = "failed"
+        result["message"] = f"templating failed: {exc}"
+        logger.debug("Auto-template failed for %s: %s", output_path, exc)
+    return result
+
+
 def generate_ppt_from_data(
     slide_data_list: List[Dict[str, Any]],
     template_path: Optional[str] = None,
@@ -1151,6 +1227,7 @@ def generate_ppt_from_data(
     resolve_placeholders: bool = True,
     default_closing: bool = True,
     config_overrides: Optional[Dict[str, str]] = None,
+    auto_template: bool = True,
 ) -> str:
     # #37: resolve resource placeholders (data_query) into concrete assets
     # BEFORE validation, so the validator sees materialized data.
@@ -1397,6 +1474,13 @@ def generate_ppt_from_data(
 
     prs.save(str(output))
     logger.info("Saved: %s (%d slides)", output.resolve(), len(prs.slides))
+
+    # US-4.3: ensure the output carries ppt/template_schema.json (python-pptx
+    # strips the unmodeled part on save). Schema sourced from the INPUT template
+    # (M1); staleness-aware (M2); atomic (m3). Non-fatal. AC2.
+    render_report["templating"] = _ensure_output_templated(
+        str(output), str(template), auto_template
+    )
 
     # US-4.2: write the per-slide font-fit render report sidecar (AC3). Never
     # blocks a successful render.

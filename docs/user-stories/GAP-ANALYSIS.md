@@ -24,6 +24,8 @@
 > **Revision 9 (post-US-4.1, issue #58):** US-4.1 now ✅ Met — the renderer reads the embedded `ppt/template_schema.json` via a source-swap adapter (`contract_adapter.embedded_schema_to_contract` → `ppt_builder.get_render_contract`), preferring embedded JSON and falling back to the sidecar. Generation keeps `add_slide(layout)` (chenyu's #4); the embedded JSON drives layout selection, not coordinate placement (AC3 clarified — see US-4.1 historical note; coordinate placement is deferred to US-4.6). Architecture-review findings addressed: C1 (clone path re-embeds the schema into `template_new.pptx`), M3 (`chart`→`OBJECT` canonical map + top-level placeholder filtering; parity-tested), M4 (`_source` provenance + absent/corrupt-distinction), M5 (templated default template + staleness guard), M6 (adapter as a bridge → US-4.6), m1/m2/m3 (consumer migration + grep audit). The bundled `template.pptx` now ships pre-templated. Counts: Met 11 / Partial 4 / Not met 3 / Differs 1.
 >
 > **Revision 10 (post-US-4.2, issue #60 — delivered & merged via #62):** US-4.2 delivered — a pure `text_fit.py` estimator (−2pt steps to an 8pt floor) + a sidecar `<output>.render.json` carrying the `font_size_adjusted` flag. **AC2 ✅ & AC3 ✅ Met; AC1 deferred (best-effort).** Architecture review (APPROVE-WITH-CHANGES) incorporated: M1 (base-size resolution chain → schema `size_pt` → **layout sample-run** → conservative role ceiling body **14** / title **28** / subtitle **18**; AC2 re-framed to "≤ resolved base"), M2 (inter-paragraph spacing reserve in the height estimate), M3 (explicit `run.font.size` written **only on actual shrink**, else inheritance preserved; body is the documented exception — always template-derived). Code review (APPROVE-WITH-CHANGES) incorporated: a Major fix to `_layout_line_spacing` (exact-point `Length`/int-subclass spacing no longer misread as a multiplier), a DRY refactor, and +7 coverage tests. **Finding C1 is deferred by design** (see the US-4.2 caveat below): AC1's hard "no overflow" guarantee is **not verifiable** without a layout engine, so it is delivered best-effort and a full oracle (LibreOffice headless render) is left to a follow-up; AC1 stays unchecked. US-4.2 stays 🟡 Partial (AC1 pending). The bundled-template mis-fingerprint defect (#61) was also resolved by shipping a pre-templated replacement template with real OBJECT/BODY/PICTURE placeholders. Full suite 381 passed. Counts: Met 11 / Partial 4 / Not met 3 / Differs 1 (unchanged — US-4.2 remains Partial pending AC1).
+>
+> **Revision 11 (post-US-4.3, issue #63):** US-4.3 reclassified ⚪ Architecture differs → ✅ Met. AC1 was already functionally met post-US-4.1 (sidecar fallback). The real gaps — AC2 (output carries embedded JSON) and AC3 (status message) — are closed: `generate_ppt_from_data(auto_template=True)` re-embeds `ppt/template_schema.json` into the **output** after save (python-pptx otherwise strips the part), sourcing the schema from the **input template** (arch-review M1 — the title is the template's identity, not the rendered deck's cover) and skipping a stale embedded input schema (M2); the agent detects a non-templated input at Stage 0 (`read_embedded_schema`, exception-safe per m6) and emits the one-line status message. Every output `.pptx` is now a self-describing/templated deck; the render report gains an additive `templating` field. The interactive generate-template-skill is not chained (mechanism differs, function met). Full suite 389 passed. Counts: Met 12 / Partial 4 / Not met 3 / Differs 0.
 
 ---
 
@@ -128,9 +130,11 @@ Overflow prevention is **preventive, not reactive**: `density_mode.py` enforces 
 
 > **Template defect resolved (issue #61, closed):** the previously-bundled `template.pptx` (a Google-Slides export) mis-fingerprinted body/picture placeholders — its layout fingerprints showed only `TITLE`/`SUBTITLE`, never `OBJECT`/`PICTURE` — so `content_slide` / `two_content_slide` / `comparison_slide` / `content_image_slide` did not resolve. This was a pre-existing US-4.1/Epic-1 template-data defect, **not** engine code. It is now **resolved** by shipping a replacement pre-templated `template.pptx` with real OBJECT/BODY/PICTURE placeholders (all 8 slide types servable; the suite went 26 pre-existing failures → 381 passed).
 
-#### US-4.3 — Auto-Chain Extraction When No JSON Present `[Must Have]` — ⚪ Architecture differs
+#### US-4.3 — Auto-Chain Extraction When No JSON Present `[Must Have]` — ✅ Met (mechanism differs; function + all 3 ACs met, Rev 11)
 
 Because the model is contract-based (introspection runs automatically before every render) rather than embedded-JSON-based, there is no concept of "no JSON → extract first". The two-step chain (`extract` then `generate`) does not map; introspection is always implicit. Functionally the user can hand any `.pptx` and generate from it in one step — but the *mechanism* differs from the story.
+
+> **Delivered (issue #63, `PLANS/GIT-63`):** reclassified ⚪→✅. **AC1** was already functionally met post-US-4.1 (`get_render_contract` sidecar fallback → any PPTX renders in one call). The real gaps — **AC2** (output carries embedded JSON) and **AC3** (status message) — are now closed: `generate_ppt_from_data(auto_template=True)` re-embeds `ppt/template_schema.json` into the **output** after save (python-pptx otherwise strips the part), sourcing the schema from the **input template** (arch-review M1 — `extract_schema(template)`, so the title is the template's identity, not the rendered deck's cover) and skipping a stale embedded input schema (M2); the agent detects a non-templated input at Stage 0 (`read_embedded_schema`, exception-safe per m6) and emits *"No template found — extracting first, then generating slides..."*. The interactive generate-template-skill is **not** chained (headless-infeasible + agent `task` permission denies it); the engine does inline extract+embed instead — the "architecture differs, function met" framing. The render report gains an additive `templating` field (`input_template_embedded`, `output_templated`, `schema_source`, `message`). Every output `.pptx` is now a self-describing/reusable templated deck.
 
 #### US-4.4 — Style Picker for Template-Less Generation `[Should Have]` — ❌ Not met
 
@@ -162,21 +166,21 @@ Python's `logging` module is used across the modules. `schema_extractor.py` **do
 
 | Status | Count | Stories |
 |---|---|---|
-| ✅ Met | 11 | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-3.1, US-3.2, US-3.3, US-3.4, US-4.1, US-4.5 |
+| ✅ Met | 12 | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-3.1, US-3.2, US-3.3, US-3.4, US-4.1, US-4.3, US-4.5 |
 | 🟡 Partial | 4 | US-4.2, US-5.1, US-5.2, US-5.3 |
 | ❌ Not met | 3 | US-2.1, US-2.2, US-4.4 |
-| ⚪ Architecture differs | 1 | US-4.3 |
+| ⚪ Architecture differs | 0 | — |
 
 ### §3.2 Priority × Status Matrix
 
 | | Must Have | Should Have | Could Have |
 |---|---|---|---|
-| ✅ Met | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-3.1, US-3.2, US-3.3, US-4.1 | US-3.4 | US-4.5 |
+| ✅ Met | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-3.1, US-3.2, US-3.3, US-4.1, US-4.3 | US-3.4 | US-4.5 |
 | 🟡 Partial | US-4.2, US-5.1, US-5.2 | US-5.3 | — |
 | ❌ Not met | **US-2.1** | US-2.2, US-4.4 | — |
-| ⚪ Differs | US-4.3 | — | — |
+| ⚪ Differs | — | — | — |
 
-**Epics 1, 3, and US-4.1 are complete** (Rev 9); **US-4.2 is delivered (Rev 10)** — AC2/AC3 Met, AC1 deferred (best-effort; python-pptx has no layout engine). The remaining gaps cluster in Epic 2 (header/footer detection + common practices), the rest of Epic 4 (US-4.4 template-less style picker, US-4.6 multi-aspect-ratio, and US-4.2's deferred AC1 overflow-oracle), and Epic 5 (skill decomposition / CLI / shared-schema loading). The single unmet Must-Have is **US-2.1** (header/footer).
+**Epics 1, 3, and US-4.1 are complete** (Rev 9); **US-4.2 delivered** (Rev 10, AC2/AC3 Met, AC1 deferred); **US-4.3 delivered** (Rev 11 — every output is a self-describing/templated `.pptx`; AC1/AC2/AC3 Met). The remaining gaps cluster in Epic 2 (header/footer detection + common practices), the rest of Epic 4 (US-4.4 template-less style picker, US-4.6 multi-aspect-ratio, and US-4.2's deferred AC1 overflow-oracle), and Epic 5 (skill decomposition / CLI / shared-schema loading). The single unmet Must-Have is **US-2.1** (header/footer).
 
 ---
 
