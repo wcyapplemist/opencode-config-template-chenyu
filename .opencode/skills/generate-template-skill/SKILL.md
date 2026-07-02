@@ -40,8 +40,10 @@ The engine lives in the `generate-slide-skill` skill's scripts. I call its funct
 
 | Function | Purpose |
 |----------|---------|
-| `extract_schema(path) -> dict` | Read the PPTX, emit the proposed-schema JSON (US-1.1–1.5). |
+| `extract_schema(path) -> dict` | Read the PPTX, emit the proposed-schema JSON (US-1.1–1.5, US-2.1 header/footer detection). |
 | `validate_template_schema(dict) -> ValidationResult` | Structural validation (incl. `title_source` enum, MAJOR-2). |
+| `needs_header_footer_prompt(schema) -> bool` | True when the template has neither header nor footer (US-2.1 AC2). |
+| `inject_default_header_zone(schema)` | Inject a default header zone into the schema metadata (US-2.1 AC3, schema-only). |
 | `embed_schema(pptx, schema, out) -> EmbeddedSchemaResult` | Write `ppt/template_schema.json` into a PPTX copy (US-1.5). |
 | `build_extraction_summary(dict) -> str` | Human-readable summary (US-3.3 AC2). |
 
@@ -51,7 +53,7 @@ The engine lives in the `generate-slide-skill` skill's scripts. I call its funct
 Stage 0  Receive + validate the PPTX path
 Stage 1  extract_schema  → schema dict  (catch TemplateExtractionError -> AC3)
          validate_template_schema(schema)  → must be valid before continuing
-Stage 2  Title confirmation  (US-3.2 AC2/AC3) — read title_source
+Stage 2  Title confirmation + header/footer check  (US-3.2 AC2/AC3, US-2.1 AC2/AC3)
 Stage 3  embed_schema  → templated PPTX at output/<stem>.templated.pptx  (US-3.3 AC1)
 Stage 4  print(build_extraction_summary(schema))  → return absolute path  (US-3.3 AC2)
 ```
@@ -82,21 +84,41 @@ open(p,'w',encoding='utf-8').write(json.dumps(schema, ensure_ascii=False))
 print('SCHEMA_TMP:', p)
 print('TITLE:', schema['template_metadata']['title'])
 print('TITLE_SOURCE:', schema['template_metadata']['title_source'])
+hf = schema['template_metadata'].get('header_footer', {})
+print('HAS_HEADER:', hf.get('has_header'))
+print('HAS_FOOTER:', hf.get('has_footer'))
 "
 ```
 
 If extraction raised `TemplateExtractionError` (e.g. **"no slide master found"**, unreadable/non-PPTX input) → restate the error to the user structurally and stop (AC3). If validation is `INVALID` → list the errors and stop (these indicate an engine bug or a corrupt deck, not user-fixable content).
 
-### Stage 2 — Title confirmation (US-3.2 AC2/AC3)
+### Stage 2 — Title confirmation + header/footer check (US-3.2 AC2/AC3, US-2.1 AC2/AC3)
 
-The schema carries `template_metadata.title` and `title_source` (`core_xml` | `slide1` | `filename`).
+The schema carries `template_metadata.title`, `title_source` (`core_xml` | `slide1` | `filename`), and `template_metadata.header_footer.{has_header, has_footer}`.
 
-- **If `title_source == "filename"`** — the title was NOT found in the deck; it is just the file name. **Prompt the user to name the template** (single `question` call, offering the inferred filename as the default). On a custom answer, overwrite `title` and set `title_source = "user"` in the schema.
+**Title (US-3.2):**
+- If `title_source == "filename"` — the title was NOT found in the deck; it is just the file name. **Prompt the user to name the template** (single `question` call, offering the inferred filename as the default). On a custom answer, overwrite `title` and set `title_source = "user"` in the schema.
 - **Always** display the final title to the user for confirmation (AC3), regardless of source.
 
-**Headless / subagent mode** (no user channel): skip the prompt and accept the filename fallback — never hang. Default to `standard` autonomous behavior.
+**Header/footer (US-2.1):**
+- If both `HAS_HEADER` and `HAS_FOOTER` printed in Stage 1 are `False` → ask the user whether to add a default header zone. If the user says yes, call `inject_default_header_zone` on the schema (AC3 — schema-only, never touches the PPTX):
 
-After a user override, persist the change back into the temp schema JSON so Stage 3 embeds the corrected title.
+```bash
+python -c "
+import sys, json; sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts')
+from schema_extractor import inject_default_header_zone
+schema = json.load(open('<SCHEMA_TMP>',encoding='utf-8'))
+inject_default_header_zone(schema)
+open('<SCHEMA_TMP>','w',encoding='utf-8').write(json.dumps(schema, ensure_ascii=False))
+print('Header zone injected into schema')
+"
+```
+
+**Batching (arch-review M2):** when BOTH the title-source==filename condition AND the header/footer-absent condition fire, batch them into a **single** `question` call (project convention).
+
+**Headless / subagent mode:** skip both prompts; accept filename fallback; do not inject. Never hang.
+
+After any user overrides (title and/or header), persist the changes back into the temp schema JSON so Stage 3 embeds them.
 
 ### Stage 3 — Embed → templated PPTX (US-3.3 AC1)
 
