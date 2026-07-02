@@ -190,6 +190,15 @@ decisions — including the `font_size_adjusted` flag (AC3) — are written to a
 has no layout engine, so a hard guarantee needs an external render oracle
 (see GAP-ANALYSIS §US-4.2 Rev 10).
 
+**US-4.3 — auto-chain / templated output.** Every generated `.pptx` is
+**self-describing**: after `prs.save` (which strips the unmodeled part),
+`generate_ppt_from_data(auto_template=True)` re-embeds `ppt/template_schema.json`
+into the output, sourced from the input template (so it describes the template,
+not the rendered deck's cover) and skipping a stale embedded input schema. The
+agent detects a non-templated input at Stage 0 and emits *"No template found —
+extracting first, then generating slides..."*. One prompt → a templated, reusable
+deck; the render report gains an additive `templating` field.
+
 **CLI:**
 ```bash
 python schema_extractor.py --input template.pptx --output schema.json        # extract only
