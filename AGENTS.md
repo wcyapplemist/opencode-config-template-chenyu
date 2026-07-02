@@ -61,7 +61,7 @@ Global subagents and skills are managed at `~/.config/opencode/` and are availab
 - **US-1.4** — `_extract_text_fonts()` populates per-textbox `font` (explicit-only) + nested `runs[]`; deduped `missing_fonts[]` against `_BUILTIN_FONTS` with theme-aware `fallback` (AC4 → ERROR); non-fatal WARNING per missing font (AC3).
 - **US-1.5** — `embed_schema()` writes `ppt/template_schema.json` into the PPTX zip via an order-preserving rewrite (`[Content_Types].xml` first + injected `json` Default; idempotent; atomic); `read_embedded_schema()` retrieves it. CLI: `--embed` + `--output-pptx`.
 
-The extraction path coexists with the renderer's fingerprint contract (`template_introspector.py`) — the renderer still consumes only the sidecar. See GAP-ANALYSIS §5 Decision 1 (Coexist).
+Since US-4.1 the renderer **prefers the embedded JSON** via `get_render_contract` (→ `contract_adapter`), falling back to the sidecar introspection contract (`template_introspector.py`) for legacy/non-templated templates — the two paths coexist (GAP-ANALYSIS §5 Decision 1).
 
 ## Epic 3: Template Generator (US-3.1–3.4 — COMPLETE)
 
@@ -72,7 +72,7 @@ A standalone `generate-template-skill` (`.opencode/skills/generate-template-skil
 - **US-3.3** — the skill returns a downloadable templated PPTX (`embed_schema`) + a human-readable summary (`build_extraction_summary` + CLI `--summary`); the round-trip test (`test_round_trip_deep_equal`) already exists.
 - **US-3.4** — `_build_theme()` maps semantic color roles + `font_palette`; sensible defaults on a missing/malformed theme.
 
-The extraction path coexists with the renderer's fingerprint contract (`template_introspector.py`) — the renderer still consumes only the sidecar (GAP-ANALYSIS §5 Decision 1, Coexist). `title_source` is runtime-enforced by `validate_template_schema` keyed off the shared `TITLE_SOURCES` constant (architecture review MAJOR-2).
+Since US-4.1 the renderer **prefers the embedded JSON** via `get_render_contract` (→ `contract_adapter`), falling back to the sidecar introspection contract (`template_introspector.py`) for legacy/non-templated templates (GAP-ANALYSIS §5 Decision 1, Coexist). `title_source` is runtime-enforced by `validate_template_schema` keyed off the shared `TITLE_SOURCES` constant (architecture review MAJOR-2).
 
 ## Phase 1: Content Intelligence & Resource Resolution (issues #17–#25)
 

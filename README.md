@@ -208,8 +208,10 @@ python schema_extractor.py --input template.pptx --output schema.json --embed --
 
 The schema is validated by `validate_template_schema()` (hand-rolled, no
 `jsonschema` dependency); `title_source` is additionally runtime-enforced via an enum check
-keyed off the shared `TITLE_SOURCES` constant. The renderer's fingerprint contract
-(`template_introspector.py`) is **untouched** — the two paths coexist (GAP-ANALYSIS
+keyed off the shared `TITLE_SOURCES` constant. Since US-4.1 the renderer
+**prefers the embedded JSON** (`get_render_contract` → `contract_adapter`) and
+falls back to the sidecar introspection contract (`template_introspector.py`)
+for legacy/non-templated templates — the two paths coexist (GAP-ANALYSIS
 §5 Decision 1).
 
 ## Extending the engine
