@@ -3,7 +3,7 @@
 **Issue**: #63
 **Branch**: GIT-63 (base: dev)
 **Priority**: Must Have (P0)
-**Status**: Planned
+**Status**: Planned (rev 2 — architecture-review APPROVE-WITH-CHANGES incorporated: M1 source-from-input, M2 staleness-aware, m3 atomic-simplify, m4 field-rename, m6 agent exception-safety)
 
 ## Goal
 
@@ -15,11 +15,13 @@ GAP-ANALYSIS §US-4.3 is rated "⚪ Architecture differs" — the sidecar fallba
 
 ## Architecture Decisions (locked)
 
-1. **Engine inline auto_template (decision Q1):** `generate_ppt_from_data` gains `auto_template: bool = True`. After `prs.save(output)`, if `auto_template`: resolve a schema source → embed into the output (atomic temp + rename) → record the result. Non-fatal (try/except; failure is debug-log only, never blocks render). The generate-template-skill's interactive title-confirmation is skipped (appropriate for headless auto-chain).
+1. **Engine inline auto_template (decision Q1):** `generate_ppt_from_data` gains `auto_template: bool = True`. After `prs.save(output)`, if `auto_template`: resolve a schema source → embed into the output → record the result. `embed_schema` is **already atomic** (it writes to its own temp in `out_path.parent` then `os.replace`), so it is called directly in place (`embed_schema(output, schema, output)` — no extra temp hop, arch-review m3). Non-fatal (try/except; failure is debug-log only, never blocks render). The generate-template-skill's interactive title-confirmation is skipped (appropriate for headless auto-chain).
 2. **Always re-embed (decision Q2):** regardless of whether the input is templated, the output carries the embedded schema — every generated deck becomes a reusable template. The AC3 message fires only when the **input** lacked embedded JSON.
-3. **Schema source resolution chain:** ① input template already has embedded schema → copy it (`read_embedded_schema(template)`) → `schema_source="copied_input"`; ② otherwise → `extract_schema(output)` (parses master + layouts only, **not the rendered slides** — clean) → `schema_source="extracted_output"`.
-4. **Render report gains a `templating` field (additive, backward compatible):** `{input_source:"embedded"|"absent", output_templated:bool, schema_source:"copied_input"|"extracted_output"|"failed", message:str}`. Engine return type unchanged (still returns the path string).
-5. **AC3 is emitted by the agent at Stage 0:** the agent runs a one-line `read_embedded_schema` check; when the input lacks embedded JSON, it surfaces "No template found — extracting first, then generating slides..." before proceeding. The engine's auto_template does the actual extraction/embedding; the agent only informs.
+3. **Schema source resolution chain (arch-review M1 + M2):** always source from the **input template**, never the rendered output:
+   - ① input has a **valid, non-stale** embedded schema (present AND the M5 staleness guard does not fire — embedded layout signature matches the live template) → copy it (`read_embedded_schema(template)`) → `schema_source="copied_input"`.
+   - ② otherwise (absent, **or stale** per M2) → `extract_schema(template)` → `schema_source="extracted_input"`. **Crucially this extracts from the *input template*, not the output** (M1): the input's master + layouts are byte-identical to the output's (python-pptx does not mutate them on save), and `_infer_title` reads the *template's* own `slides[0]`/core title — the template's identity — **not the rendered deck's cover slide**. (Extracting from the output would seed `template_metadata.title` with the deck's cover title — a content leak + wrong reuse identity. Confirmed: `_infer_title` reads `prs.slides[0]`, `schema_extractor.py:472-479`.) The M2 stale case also routes here so a stale embedded schema is **not** laundered into a "trusted" output; the fresh extraction reflects the actually-rendered structure.
+4. **Render report gains a `templating` field (additive, backward compatible; field name per arch-review m4):** `{input_template_embedded:bool (was `input_source`), output_templated:bool, schema_source:"copied_input"|"extracted_input"|"failed", message:str}`. Engine return type unchanged (still returns the path string).
+5. **AC3 is emitted by the agent at Stage 0:** the agent runs a `read_embedded_schema` check **wrapped in try/except `TemplateExtractionError`** (a corrupt-zip template raises; arch-review m6 — treat a raise as "absent" + warn, never crash Stage 0 before the engine's own robust path runs); when the input lacks embedded JSON, it surfaces "No template found — extracting first, then generating slides..." before proceeding. The engine's auto_template does the actual extraction/embedding; the agent only informs.
 6. **Ordering:** `save → auto_template (re-embed output) → write render report (incl. templating field) → cleanup_temp → return path`.
 7. **Do not touch input-side resolution:** US-4.3 does not template the input (sidecar fallback yields identical layout results); US-4.2's `schema_font_map` for a non-templated input still falls to role ceilings (already supported).
 
@@ -27,16 +29,18 @@ GAP-ANALYSIS §US-4.3 is rated "⚪ Architecture differs" — the sidecar fallba
 
 **Change** `.opencode/skills/ppt-template-filler/scripts/ppt_builder.py`
 - `generate_ppt_from_data(..., auto_template: bool = True)`: after save, call new `_ensure_output_templated(output, template, auto_template) -> dict` and fold its result into the render report.
-- New `_ensure_output_templated(...)`: `schema = read_embedded_schema(template) or extract_schema(output)`; `embed_schema(output, schema, tmp)` → `os.replace(tmp, output)`; return `{input_source, output_templated, schema_source, message}`; on failure → `{output_templated:False, schema_source:"failed", message:<err>}`.
+- New `_ensure_output_templated(...)`: resolve schema from the **input template** — `emb = read_embedded_schema(template)`; if `emb` is non-None **and** not stale (reuse the `_warn_if_embedded_stale` check) → `schema = emb`, `schema_source="copied_input"`; **else** → `schema = extract_schema(template)`, `schema_source="extracted_input"` (M1/M2). Then `embed_schema(output, schema, output)` in place (m3 — `embed_schema` is already atomic; no extra temp hop). Return `{input_template_embedded, output_templated, schema_source, message}`; on failure → `{output_templated:False, schema_source:"failed", message:<err>}`.
 - Merge the `templating` section into the report written by `_write_render_report`.
 
 **Change** `.opencode/agents/pptx-subagent.md`
-- Stage 0: add an "is the template templated?" detection step (`read_embedded_schema` one-liner); when embedded JSON is absent, emit the AC3 message before proceeding.
+- Stage 0: add an "is the template templated?" detection step (`read_embedded_schema`, **wrapped in try/except `TemplateExtractionError`** — arch-review m6); when embedded JSON is absent, emit the AC3 message before proceeding.
 - "What NOT to Handle": add a boundary clarification — generating slides **from a non-templated file** is this agent's job (US-4.3 auto-tempates the output); pure **extraction / fingerprinting** intent still routes to generate-template-skill.
 
 **Tests** `tests/test_auto_template.py`
-- Non-templated input → `read_embedded_schema(output)` non-None; report `input_source="absent"`, `output_templated=True`, `schema_source="extracted_output"`.
-- Templated input → output still templated; report `input_source="embedded"`, `schema_source="copied_input"`.
+- Non-templated input → `read_embedded_schema(output)` non-None; report `input_template_embedded=False`, `output_templated=True`, `schema_source="extracted_input"`.
+- Templated input → output still templated; report `input_template_embedded=True`, `schema_source="copied_input"`.
+- Stale templated input (M2) → output schema is fresh-extracted (`schema_source="extracted_input"`), not the stale embedded copy.
+- Output schema identity (M1) → the embedded schema's `template_metadata.title` is the **template's** identity, not the rendered deck's cover (`title_source` from the template, not `"slide1"` of the deck).
 - `auto_template=False` → output NOT templated (opt-out preserved).
 - Extraction failure (synthetic corrupt) → non-fatal; render still succeeds; report `output_templated=False` / `schema_source="failed"`.
 
@@ -63,8 +67,10 @@ GAP-ANALYSIS §US-4.3 is rated "⚪ Architecture differs" — the sidecar fallba
 
 | Case | Expected |
 | --- | --- |
-| non-templated input render | `read_embedded_schema(output)` non-None; report `input_source="absent"`, `schema_source="extracted_output"` |
-| templated input render | output still templated; report `input_source="embedded"`, `schema_source="copied_input"` |
+| non-templated input render | `read_embedded_schema(output)` non-None; report `input_template_embedded=False`, `schema_source="extracted_input"` |
+| templated input render | output still templated; report `input_template_embedded=True`, `schema_source="copied_input"` |
+| stale templated input (M2) | output carries a **fresh** schema (`schema_source="extracted_input"`), not the stale embedded one |
+| output schema describes the template, not the deck (M1) | `extract_schema(template)`-sourced schema's `template_metadata.title` is the **template's** identity (not the rendered cover); `title_source != "slide1"` from the rendered deck |
 | `auto_template=False` | output NOT templated; report `output_templated=False` |
 | extraction failure | non-fatal; render succeeds; report `schema_source="failed"` |
 | output schema excludes rendered slides | `extract_schema(output)` covers master + layouts only (no slide-content leak) |
@@ -85,7 +91,7 @@ python -c "import sys; sys.path.insert(0,'.opencode/skills/ppt-template-filler/s
 ## Risks
 
 - **python-pptx dropping the part again** — the re-embed happens **after** `prs.save` (an order-preserving zip rewrite via `embed_schema`, never re-opened by python-pptx), so it is not stripped.
-- **`extract_schema(output)` cost / failure** — parses master + layouts only (lightweight); failure is non-fatal and degrades to "output not templated" with a report note.
+- **`extract_schema(template)` cost / failure** — parses the input template's master + layouts only (lightweight, O(layouts)); failure is non-fatal and degrades to "output not templated" with a report note. Sourcing from the **input** (not the output) avoids `_infer_title` reading the rendered deck's cover slide (M1).
 - **Report `templating` field breaking existing consumers** — additive top-level key; existing `slides` consumers are unaffected.
 - **AC1 "triggers both skills" literal mismatch** — the mechanism is engine inline rather than literally chaining the skill; GAP-ANALYSIS already accepts "architecture differs, function met". Documented.
 
