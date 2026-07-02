@@ -28,6 +28,8 @@
 > **Revision 11 (post-US-4.3, issue #63):** US-4.3 reclassified ⚪ Architecture differs → ✅ Met. AC1 was already functionally met post-US-4.1 (sidecar fallback). The real gaps — AC2 (output carries embedded JSON) and AC3 (status message) — are closed: `generate_ppt_from_data(auto_template=True)` re-embeds `ppt/template_schema.json` into the **output** after save (python-pptx otherwise strips the part), sourcing the schema from the **input template** (arch-review M1 — the title is the template's identity, not the rendered deck's cover) and skipping a stale embedded input schema (M2); the agent detects a non-templated input at Stage 0 (`read_embedded_schema`, exception-safe per m6) and emits the one-line status message. Every output `.pptx` is now a self-describing/templated deck; the render report gains an additive `templating` field. The interactive generate-template-skill is not chained (mechanism differs, function met). Full suite 389 passed. Counts: Met 12 / Partial 4 / Not met 3 / Differs 0.
 >
 > **Revision 12 (skill rename):** the `ppt-template-filler` skill was renamed to **`generate-slide-skill`** — the slide-generation engine that realizes chenyu's `generate-slides` skill (Epic 4 / US-5.1). The directory was `git mv`'d and **every reference updated** (agent `permission.task`, cross-skill `sys.path` in `template-modifier-skill`, all SKILL.md/README/AGENTS/path strings). This **narrows the US-5.1 naming divergence** (the skill name now matches chenyu's `generate-slides` intent, modulo the `slide`/`slides` wording and the lack of a standalone CLI). Historical revision paragraphs above that now read `generate-slide-skill` refer to the same skill under its former name `ppt-template-filler`. Suites green: 396 + 33. Counts unchanged.
+>
+> **Revision 13 (post-US-2.1, issue #68):** US-2.1 reclassified ❌ Not met → ✅ Met. `_detect_header_footer(prs)` scans the slide master for HEADER/FOOTER placeholders and records `{has_header, has_footer}` in `template_metadata.header_footer` (AC1). `needs_header_footer_prompt(schema)` returns True when both absent (AC2 — `generate-template-skill` Stage 2 prompts, batched with title-confirm per arch-review M2; `pptx-subagent` Stage 0 surfaces a light note via `read_embedded_schema`, scoped to templated inputs per arch-review M1). `inject_default_header_zone(schema)` injects a 4-point top-strip polygon + English note (AC3, schema-only). **No fully-unmet Must-Have remains.** Full suite 405 passed. Counts: Met 13 / Partial 4 / Not met 2 / Differs 0.
 
 ---
 
@@ -92,9 +94,9 @@ Status legend: ✅ Met · 🟡 Partial · ❌ Not met · ⚪ Architecture differ
 
 ### Epic 2 — Header, Footer & Best Practices
 
-#### US-2.1 — Header & Footer Detection `[Must Have]` — ❌ Not met
+#### US-2.1 — Header & Footer Detection `[Must Have]` — ✅ Met (Rev 13)
 
-`_CHROME_TYPES` (`template_introspector.py:44-49`) **recognizes** HEADER/FOOTER/SLIDE_NUMBER/DATE, but only to **filter them out** as layout noise (`placeholder_record` returns `None` for chrome, `template_introspector.py:168-169`). There is **no `header_footer.has_header/has_footer` metadata**, no recorded component IDs, and **no user prompt** when both are absent.
+`_detect_header_footer(prs)` scans the slide master's placeholders for HEADER/FOOTER types and records `{has_header, has_footer}` booleans in `template_metadata.header_footer` (AC1). `needs_header_footer_prompt(schema)` returns True when both are absent (AC2). `inject_default_header_zone(schema)` injects a 4-point top-strip polygon + English note into the schema (AC3, schema-only). `generate-template-skill` Stage 2 prompts the user (batched with title confirmation per arch-review M2) and injects on "yes"; `pptx-subagent` Stage 0 surfaces a light note via `read_embedded_schema` for templated inputs (arch-review M1: `get_render_contract`/adapter strips `template_metadata`, so `read_embedded_schema` is the only accessor; non-templated inputs defer the note). 9 tests; full suite 405 passed.
 
 #### US-2.2 — Common Practice Suggestions `[Should Have]` — ❌ Not met
 
@@ -168,21 +170,21 @@ Python's `logging` module is used across the modules. `schema_extractor.py` **do
 
 | Status | Count | Stories |
 |---|---|---|
-| ✅ Met | 12 | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-3.1, US-3.2, US-3.3, US-3.4, US-4.1, US-4.3, US-4.5 |
+| ✅ Met | 13 | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-3.4, US-4.1, US-4.3, US-4.5 |
 | 🟡 Partial | 4 | US-4.2, US-5.1, US-5.2, US-5.3 |
-| ❌ Not met | 3 | US-2.1, US-2.2, US-4.4 |
+| ❌ Not met | 2 | US-2.2, US-4.4 |
 | ⚪ Architecture differs | 0 | — |
 
 ### §3.2 Priority × Status Matrix
 
 | | Must Have | Should Have | Could Have |
 |---|---|---|---|
-| ✅ Met | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-3.1, US-3.2, US-3.3, US-4.1, US-4.3 | US-3.4 | US-4.5 |
+| ✅ Met | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-4.1, US-4.3 | US-3.4 | US-4.5 |
 | 🟡 Partial | US-4.2, US-5.1, US-5.2 | US-5.3 | — |
-| ❌ Not met | **US-2.1** | US-2.2, US-4.4 | — |
+| ❌ Not met | — | US-2.2, US-4.4 | — |
 | ⚪ Differs | — | — | — |
 
-**Epics 1, 3, and US-4.1 are complete** (Rev 9); **US-4.2 delivered** (Rev 10, AC2/AC3 Met, AC1 deferred); **US-4.3 delivered** (Rev 11 — every output is a self-describing/templated `.pptx`; AC1/AC2/AC3 Met). The remaining gaps cluster in Epic 2 (header/footer detection + common practices), the rest of Epic 4 (US-4.4 template-less style picker, US-4.6 multi-aspect-ratio, and US-4.2's deferred AC1 overflow-oracle), and Epic 5 (skill decomposition / CLI / shared-schema loading). The single unmet Must-Have is **US-2.1** (header/footer).
+**Epics 1, 3, and US-4.1 are complete** (Rev 9); **US-4.2 delivered** (Rev 10, AC2/AC3 Met, AC1 deferred); **US-4.3 delivered** (Rev 11); **US-2.1 delivered** (Rev 13 — all Must-Have stories are now Met or Partial). The remaining gaps cluster in the rest of Epic 2 (US-2.2 common-practice suggestions), Epic 4 (US-4.4 template-less style picker, US-4.6 multi-aspect-ratio, US-4.2's deferred AC1 overflow-oracle), and Epic 5 (skill decomposition / CLI / shared-schema loading). **No fully-unmet Must-Have remains.**
 
 ---
 

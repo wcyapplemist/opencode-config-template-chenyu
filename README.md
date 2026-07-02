@@ -199,6 +199,8 @@ agent detects a non-templated input at Stage 0 and emits *"No template found —
 extracting first, then generating slides..."*. One prompt → a templated, reusable
 deck; the render report gains an additive `templating` field.
 
+**US-2.1 — header/footer detection.** `_detect_header_footer(prs)` scans the slide master for HEADER/FOOTER placeholders and records `{has_header, has_footer}` in `template_metadata.header_footer`. When both are absent, the extraction skill prompts the user (optionally injecting a default header zone into the schema — schema-only, AC3). The agent surfaces a light informational note for templated inputs.
+
 **CLI:**
 ```bash
 python schema_extractor.py --input template.pptx --output schema.json        # extract only
