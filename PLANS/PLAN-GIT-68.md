@@ -3,7 +3,7 @@
 **Issue**: #68
 **Branch**: GIT-68 (base: dev)
 **Priority**: Must Have (P0)
-**Status**: Planned
+**Status**: Planned (rev 2 — architecture-review APPROVE-WITH-CHANGES incorporated: M1 read-path, M2 batch-prompts, m1 polygon-literal, m2 test-assertions)
 
 ## Goal
 
@@ -18,8 +18,8 @@ Detect whether the slide master carries header/footer placeholders, record `has_
 ## Architecture Decisions (locked)
 
 1. **Detection** (shared, `schema_extractor`): a new `_detect_header_footer(prs)` scans `prs.slide_masters[0].placeholders` for HEADER/FOOTER → returns `{has_header, has_footer}`. **Header/footer only** (strict AC1; date/slide_number not recorded). Master only (per chenyu's wording; layout-only chrome is out of scope).
-2. **Prompt (AC2)** — **extraction skill primary**: `generate-template-skill` Stage 2 (after extract+validate, before embed): if both are false → primary-agent mode issues a `question`; headless/subagent mode skips. **+ generation agent light note**: `pptx-subagent` Stage 0 reads `header_footer`, and if both are false surfaces a one-line informational note in primary-agent mode (no injection — generation produces no template schema).
-3. **Injection (AC3)** — `generate-template-skill`: if the user says yes, call `inject_default_header_zone(schema)` (in `schema_extractor`) → sets `header_footer.header = {source:"user_default", polygon:[top full-width thin strip], note:"<English>"}`. Persisted before embed. Schema-only, never touches the PPTX.
+2. **Prompt (AC2)** — **extraction skill primary**: `generate-template-skill` Stage 2 (after extract+validate, before embed): if both are false → primary-agent mode issues a `question`; headless/subagent mode skips. When **both** the title-source==filename condition **and** the header/footer-absent condition fire, batch them into a **single** `question` call (project convention; arch-review M2). Headless mode skips both. **+ generation agent light note** (arch-review M1): `pptx-subagent` Stage 0 reads `header_footer` via `read_embedded_schema` (**NOT** `get_render_contract` — the `contract_adapter` strips `template_metadata`). The note is **scoped to templated inputs only**; for a non-templated input `read_embedded_schema` returns `None` at Stage 0 (US-4.3's auto_template only produces the schema post-render), so the note is **deferred/skipped** — do NOT add a redundant `extract_schema` call (conflicts with US-4.3's "extract once" design). No injection on the generation path (it produces no template schema).
+3. **Injection (AC3)** — `generate-template-skill`: if the user says yes, call `inject_default_header_zone(schema)` (in `schema_extractor`) → sets `header_footer.header = {source:"user_default", polygon:[{x:0,y:0},{x:1,y:0},{x:1,y:0.05},{x:0,y:0.05}], note:"Default header zone (top strip); metadata only — not rendered into the PPTX until a real header placeholder is added"}`. Persisted before embed. Schema-only, never touches the PPTX. The polygon is exactly 4 normalized `{x,y}` points (US-1.2 model; arch-review m1).
 4. The "both-false → prompt" decision and the injection are **pure helpers** (unit-testable); the actual prompt is agent/LLM behaviour (SKILL.md instructions).
 
 ## Deliverables
@@ -30,14 +30,14 @@ Detect whether the slide master carries header/footer placeholders, record `has_
 - `inject_default_header_zone(schema)` (default zone marker; **English** note).
 - Wire `_detect_header_footer` into `_build_metadata` (replaces `"header_footer": {}`).
 
-**Change** `generate-template-skill/SKILL.md`: Stage 2 adds the header/footer check + prompt (primary-agent mode) + the inject step.
+**Change** `generate-template-skill/SKILL.md`: Stage 2 adds the header/footer check + prompt (primary-agent mode); when BOTH the title-confirm and header/footer conditions fire, batch into one `question` call (arch-review M2). Add the inject step.
 
-**Change** `pptx-subagent.md`: Stage 0 reads `header_footer`; if both false, surface a one-line informational note (primary-agent mode; headless skips).
+**Change** `pptx-subagent.md`: Stage 0 reads `header_footer` via `read_embedded_schema` (NOT `get_render_contract` — adapter strips it; arch-review M1). If both false AND the input is templated, surface a one-line informational note (primary-agent mode; headless skips). Non-templated inputs: note deferred (no schema at Stage 0).
 
 **Tests** (`test_schema_extractor.py` extend or new file):
 - Bundled template → `has_header=False, has_footer=True`.
 - Synthetic chrome-less master → both false; `needs_header_footer_prompt` True.
-- `inject_default_header_zone` → `header_footer.header` has the default polygon + English note; schema still passes `validate_template_schema`.
+- `inject_default_header_zone` → `header_footer.header` has the 4-point polygon + English note; **explicit polygon assertions** (len==4, `{x,y}` keys, [0,1] range — arch-review m2); `validate_template_schema` still passes (no top-level breakage).
 
 ## Acceptance Criteria (US-2.1) — to deliver
 
@@ -64,7 +64,7 @@ Detect whether the slide master carries header/footer placeholders, record `has_
 | --- | --- |
 | bundled template detection | `header_footer.has_header=False`, `has_footer=True` |
 | synthetic chrome-less master | both false; `needs_header_footer_prompt` True |
-| inject default header | `header_footer.header` = default polygon + English note; schema still validates |
+| inject default header | `header_footer.header` = 4-point polygon + English note; explicit assertions (len==4, {x,y}, [0,1]); `validate_template_schema` passes |
 | master-only scope | layout-only header/footer not double-counted (master is canonical) |
 
 ## Verification
@@ -76,8 +76,9 @@ python -m pytest .opencode/skills/generate-slide-skill/scripts/tests/ -q
 ## Risks
 
 - **Layout-only chrome**: if a template's header/footer live only on layouts (not the master), master-based detection reports false-negative. The bundled master has them; layout-only cases are out of scope (documented).
+- **pptx-subagent light-note scope (arch-review M1)**: `read_embedded_schema` returns `None` for non-templated inputs at Stage 0 (US-4.3 produces the schema post-render). The note is therefore scoped to **templated inputs only**. Do NOT add a redundant `extract_schema` at Stage 0 — it conflicts with US-4.3's "extract once inline" design and doubles cost. The full prompt+inject path lives in `generate-template-skill` (which always has the extracted schema).
 - **Prompt is agent behaviour**: AC2's automated test covers the `needs_header_footer_prompt` helper + SKILL.md instructions; the live conversational prompt is verified by SKILL.md reasoning (headless skips).
-- **`header_footer` shape**: the schema is `additionalProperties:true`, so any shape validates; keep has_header/has_footer + the optional injected zone.
+- **`header_footer` shape**: the schema is `additionalProperties:true`, so any shape validates; keep has_header/has_footer + the optional injected zone (polygon pinned to US-1.2 4-point model).
 
 ## References
 
