@@ -1014,6 +1014,44 @@ def _ensure_default_closing(
     return list(slide_data_list) + [closing]
 
 
+def _compose_signoff(slide_data: Dict[str, Any]) -> str:
+    """Compose the closing-slide sign-off text from optional presenter fields.
+
+    ``presenter_name`` / ``presenter_email`` → ``"Prepared by: {name}\\n{email}"``
+    (empty parts omitted). Returns ``""`` when neither is set, which the render
+    loop uses to **clear** the subtitle placeholder — overriding the layout's
+    inherited sample text (e.g. ``"Prepared by: Lecturer Name\\nEmail address"``)
+    so it never bleeds into the slide (US-4.3 follow-up).
+    """
+    name = (slide_data.get("presenter_name") or "").strip()
+    email = (slide_data.get("presenter_email") or "").strip()
+    parts: List[str] = []
+    if name:
+        parts.append(f"Prepared by: {name}")
+    if email:
+        parts.append(email)
+    return "\n".join(parts)
+
+
+def _remove_placeholder(shape: Any) -> bool:
+    """Detach a placeholder shape from its slide (element removal).
+
+    Suppresses inherited layout sample text: an empty slide placeholder still
+    inherits the layout's text (e.g. closing's ``"Prepared by: Lecturer Name"`` —
+    verified: an empty ``<a:p/>`` shows the layout's runs in PowerPoint), so when
+    there is no content we remove the placeholder element entirely — nothing
+    remains to render the inherited text. Best-effort (never raises).
+    """
+    try:
+        el = getattr(shape, "element", None)
+        if el is not None and el.getparent() is not None:
+            el.getparent().remove(el)
+            return True
+    except Exception as exc:  # never block the render
+        logger.warning("Failed to remove placeholder: %s", exc)
+    return False
+
+
 def _live_layout_count(template_path: str) -> Optional[int]:
     """The live template's layout count, or ``None`` if it can't be read."""
     try:
@@ -1356,12 +1394,22 @@ def generate_ppt_from_data(
                         slide_report.append(entry)
                     logger.info("  Title: \"%s\"", title_text)
 
-            # Fill subtitle (for title, agenda, closing, section-header-sub)
+            # Fill subtitle (for title, agenda, closing, section-header-sub).
+            # With content -> fill (overrides inheritance). Without content ->
+            # REMOVE the placeholder so the layout's inherited sample text (e.g.
+            # closing's "Prepared by: Lecturer Name", title's "Click to edit
+            # Master subtitle style") cannot bleed in (an empty <a:p/> still
+            # inherits — verified empirically).
             if slide_type in _LAYOUTS_WITH_SUBTITLE:
-                subtitle_text = slide_data.get("subtitle", "")
-                if subtitle_text:
-                    sub_ph = _find_placeholder(slide, _SUBTITLE_TYPE)
-                    if sub_ph:
+                sub_ph = _find_placeholder(slide, _SUBTITLE_TYPE)
+                if sub_ph:
+                    if slide_type == "closing_slide":
+                        # closing sign-off from presenter fields; fall back to an
+                        # explicit subtitle; both empty -> removed below.
+                        subtitle_text = _compose_signoff(slide_data) or slide_data.get("subtitle", "")
+                    else:
+                        subtitle_text = slide_data.get("subtitle", "")
+                    if subtitle_text:
                         fit = _set_text(
                             sub_ph, subtitle_text,
                             role="subtitle", schema_font_map=schema_font_map, layout=layout,
@@ -1375,6 +1423,9 @@ def generate_ppt_from_data(
                         if entry:
                             slide_report.append(entry)
                         logger.info("  Subtitle: \"%s\"", subtitle_text[:50])
+                    else:
+                        _remove_placeholder(sub_ph)
+                        logger.info("  Subtitle: removed (no content; no inherited-sample bleed)")
 
             # Fill body text (for content slides)
             if slide_type in _LAYOUTS_WITH_BODY:

@@ -80,7 +80,10 @@ The engine is **template-agnostic**: it accepts **any** `.pptx`, not just the bu
 
 6. **Density mode is a soft guideline.** The Stage 2 mode fixes a per-slide visible-text word budget (standard 30–50 / concise 0–10 / text-heavy 75–150). Out-of-budget slides emit **warnings, never errors** — even in strict mode. Tighten over-budget content prose; ignore underflow on inherently short slide types (title/section/closing).
 
-7. **Closing slide defaults to the template sign-off.** The `closing_slide` `title` MUST be `"Thank You"` (matching the `End` layout's built-in text) unless the user explicitly requests a custom closing. Do **not** author a `subtitle` — leave it unset so the template's default sign-off block shows. The closing slide's role is a clean thank-you, not another content beat.
+7. **Closing slide sign-off (presenter info).** The `closing_slide` `title` defaults to `"Thank You"`. The End layout's subtitle placeholder carries **sample text** (`"Prepared by: Lecturer Name\nEmail address"`) that the engine would otherwise inherit and display. To control it:
+   - **Primary agent (you can talk to the user):** proactively ask for the presenter's **name and email** (allow the user to answer "don't add"). If provided, set `presenter_name` / `presenter_email` on the closing slide — the engine composes `"Prepared by: {name}\n{email}"`. If the user declines, leave them **unset** — the engine **removes** the placeholder so no `"Prepared by: Lecturer Name"` ever appears.
+   - **Headless subagent (no user channel):** leave `presenter_name` / `presenter_email` **unset** (default) — the engine removes the placeholder. Never leave the sample text visible.
+   The engine handles the placeholder either way; you only set the fields when the user gives them.
 
 ## Trigger Phrases
 
@@ -180,7 +183,7 @@ This stage does **two things together**: (1) lock the deck-wide **density mode**
 
 OpenCode **subagents run headless** and CANNOT pause for user input. Therefore:
 
-- **If you are the primary conversation agent** (the one with the turn-by-turn user loop): present the outline, then issue a **single `question` call with two questions** — density mode selection AND outline approval — so the user decides both in one interaction:
+- **If you are the primary conversation agent** (the one with the turn-by-turn user loop): present the outline, then issue a **single `question` call with three questions** — density mode selection, outline approval, and the closing-slide sign-off — so the user decides all three in one interaction:
 
   ```
   question(questions=[
@@ -200,11 +203,19 @@ OpenCode **subagents run headless** and CANNOT pause for user input. Therefore:
         {"label": "Approve as-is", "description": "Proceed to detail+JSON with this outline."},
         {"label": "I'll describe edits", "description": "Type your changes; I'll revise before proceeding."}
       ]
+    },
+    {
+      "header": "Closing sign-off",
+      "question": "Add a presenter sign-off to the closing slide? (name + email)",
+      "options": [
+        {"label": "Add name + email", "description": "Type the presenter name and email (e.g. 'Jane Doe / jane@x.com'); I'll render 'Prepared by: <name>' + email."},
+        {"label": "No sign-off", "description": "Leave the closing clean — no 'Prepared by' line (the default; also used in headless mode)."}
+      ]
     }
   ])
   ```
 
-  Record the chosen mode (default to `standard` if the user skips), then re-save the outline artifact with the mode in its header (see Stage 1). Feed both the edited outline and the mode forward into Stage 3.
+  Record the chosen mode (default to `standard` if the user skips). If the user gave a name/email, set `presenter_name` / `presenter_email` on the closing slide; if they chose "No sign-off" (or skipped), leave them unset and the engine removes the placeholder (no `"Prepared by: Lecturer Name"` bleed — see Constraint #7). Re-save the outline artifact with the mode in its header (see Stage 1). Feed the edited outline, the mode, and the sign-off decision forward into Stage 3.
 
 - **If invoked as a subagent, or you cannot confirm a user channel:** default to `standard` and use **autonomous self-critique** — re-read the outline against this rubric and revise it yourself:
   - *Consistency* — do titles tell one coherent story?
@@ -232,7 +243,7 @@ Available slide types:
 | `comparison_slide` | Comparison | `title`, `body_left`, `body_right`, `notes` |
 | `content_image_slide` | Image + caption | `title`, `body`, `image_path`, `notes` |
 | `chart_slide` | Native chart | `title`, `chart_type`, `categories`, `series`, `notes` |
-| `closing_slide` | Closing | `title` (default `"Thank You"`), `notes` — do NOT set `subtitle` (template default shows) |
+| `closing_slide` | Closing | `title` (default `"Thank You"`), `notes`; optional `presenter_name` / `presenter_email` (else placeholder removed — no `"Prepared by: Lecturer Name"` bleed) |
 
 **Body text format** — each line becomes a paragraph with bold title + description:
 ```

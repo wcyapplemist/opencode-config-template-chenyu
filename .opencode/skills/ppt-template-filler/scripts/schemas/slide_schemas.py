@@ -101,7 +101,12 @@ SLIDE_SCHEMAS: Dict[str, Dict[str, Dict[str, Any]]] = {
     },
     "closing_slide": {
         "required": {"title": {"type": "string"}, "notes": _notes_spec()},
-        "optional": {"subtitle": {"type": "string"}, **_PLACEHOLDER_FIELDS},
+        "optional": {
+            "subtitle": {"type": "string"},
+            "presenter_name": {"type": "string"},
+            "presenter_email": {"type": "string"},
+            **_PLACEHOLDER_FIELDS,
+        },
     },
     "section_header_slide": {
         "required": {"title": {"type": "string"}, "notes": _notes_spec()},
