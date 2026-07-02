@@ -2,19 +2,37 @@
 
 Covers:
 * Detection on the bundled template (has_header=False, has_footer=True).
-* ``needs_header_footer_prompt`` pure helper (both false → True; footer
-  present → False).
+* Detection on synthetic masters (header-present → True; chrome-less → both
+  False; both-false → needs_header_footer_prompt True) — exercises all branches
+  of _detect_header_footer including the HEADER branch (code-review Major #1).
+* ``needs_header_footer_prompt`` pure helper (all four boolean combinations).
 * ``inject_default_header_zone`` — 4-point polygon + English note + explicit
   polygon assertions (len==4, {x,y}, [0,1] range) + schema validates.
 """
-import pytest
+
+from pptx.enum.shapes import PP_PLACEHOLDER
 
 from schema_extractor import (
+    _detect_header_footer,
     extract_schema,
     inject_default_header_zone,
     needs_header_footer_prompt,
     validate_template_schema,
 )
+
+
+class _FakePh:
+    """Minimal placeholder stand-in for _detect_header_footer tests."""
+
+    def __init__(self, ph_type):
+        self._pf = type("_PF", (), {"type": ph_type})()
+        self.placeholder_format = self._pf
+
+
+def _fake_prs(placeholders):
+    """Build a minimal prs-like object with the given master placeholders."""
+    master = type("_M", (), {"placeholders": placeholders})()
+    return type("_P", (), {"slide_masters": [master]})()
 
 
 class TestDetect:
@@ -28,6 +46,27 @@ class TestDetect:
         schema = extract_schema(template_path)
         # has_footer=True → prompt NOT needed
         assert needs_header_footer_prompt(schema) is False
+
+    # -- synthetic-master tests (code-review Major #1: exercise all branches) --
+
+    def test_synthetic_header_present(self):
+        """A master with a HEADER placeholder → has_header=True (untested branch)."""
+        prs = _fake_prs([_FakePh(PP_PLACEHOLDER.HEADER), _FakePh(PP_PLACEHOLDER.FOOTER)])
+        result = _detect_header_footer(prs)
+        assert result == {"has_header": True, "has_footer": True}
+
+    def test_synthetic_chromeless_both_absent(self):
+        """A master with no chrome placeholders → both False."""
+        prs = _fake_prs([])
+        result = _detect_header_footer(prs)
+        assert result == {"has_header": False, "has_footer": False}
+
+    def test_synthetic_both_absent_needs_prompt(self):
+        """End-to-end: chrome-less detection → needs_header_footer_prompt True."""
+        prs = _fake_prs([])
+        hf = _detect_header_footer(prs)
+        schema = {"template_metadata": {"header_footer": hf}}
+        assert needs_header_footer_prompt(schema) is True
 
 
 class TestNeedsPrompt:
