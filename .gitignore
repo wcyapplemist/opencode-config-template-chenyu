@@ -26,20 +26,20 @@ Thumbs.db
 # Generated output
 output/*.pptx
 .opencode/skills/output/
-.opencode/skills/ppt-template-filler/scripts/output/
+.opencode/skills/generate-slide-skill/scripts/output/
 
 # Resolver secrets (copy from resolver.config.example.json)
-.opencode/skills/ppt-template-filler/scripts/resolver.config.json
-.opencode/skills/ppt-template-filler/scripts/output/_image_cache/
+.opencode/skills/generate-slide-skill/scripts/resolver.config.json
+.opencode/skills/generate-slide-skill/scripts/output/_image_cache/
 
 # Resolver icon library (downloaded asset, not source)
-.opencode/skills/ppt-template-filler/scripts/assets/icons/
+.opencode/skills/generate-slide-skill/scripts/assets/icons/
 
 # Template introspection contract cache (derived; mtime-managed, #43)
-.opencode/skills/ppt-template-filler/scripts/templates/*.contract.json
+.opencode/skills/generate-slide-skill/scripts/templates/*.contract.json
 
 # Template backup artifacts (local only, not source)
-.opencode/skills/ppt-template-filler/scripts/templates/*.original.pptx
+.opencode/skills/generate-slide-skill/scripts/templates/*.original.pptx
 
 # Local-only Chinese translations (not tracked by git)
 docs/user-stories/GAP-ANALYSIS.zh.md

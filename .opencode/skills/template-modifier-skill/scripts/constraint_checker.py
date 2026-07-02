@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict
 
-# Reuse the fingerprint/servable logic from the sibling ppt-template-filler skill.
-_FILLER_SCRIPTS = Path(__file__).resolve().parents[2] / "ppt-template-filler" / "scripts"
+# Reuse the fingerprint/servable logic from the sibling generate-slide-skill skill.
+_FILLER_SCRIPTS = Path(__file__).resolve().parents[2] / "generate-slide-skill" / "scripts"
 if str(_FILLER_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_FILLER_SCRIPTS))
 

@@ -90,7 +90,7 @@ is impossible; Approach 3 (cross-template layout import) was considered and
           ┌─────────────────┴────────────────────┐
           ▼                                      ▼
   ┌────────────────────┐               ┌─────────────────────────┐
-  │ ppt-template-filler│               │ template-modifier-skill │ ★ new (Capability B)
+  │ generate-slide-skill│               │ template-modifier-skill │ ★ new (Capability B)
   │  (Capability A)    │               │  read Slide Master       │
   │  fingerprint match │               │  over-limit → clone new  │
   │  constraint-aware  │               │  layout → template_new   │

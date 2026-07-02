@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-_FILLER_SCRIPTS = Path(__file__).resolve().parents[2] / "ppt-template-filler" / "scripts"
+_FILLER_SCRIPTS = Path(__file__).resolve().parents[2] / "generate-slide-skill" / "scripts"
 if str(_FILLER_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_FILLER_SCRIPTS))
 

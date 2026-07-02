@@ -1,6 +1,6 @@
 ---
 name: template-modifier-skill
-description: "Extend a PowerPoint template when content exceeds its limits. Reads the Slide Master, checks whether a requirement fits the template's layouts, and (when it doesn't) clones a new layout into a derived template_new.pptx. Works alongside the ppt-template-filler engine (Capability B). Do NOT use for normal template filling — use ppt-template-filler for that."
+description: "Extend a PowerPoint template when content exceeds its limits. Reads the Slide Master, checks whether a requirement fits the template's layouts, and (when it doesn't) clones a new layout into a derived template_new.pptx. Works alongside the generate-slide-skill engine (Capability B). Do NOT use for normal template filling — use generate-slide-skill for that."
 license: Apache-2.0
 compatibility: opencode
 metadata:
@@ -10,9 +10,9 @@ metadata:
 
 ## What I do
 
-I am the **template-modifier-skill** (Capability B). When a deck's content exceeds what the base `template.pptx` can hold — a layout is missing, or a body is too large for its placeholder — I extend the template by **cloning a new layout** into a derived `template_new.pptx`, which the `ppt-template-filler` engine then renders against.
+I am the **template-modifier-skill** (Capability B). When a deck's content exceeds what the base `template.pptx` can hold — a layout is missing, or a body is too large for its placeholder — I extend the template by **cloning a new layout** into a derived `template_new.pptx`, which the `generate-slide-skill` engine then renders against.
 
-I do **not** fill templates myself. Normal filling is the `ppt-template-filler` skill's job. I am invoked only when the base template cannot satisfy a requirement.
+I do **not** fill templates myself. Normal filling is the `generate-slide-skill` skill's job. I am invoked only when the base template cannot satisfy a requirement.
 
 ## The 4 stakeholder steps
 
@@ -51,18 +51,18 @@ On **every** generation request, the state machine runs:
 
 ## Usage — the full Capability B loop
 
-`resolve_and_clone(base, slides)` runs the whole pipeline: it plans (①②③), and when a slide is over-limit it **clones an extended layout** into `template_new.pptx` (P4), then returns the active template + the layout-name pins + the mandatory notification. Hand the result to the `ppt-template-filler` engine:
+`resolve_and_clone(base, slides)` runs the whole pipeline: it plans (①②③), and when a slide is over-limit it **clones an extended layout** into `template_new.pptx` (P4), then returns the active template + the layout-name pins + the mandatory notification. Hand the result to the `generate-slide-skill` engine:
 
 ```bash
 python -c "
 import sys
 sys.path.insert(0, '.opencode/skills/template-modifier-skill/scripts')
-sys.path.insert(0, '.opencode/skills/ppt-template-filler/scripts')
+sys.path.insert(0, '.opencode/skills/generate-slide-skill/scripts')
 from state_machine import resolve_and_clone
 from ppt_builder import generate_ppt_from_data, DEFAULT_OUTPUT_DIR
 
 active, overrides, note = resolve_and_clone(
-    '.opencode/skills/ppt-template-filler/scripts/templates/template.pptx',
+    '.opencode/skills/generate-slide-skill/scripts/templates/template.pptx',
     <SLIDE_DATA_LIST>,
 )
 out = generate_ppt_from_data(
@@ -91,8 +91,8 @@ If cloning fails, `resolve_and_clone` **safely falls back** to the base template
 - A required `slide_type` has no matching layout in the template.
 - You need a larger / differently-shaped layout than the base template provides.
 
-Do **NOT** use me for normal filling, chart generation, or image embedding — those are `ppt-template-filler`.
+Do **NOT** use me for normal filling, chart generation, or image embedding — those are `generate-slide-skill`.
 
 ## Reference
 
-- Design: `.opencode/skills/ppt-template-filler/docs/DESIGN-template-agnostic.md` — §5 (state machine), §7 (Capability B pipeline + 7-step clone).
+- Design: `.opencode/skills/generate-slide-skill/docs/DESIGN-template-agnostic.md` — §5 (state machine), §7 (Capability B pipeline + 7-step clone).

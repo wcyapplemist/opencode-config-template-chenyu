@@ -1,6 +1,6 @@
 ---
 name: generate-template-skill
-description: "Extract a PowerPoint (.pptx) into a normalized template-schema JSON and return a self-describing 'templated' PPTX with that JSON embedded at ppt/template_schema.json. Use when the user wants to extract/generate a template, fingerprint a deck, learn its layouts/components/fonts, or produce a reusable templated PPTX. Do NOT use for filling a template with content (use ppt-template-filler) or extending a template's layouts (use template-modifier-skill)."
+description: "Extract a PowerPoint (.pptx) into a normalized template-schema JSON and return a self-describing 'templated' PPTX with that JSON embedded at ppt/template_schema.json. Use when the user wants to extract/generate a template, fingerprint a deck, learn its layouts/components/fonts, or produce a reusable templated PPTX. Do NOT use for filling a template with content (use generate-slide-skill) or extending a template's layouts (use template-modifier-skill)."
 license: Apache-2.0
 compatibility: opencode
 metadata:
@@ -21,7 +21,7 @@ I orchestrate the existing `schema_extractor` engine end-to-end:
 `extract → validate → (title confirm) → embed → return templated PPTX + summary`
 
 I do **not** fill templates, generate slides, or build decks. Those are
-`ppt-template-filler` and `pptx-subagent`. I only **extract and package** a
+`generate-slide-skill` and `pptx-subagent`. I only **extract and package** a
 template definition.
 
 ## When to use me
@@ -36,13 +36,13 @@ Use this skill when the user wants to:
 
 Do **NOT** use me for:
 
-- Filling a template with content → `ppt-template-filler`
+- Filling a template with content → `generate-slide-skill`
 - Extending a template's layouts (cloning) → `template-modifier-skill`
 - Generating a presentation / slides → `pptx-subagent`
 
 ## Engine
 
-The engine lives in the `ppt-template-filler` skill's scripts. I call its
+The engine lives in the `generate-slide-skill` skill's scripts. I call its
 functions directly (so I can inspect the extracted schema mid-pipeline for the
 title-confirmation step):
 
@@ -73,7 +73,7 @@ clearly with an actionable fix (AC3) and stop — do not proceed.
 
 ```bash
 python -c "
-import sys, json; sys.path.insert(0,'.opencode/skills/ppt-template-filler/scripts')
+import sys, json; sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts')
 from schema_extractor import extract_schema, validate_template_schema, TemplateExtractionError
 try:
     schema = extract_schema('<INPUT.pptx>')
@@ -121,7 +121,7 @@ Stage 3 embeds the corrected title.
 
 ```bash
 python -c "
-import sys, json; sys.path.insert(0,'.opencode/skills/ppt-template-filler/scripts')
+import sys, json; sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts')
 from schema_extractor import embed_schema, TemplateExtractionError
 schema = json.load(open('<SCHEMA_TMP>',encoding='utf-8'))
 try:
@@ -139,7 +139,7 @@ Output goes to `output/<input_stem>.templated.pptx` (matches the project's
 
 ```bash
 python -c "
-import sys, json; sys.path.insert(0,'.opencode/skills/ppt-template-filler/scripts')
+import sys, json; sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts')
 from schema_extractor import build_extraction_summary
 schema = json.load(open('<SCHEMA_TMP>',encoding='utf-8'))
 print(build_extraction_summary(schema))
@@ -181,8 +181,8 @@ will make slide generation consume it.
 ## Reference
 
 - Plan: `PLANS/PLAN-GIT-56.md`.
-- Engine: `.opencode/skills/ppt-template-filler/scripts/schema_extractor.py`
+- Engine: `.opencode/skills/generate-slide-skill/scripts/schema_extractor.py`
   (`extract_schema`, `validate_template_schema`, `embed_schema`,
   `build_extraction_summary`, `TITLE_SOURCES`, `TitleInference`).
-- Peer skills: `ppt-template-filler` (fill), `template-modifier-skill` (extend).
+- Peer skills: `generate-slide-skill` (fill), `template-modifier-skill` (extend).
 - Requirements: `docs/user-stories/chenyu-user-stories.md` → Epic 3 (US-3.1–3.3).
