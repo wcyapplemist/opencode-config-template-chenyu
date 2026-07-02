@@ -161,8 +161,8 @@ def _build_theme(prs: Presentation) -> Dict[str, Any]:
 def placeholder_record(ph: Any) -> Optional[Dict[str, Any]]:
     """Extract a canonical placeholder record, or ``None`` for chrome placeholders.
 
-    Public so Capability B (``template_reader``) can reuse it for Slide Master
-    placeholders without duplicating the extraction logic (issue #46).
+    Used internally by :func:`_build_layout` to build each layout's placeholder
+    list (issue #46).
     """
     ph_type = ph.placeholder_format.type
     if _is_chrome(ph_type):
