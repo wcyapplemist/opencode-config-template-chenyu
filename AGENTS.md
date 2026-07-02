@@ -24,12 +24,12 @@ pptx-subagent-development/
 │       │   │   ├── schemas/                 # Per-slide-type schemas + template_schema.json (Epic 1 spec)
 │       │   │   ├── resolvers/               # Resource resolution pipeline (#23)
 │       │   │   ├── outline_store.py         # Multi-stage outline artifact (#21/#24)
-    │       │   │   └── tests/                   # pytest suite (389 tests; 112 for schema_extractor)
+    │       │   │   └── tests/                   # pytest suite (408 tests; 112 for schema_extractor)
 │       │   └── docs/                        # DESIGN-*.md architecture docs
 │       ├── generate-template-skill/         # Template extraction + embed (US-3.1; wraps schema_extractor)
 │       └── template-modifier-skill/         # Template extension (Capability B)
 ├── docs/user-stories/              # chenyu-user-stories.md + GAP-ANALYSIS.md (+ .zh.md translations)
-├── PLANS/                          # Phased execution plans (PLAN-GIT-48/50/52/54/55/56/58/60/63.md)
+├── PLANS/                          # Phased execution plans (PLAN-GIT-48/50/52/54/55/56/58/60/63/68.md)
 ├── output/                         # Generated .pptx files
 └── AGENTS.md                       # This file
 ```
@@ -41,6 +41,7 @@ pptx-subagent-development/
 | `pptx-subagent`           | Agent | This project only |
 | `generate-slide-skill`     | Skill | This project only |
 | `generate-template-skill` | Skill | This project only |
+| `template-modifier-skill` | Skill | This project only |
 
 Global subagents and skills are managed at `~/.config/opencode/` and are available in all projects.
 
