@@ -78,12 +78,12 @@ pptx-subagent-development/
 │       │       │   └── template.config.json   # Layout-name overrides
 │       │       ├── resolvers/                  # chart-data resolver
 │       │       ├── schemas/                    # Per-slide-type JSON schemas + template_schema.json (Epic 1 spec)
-    │       │       └── tests/                      # pytest suite (112 tests for schema_extractor alone)
+    │       │       └── tests/                      # pytest suite (389 tests; 112 for schema_extractor alone)
     │       ├── generate-template-skill/    # Template extraction + embed (US-3.1; wraps schema_extractor)
     │       └── template-modifier-skill/      # Template extension (Capability B)
 ├── docs/                                 # Activity diagrams, models, use-cases, workflows
 │   └── user-stories/                     # chenyu-user-stories.md + GAP-ANALYSIS.md (+ .zh.md)
-├── PLANS/                                # Phased execution plans (PLAN-GIT-48/50/52/54/55/56.md)
+├── PLANS/                                # Phased execution plans (PLAN-GIT-48/50/52/54/55/56/58/60/63.md)
 ├── output/                               # Generated .pptx files (gitignored)
 ├── chenyu-user requirement.html          # Original requirements source (HTML)
 ├── requirements.txt                      # Python dependencies
