@@ -241,7 +241,7 @@ Re-confirmed against chenyu's original requirement: chenyu's #4 states generatio
 > **Update (2026-06-29, US-4.6 scheduled):** chenyu subsequently confirmed he wants **multi-aspect-ratio output** (e.g., render 4:3 from a 16:9 template, elements scaling proportionally) — the one use case where coordinate placement is genuinely needed, because US-4.1's `add_slide(layout)` path renders only at the template's native size. This is now scheduled as **US-4.6 — Multi-Aspect-Ratio Rendering `[Should Have]`**, which uses the coordinate-placement mechanism scoped to the size-mismatch case. Coordinate placement is therefore **deferred to US-4.6** (after the Epic 4 base), not permanently foreclosed — resolving architecture-review M2. US-4.1's native-size source-swap path is unaffected. The "within 1%" accuracy bar (originally US-4.1's AC3) is relocated to US-4.6's AC, where it legitimately applies.
 
 **3. Priority confirmation**
-Are the 8 unmet Must-Have stories still Must-Have, or has the fingerprint-contract path made some of them obsolete in practice (e.g. US-4.3 is arguably superseded by automatic introspection)?
+With US-4.1/4.3 delivered, the remaining Must-Have gaps are **US-2.1** (header/footer — the only fully-unmet Must-Have) and the partials **US-4.2** (AC1 overflow-oracle deferred), **US-5.1/US-5.2**. Are these still Must-Have, or has the embedded-schema + auto-introspection path made any of them obsolete in practice? (US-4.3, once cited here as "arguably superseded by automatic introspection", is now **Met** — delivered as engine-inline auto-templating, Rev 11.)
 
 ---
 
