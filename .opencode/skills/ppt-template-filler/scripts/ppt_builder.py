@@ -1014,6 +1014,14 @@ def _ensure_default_closing(
     return list(slide_data_list) + [closing]
 
 
+def _live_layout_count(template_path: str) -> Optional[int]:
+    """The live template's layout count, or ``None`` if it can't be read."""
+    try:
+        return len(Presentation(template_path).slide_layouts)
+    except Exception:  # pragma: no cover - defensive
+        return None
+
+
 def _embedded_schema_stale(template_path: str, embedded_layout_count: int) -> bool:
     """True if the live template's layout count diverges from the embedded
     schema's (edit-without-re-embed — the embedded JSON has no mtime-invalidation,
@@ -1021,11 +1029,8 @@ def _embedded_schema_stale(template_path: str, embedded_layout_count: int) -> bo
     live count cannot be determined (never forces a re-extract on uncertainty).
     Shared by the M5 staleness warning and US-4.3's auto-template (M2).
     """
-    try:
-        live = len(Presentation(template_path).slide_layouts)
-    except Exception:  # pragma: no cover - defensive
-        return False
-    return live != embedded_layout_count
+    live = _live_layout_count(template_path)
+    return live is not None and live != embedded_layout_count
 
 
 def _warn_if_embedded_stale(template_path: str, contract: Dict[str, Any]) -> None:
@@ -1033,13 +1038,18 @@ def _warn_if_embedded_stale(template_path: str, contract: Dict[str, Any]) -> Non
     from the live template (catches edit-without-re-embed — the embedded JSON has
     no mtime-invalidation, unlike the sidecar cache). Cheap structural check;
     non-fatal (never blocks the render, never falls back).
+
+    Opens the template **once** (via :func:`_live_layout_count`) and reuses the
+    count for both the check and the message (code-review MINOR-1 — the prior
+    refactor opened it twice).
     """
-    if _embedded_schema_stale(template_path, len(contract.get("layouts", []))):
+    n_embedded = len(contract.get("layouts", []))
+    live = _live_layout_count(template_path)
+    if live is not None and live != n_embedded:
         logger.warning(
             "Stale embedded schema in %s: describes %d layouts, live template has %d "
             "(template may have been edited after embed); re-run generate-template-skill",
-            template_path, len(contract.get("layouts", [])),
-            len(Presentation(template_path).slide_layouts),
+            template_path, n_embedded, live,
         )
 
 
