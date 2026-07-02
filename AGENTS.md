@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-PPTX subagent development — iterating and testing the `pptx-subagent` agent plus three skills: `ppt-template-filler` (fill), `template-modifier-skill` (extend), and `generate-template-skill` (extract).
+PPTX subagent development — iterating and testing the `pptx-subagent` agent plus three skills: `generate-slide-skill` (fill), `template-modifier-skill` (extend), and `generate-template-skill` (extract).
 
 ## Project Structure
 
@@ -12,7 +12,7 @@ pptx-subagent-development/
 │   ├── agents/
 │   │   └── pptx-subagent.md       # Project-level PPT subagent (multi-stage workflow)
 │   └── skills/
-│       ├── ppt-template-filler/   # Template filling engine + SKILL.md
+│       ├── generate-slide-skill/   # Template filling engine + SKILL.md
 │       │   ├── scripts/
 │       │   │   ├── ppt_builder.py          # Engine: layouts, charts, images; US-4.1: get_render_contract (embedded-preferred)
 │       │   │   ├── contract_adapter.py     # US-4.1: bridge — embedded JSON -> sidecar-shape render contract
@@ -39,14 +39,14 @@ pptx-subagent-development/
 | Resource                  | Type  | Scope             |
 | ------------------------- | ----- | ----------------- |
 | `pptx-subagent`           | Agent | This project only |
-| `ppt-template-filler`     | Skill | This project only |
+| `generate-slide-skill`     | Skill | This project only |
 | `generate-template-skill` | Skill | This project only |
 
 Global subagents and skills are managed at `~/.config/opencode/` and are available in all projects.
 
 ## Development Notes
 
-- The `pptx-subagent` uses `ppt_builder.py` from the `ppt-template-filler` skill to populate `template.pptx` layouts
+- The `pptx-subagent` uses `ppt_builder.py` from the `generate-slide-skill` skill to populate `template.pptx` layouts
 - The `generate-template-skill` extracts a template into JSON and embeds it back (`schema_extractor`); it is a peer of the fill and extend skills, invoked directly by the primary agent for "extract/generate template" requests
 - Generated files are saved to `output/`
 - The subagent is STRICTLY FORBIDDEN from building PPTX files from scratch
@@ -87,7 +87,7 @@ The engine layers content-intelligence on top of the python-pptx renderer (outpu
 
   **MANDATORY outline + density-mode checkpoint (Stage 1 → confirm → Stage 3+):** When you (the primary conversation agent) handle a PPT task **directly** — i.e. you did not delegate it to a headless subagent via the Task tool — you **MUST** pause after producing the Stage 1 outline. In a **single `question` call**, ask the user (a) the density mode (`standard` recommended default), (b) outline approval/edits, AND (c) the closing-slide presenter sign-off (name+email, or skip), then **wait for all answers before proceeding** to Stage 3 (JSON) or rendering. Never run outline → detail in one shot when a live user turn-loop is available. Only subagents (which cannot pause) run fully autonomously — they default to `standard`, skip the sign-off, and self-apply the budget.
 
-Run the suite from `.opencode/skills/ppt-template-filler/scripts`:
+Run the suite from `.opencode/skills/generate-slide-skill/scripts`:
 
 ```bash
 python -m pytest tests/ -q

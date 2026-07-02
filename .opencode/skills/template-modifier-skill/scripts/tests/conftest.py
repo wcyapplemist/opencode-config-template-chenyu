@@ -7,7 +7,7 @@ import pytest
 _HERE = Path(__file__).resolve().parent            # .../template-modifier-skill/scripts/tests
 _MODIFIER_SCRIPTS = _HERE.parent                   # .../template-modifier-skill/scripts
 _SKILLS = _MODIFIER_SCRIPTS.parent.parent          # .../skills
-_FILLER_SCRIPTS = _SKILLS / "ppt-template-filler" / "scripts"
+_FILLER_SCRIPTS = _SKILLS / "generate-slide-skill" / "scripts"
 
 for _p in (str(_MODIFIER_SCRIPTS), str(_FILLER_SCRIPTS)):
     if _p not in sys.path:

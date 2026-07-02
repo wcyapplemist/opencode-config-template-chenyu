@@ -1,5 +1,5 @@
 ---
-name: ppt-template-filler
+name: generate-slide-skill
 description: "Populate the PowerPoint template with structured JSON data using a python-pptx based engine. Uses template.pptx Slide Master layouts with proper placeholders. Do NOT use for creating presentations from scratch."
 license: Apache-2.0
 compatibility: opencode

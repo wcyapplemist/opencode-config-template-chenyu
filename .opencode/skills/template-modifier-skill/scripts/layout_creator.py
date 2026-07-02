@@ -27,7 +27,7 @@ from pptx.opc.constants import CONTENT_TYPE as CT, RELATIONSHIP_TYPE as RT
 from pptx.oxml.ns import qn
 
 # Reuse the P0 contract + P1 fingerprint donor selection from the filler skill.
-_FILLER_SCRIPTS = Path(__file__).resolve().parents[2] / "ppt-template-filler" / "scripts"
+_FILLER_SCRIPTS = Path(__file__).resolve().parents[2] / "generate-slide-skill" / "scripts"
 if str(_FILLER_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_FILLER_SCRIPTS))
 

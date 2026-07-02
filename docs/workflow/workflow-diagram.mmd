@@ -26,7 +26,7 @@ flowchart LR
         T1["Persistently extend template.pptx:<br/>① backup→template.original.pptx (first time)<br/>② inject extended-layout OOXML parts + relationships<br/>③ notify user"]
     end
 
-    subgraph Engine["⚙️ ppt-template-filler Engine"]
+    subgraph Engine["⚙️ generate-slide-skill Engine"]
         E0["Render — generate_ppt_from_data<br/>validate → introspect → render → save → cleanup"]
     end
 

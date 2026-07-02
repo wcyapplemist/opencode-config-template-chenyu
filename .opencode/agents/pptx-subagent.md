@@ -9,7 +9,7 @@ permission:
   webfetch: allow
   task:
     "*": deny
-    "ppt-template-filler": allow
+    "generate-slide-skill": allow
 hidden: false
 ---
 
@@ -34,14 +34,14 @@ The engine is **template-agnostic**: it accepts **any** `.pptx`, not just the bu
 
 1. **Place it at the single base path** (overwrite):
    ```bash
-   cp "<user_template>.pptx" .opencode/skills/ppt-template-filler/scripts/templates/template.pptx
+   cp "<user_template>.pptx" .opencode/skills/generate-slide-skill/scripts/templates/template.pptx
    ```
 2. **Introspect + learn what the template can serve** (run in Stage 0):
    ```bash
    python -c "
-   import sys, json; sys.path.insert(0,'.opencode/skills/ppt-template-filler/scripts')
+   import sys, json; sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts')
    from ppt_builder import servable_slide_types, get_render_contract
-   contract = get_render_contract('.opencode/skills/ppt-template-filler/scripts/templates/template.pptx')
+   contract = get_render_contract('.opencode/skills/generate-slide-skill/scripts/templates/template.pptx')
    print(json.dumps(servable_slide_types(contract), indent=2, ensure_ascii=False))
    "
    ```
@@ -49,9 +49,9 @@ The engine is **template-agnostic**: it accepts **any** `.pptx`, not just the bu
 3. **Is the template templated? (US-4.3)** — check whether the file already carries an embedded `ppt/template_schema.json`:
    ```bash
    python -c "
-   import sys; sys.path.insert(0,'.opencode/skills/ppt-template-filler/scripts')
+   import sys; sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts')
    from schema_extractor import read_embedded_schema, TemplateExtractionError
-   tpl = '.opencode/skills/ppt-template-filler/scripts/templates/template.pptx'
+   tpl = '.opencode/skills/generate-slide-skill/scripts/templates/template.pptx'
    try:
        print('TEMPLATED' if read_embedded_schema(tpl) is not None else 'NOT_TEMPLATED')
    except TemplateExtractionError:
@@ -126,7 +126,7 @@ So "5 pages" → 1 cover + 3 content + 1 closing; "3 pages" → 1 cover + 1 cont
 Then **read 2–3 real notes from `template.pptx`** to internalize the house style. Run once:
 
 ```bash
-python -c "import sys; sys.stdout.reconfigure(encoding='utf-8'); sys.path.insert(0,'.opencode/skills/ppt-template-filler/scripts'); from pptx import Presentation; prs=Presentation('.opencode/skills/ppt-template-filler/scripts/templates/template.pptx'); slides=list(prs.slides); [print('===== TEMPLATE S%d ====='%i, slides[i].notes_slide.notes_text_frame.text) for i in [0,1,4]]"
+python -c "import sys; sys.stdout.reconfigure(encoding='utf-8'); sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts'); from pptx import Presentation; prs=Presentation('.opencode/skills/generate-slide-skill/scripts/templates/template.pptx'); slides=list(prs.slides); [print('===== TEMPLATE S%d ====='%i, slides[i].notes_slide.notes_text_frame.text) for i in [0,1,4]]"
 ```
 
 Match what you read: **quoted verbatim dialogue the presenter can speak aloud**, **interspersed stage directions** (imperative prose), a **TRANSITION** line, and **COACHING** with delivery + anticipated Q&A. Do NOT produce abstract bullet summaries.
@@ -147,7 +147,7 @@ Produce a **plain-text outline** (no JSON yet). One line per planned slide, reco
 
 ```bash
 python -c "
-import sys; sys.path.insert(0,'.opencode/skills/ppt-template-filler/scripts')
+import sys; sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts')
 from outline_store import save_outline
 p = save_outline('''<OUTLINE_TEXT>''')
 print(p)
@@ -158,7 +158,7 @@ After Stage 2 confirms a **density mode**, re-save the artifact with the mode re
 
 ```bash
 python -c "
-import sys; sys.path.insert(0,'.opencode/skills/ppt-template-filler/scripts')
+import sys; sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts')
 from outline_store import save_outline
 p = save_outline('''<OUTLINE_TEXT>''', mode='standard')
 print(p)
@@ -255,7 +255,7 @@ The engine parses ` — ` (or ` - ` or `: `) to split into bold title and descri
 
 ```bash
 python -c "
-import sys, json; sys.path.insert(0,'.opencode/skills/ppt-template-filler/scripts')
+import sys, json; sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts')
 from schema_validator import validate_slide_data_list
 data = <JSON_ARRAY>
 res = validate_slide_data_list(data, strict=True, density_mode='standard')
@@ -272,7 +272,7 @@ First, resolve placeholders into concrete assets (real chart data):
 
 ```bash
 python -c "
-import sys, json; sys.path.insert(0,'.opencode/skills/ppt-template-filler/scripts')
+import sys, json; sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts')
 from resolvers import resolve_slide_data_list
 data = <JSON_ARRAY>
 resolved = resolve_slide_data_list(data)
@@ -288,13 +288,13 @@ Then render (this is the **only** allowed way to produce the file). First, ask t
 python -c "
 import sys, json
 sys.path.insert(0,'.opencode/skills/template-modifier-skill/scripts')
-sys.path.insert(0,'.opencode/skills/ppt-template-filler/scripts')
+sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts')
 from state_machine import resolve_and_clone
 from ppt_builder import generate_ppt_from_data, DEFAULT_OUTPUT_DIR
 slide_data = <RESOLVED_JSON_ARRAY>
 # clone_on='missing' (default): clones only when a slide_type's layout is absent.
 active, overrides, note = resolve_and_clone(
-    '.opencode/skills/ppt-template-filler/scripts/templates/template.pptx',
+    '.opencode/skills/generate-slide-skill/scripts/templates/template.pptx',
     slide_data,
 )
 result = generate_ppt_from_data(

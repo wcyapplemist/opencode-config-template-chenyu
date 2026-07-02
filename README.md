@@ -10,7 +10,7 @@ A system for generating and templating PowerPoint presentations, built on three 
 
 - A **content strategist** (the `pptx-subagent` agent) turns a plain-language request into
   structured slide content (a JSON array).
-- A **rendering engine** (`ppt-template-filler` / `ppt_builder.py`) fills a `template.pptx` Slide Master
+- A **rendering engine** (`generate-slide-skill` / `ppt_builder.py`) fills a `template.pptx` Slide Master
   with that content and writes a `.pptx` to `output/`.
 - A **template extractor** (`generate-template-skill` / `schema_extractor.py`) reads any `.pptx`,
   emits a normalized JSON schema, and returns a self-describing "templated" PPTX with that JSON embedded.
@@ -30,7 +30,7 @@ charts, pictures) — double-click a chart and it opens live in PowerPoint.
                                           │  slide_data_list  (JSON array)
                                           ▼
                        ┌──────────────────────────────────────┐
-                       │  ppt-template-filler (render layer)   │   python-pptx engine
+                       │  generate-slide-skill (render layer)   │   python-pptx engine
                        │  resolve_slide_data_list()            │   The ONLY entry
                         │    └─ chart-data resolver              │   point that writes .pptx
                        │  generate_ppt_from_data()             │
@@ -62,7 +62,7 @@ pptx-subagent-development/
 │   ├── agents/
 │   │   └── pptx-subagent.md              # Content-strategist agent (Stage 0–5 workflow)
 │   └── skills/
-│       ├── ppt-template-filler/          # Template filling engine + SKILL.md
+│       ├── generate-slide-skill/          # Template filling engine + SKILL.md
 │       │   ├── SKILL.md                   # Engine usage contract
 │       │   ├── docs/                      # DESIGN-*.md architecture deep-dives
 │       │   └── scripts/
@@ -105,7 +105,7 @@ Run the engine directly on a JSON array — the fastest way to verify the instal
 
 ```bash
 python -c "
-import sys; sys.path.insert(0, '.opencode/skills/ppt-template-filler/scripts')
+import sys; sys.path.insert(0, '.opencode/skills/generate-slide-skill/scripts')
 from ppt_builder import generate_ppt_from_data, DEFAULT_OUTPUT_DIR
 
 slide_data = [
@@ -253,11 +253,11 @@ numbers to pass validation is forbidden. Manual images use `image_path` directly
 | Topic | Document |
 |---|---|
 | Content-strategist workflow (all stages) | `.opencode/agents/pptx-subagent.md` |
-| Engine usage contract & field reference | `.opencode/skills/ppt-template-filler/SKILL.md` |
+| Engine usage contract & field reference | `.opencode/skills/generate-slide-skill/SKILL.md` |
 | Template extraction skill (US-3.1) | `.opencode/skills/generate-template-skill/SKILL.md` |
 | Template extension skill (Capability B) | `.opencode/skills/template-modifier-skill/SKILL.md` |
-| Multi-stage generation design | `.opencode/skills/ppt-template-filler/docs/DESIGN-multi-stage-generation.md` |
-| Resource resolver design | `.opencode/skills/ppt-template-filler/docs/DESIGN-resource-resolver.md` |
+| Multi-stage generation design | `.opencode/skills/generate-slide-skill/docs/DESIGN-multi-stage-generation.md` |
+| Resource resolver design | `.opencode/skills/generate-slide-skill/docs/DESIGN-resource-resolver.md` |
 | Requirements (user stories) | `docs/user-stories/chenyu-user-stories.md` |
 | Gap analysis (implementation status) | `docs/user-stories/GAP-ANALYSIS.md` |
 | Phased execution plans | `PLANS/PLAN-GIT-*.md` |
@@ -270,6 +270,6 @@ globally:
 | Resource | Location |
 |---|---|
 | `pptx-subagent` | `.opencode/agents/` |
-| `ppt-template-filler` | `.opencode/skills/` |
+| `generate-slide-skill` | `.opencode/skills/` |
 | `generate-template-skill` | `.opencode/skills/` |
 | `template-modifier-skill` | `.opencode/skills/` |

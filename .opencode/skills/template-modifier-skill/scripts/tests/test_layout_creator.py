@@ -170,7 +170,7 @@ class TestEndToEnd:
         active, overrides, _note = resolve_and_clone(base, _text_heavy_deck(), clone_on="any")
 
         # Capability A renders against the derived template, pinned to the clone.
-        filler = str(Path(base).parents[2] / "ppt-template-filler" / "scripts")
+        filler = str(Path(base).parents[2] / "generate-slide-skill" / "scripts")
         if filler not in sys.path:
             sys.path.insert(0, filler)
         from ppt_builder import generate_ppt_from_data, DEFAULT_OUTPUT_DIR
