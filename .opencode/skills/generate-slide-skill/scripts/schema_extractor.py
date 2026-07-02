@@ -482,6 +482,27 @@ def _infer_title(prs: Presentation, path: str) -> TitleInference:
     return TitleInference(Path(path).stem, "filename")
 
 
+def _detect_header_footer(prs: Presentation) -> Dict[str, bool]:
+    """Scan the slide master for header/footer placeholders (US-2.1 AC1).
+
+    Returns ``{has_header, has_footer}`` booleans. **Master-only** (per chenyu's
+    wording; layout-only chrome is out of scope). Best-effort (never blocks
+    extraction).
+    """
+    has_header = False
+    has_footer = False
+    try:
+        for ph in prs.slide_masters[0].placeholders:
+            ptype = ph.placeholder_format.type
+            if ptype == PP_PLACEHOLDER.HEADER:
+                has_header = True
+            elif ptype == PP_PLACEHOLDER.FOOTER:
+                has_footer = True
+    except Exception:
+        pass
+    return {"has_header": has_header, "has_footer": has_footer}
+
+
 def _build_metadata(prs: Presentation, path: str) -> Dict[str, Any]:
     inferred = _infer_title(prs, path)
     return {
@@ -492,7 +513,7 @@ def _build_metadata(prs: Presentation, path: str) -> Dict[str, Any]:
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "slide_dimensions": _build_slide_dimensions(prs),
         "missing_fonts": [],  # initially empty; populated below in extract_schema
-        "header_footer": {},  # populated in US-2.1
+        "header_footer": _detect_header_footer(prs),  # US-2.1 AC1
         "common_practices": {},  # populated in US-2.2
     }
 
@@ -1287,6 +1308,41 @@ def build_extraction_summary(schema: Dict[str, Any]) -> str:
     else:
         lines.append("Missing fonts: 0")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# US-2.1: header/footer consumer-facing helpers
+# ---------------------------------------------------------------------------
+
+def needs_header_footer_prompt(schema: Dict[str, Any]) -> bool:
+    """True when the template has **neither** header nor footer (US-2.1 AC2).
+
+    Pure function on the extracted schema dict; consumed by
+    ``generate-template-skill`` (full prompt + inject) and ``pptx-subagent``
+    (light informational note). Headless/subagent callers skip the prompt.
+    """
+    hf = (schema.get("template_metadata") or {}).get("header_footer") or {}
+    return not hf.get("has_header") and not hf.get("has_footer")
+
+
+def inject_default_header_zone(schema: Dict[str, Any]) -> None:
+    """Inject a default header zone into the schema metadata (US-2.1 AC3).
+
+    **Schema-only**; never touches the PPTX. The polygon is a 4-point
+    normalised top-strip per the US-1.2 model (TL→TR→BR→BL, ``[0,1]`` range).
+    Called by ``generate-template-skill`` when the user opts to add a header.
+    """
+    meta = schema.setdefault("template_metadata", {})
+    hf = meta.setdefault("header_footer", {})
+    hf.setdefault("header", {
+        "source": "user_default",
+        "polygon": [
+            {"x": 0, "y": 0}, {"x": 1, "y": 0},
+            {"x": 1, "y": 0.05}, {"x": 0, "y": 0.05},
+        ],
+        "note": "Default header zone (top strip); metadata only — not rendered "
+                "into the PPTX until a real header placeholder is added",
+    })
 
 
 # ---------------------------------------------------------------------------
