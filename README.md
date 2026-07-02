@@ -78,12 +78,12 @@ pptx-subagent-development/
 │       │       │   └── template.config.json   # Layout-name overrides
 │       │       ├── resolvers/                  # chart-data resolver
 │       │       ├── schemas/                    # Per-slide-type JSON schemas + template_schema.json (Epic 1 spec)
-    │       │       └── tests/                      # pytest suite (389 tests; 112 for schema_extractor alone)
+    │       │       └── tests/                      # pytest suite (408 tests; 112 for schema_extractor alone)
     │       ├── generate-template-skill/    # Template extraction + embed (US-3.1; wraps schema_extractor)
     │       └── template-modifier-skill/      # Template extension (Capability B)
 ├── docs/                                 # Activity diagrams, models, use-cases, workflows
 │   └── user-stories/                     # chenyu-user-stories.md + GAP-ANALYSIS.md (+ .zh.md)
-├── PLANS/                                # Phased execution plans (PLAN-GIT-48/50/52/54/55/56/58/60/63.md)
+├── PLANS/                                # Phased execution plans (PLAN-GIT-48/50/52/54/55/56/58/60/63/68.md)
 ├── output/                               # Generated .pptx files (gitignored)
 ├── chenyu-user requirement.html          # Original requirements source (HTML)
 ├── requirements.txt                      # Python dependencies
@@ -199,6 +199,8 @@ agent detects a non-templated input at Stage 0 and emits *"No template found —
 extracting first, then generating slides..."*. One prompt → a templated, reusable
 deck; the render report gains an additive `templating` field.
 
+**US-2.1 — header/footer detection.** `_detect_header_footer(prs)` scans the slide master for HEADER/FOOTER placeholders and records `{has_header, has_footer}` in `template_metadata.header_footer`. When both are absent, the extraction skill prompts the user (optionally injecting a default header zone into the schema — schema-only, AC3). The agent surfaces a light informational note for templated inputs.
+
 **CLI:**
 ```bash
 python schema_extractor.py --input template.pptx --output schema.json        # extract only
@@ -239,7 +241,7 @@ a warning and never aborts the build.
 | `comparison_slide` | Comparison | `title`, `body_left`, `body_right`, `notes` |
 | `content_image_slide` | Image + caption | `title`, `body`, `image_path`, `notes` |
 | `chart_slide` | Native chart | `title`, `chart_type`, `categories`, `series`, `notes` |
-| `closing_slide` | Closing | `title` (defaults to `Thank You`), `notes` |
+| `closing_slide` | Closing | `title` (defaults to `Thank You`), `notes`; optional `presenter_name` / `presenter_email` (else placeholder removed — no "Prepared by" bleed) |
 
 **Chart types:** `bar`, `bar_stacked`, `bar_horizontal`, `bar_horizontal_stacked`,
 `pie`, `pie_exploded`, `doughnut`, `line`, `line_markers`.

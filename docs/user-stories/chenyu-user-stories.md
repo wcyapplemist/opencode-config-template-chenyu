@@ -151,9 +151,9 @@ Detecting and validating structural conventions like headers, footers, slide num
 The script checks for the presence of header (`<p:hdr>`) and footer (`<p:ftr>`) elements in the slide master XML. If absent, the subagent pauses extraction and returns a structured prompt to the user.
 
 **Acceptance Criteria:**
-- [ ] `template_metadata.header_footer.has_header` and `.has_footer` are booleans reflecting actual detection.
-- [ ] When both are `false`, the subagent outputs a user-facing question before continuing.
-- [ ] If the user says "yes, add header", the script injects a default header zone into the JSON (not into the PPTX yet — only into the schema).
+- [x] `template_metadata.header_footer.has_header` and `.has_footer` are booleans reflecting actual detection. *(AC1 — delivered: `_detect_header_footer(prs)` scans the slide master's placeholders; wired into `_build_metadata`.)*
+- [x] When both are `false`, the subagent outputs a user-facing question before continuing. *(AC2 — delivered: `generate-template-skill` Stage 2 checks `needs_header_footer_prompt`; pptx-subagent Stage 0 surfaces a light note via `read_embedded_schema`. Batched with title confirmation per arch-review M2.)*
+- [x] If the user says "yes, add header", the script injects a default header zone into the JSON (not into the PPTX yet — only into the schema). *(AC3 — delivered: `inject_default_header_zone(schema)` sets a 4-point top-strip polygon + English note in `header_footer.header`; schema-only.)*
 
 **Tags:** header, footer, detection, prompt
 

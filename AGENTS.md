@@ -24,12 +24,12 @@ pptx-subagent-development/
 │       │   │   ├── schemas/                 # Per-slide-type schemas + template_schema.json (Epic 1 spec)
 │       │   │   ├── resolvers/               # Resource resolution pipeline (#23)
 │       │   │   ├── outline_store.py         # Multi-stage outline artifact (#21/#24)
-    │       │   │   └── tests/                   # pytest suite (389 tests; 112 for schema_extractor)
+    │       │   │   └── tests/                   # pytest suite (408 tests; 112 for schema_extractor)
 │       │   └── docs/                        # DESIGN-*.md architecture docs
 │       ├── generate-template-skill/         # Template extraction + embed (US-3.1; wraps schema_extractor)
 │       └── template-modifier-skill/         # Template extension (Capability B)
 ├── docs/user-stories/              # chenyu-user-stories.md + GAP-ANALYSIS.md (+ .zh.md translations)
-├── PLANS/                          # Phased execution plans (PLAN-GIT-48/50/52/54/55/56/58/60/63.md)
+├── PLANS/                          # Phased execution plans (PLAN-GIT-48/50/52/54/55/56/58/60/63/68.md)
 ├── output/                         # Generated .pptx files
 └── AGENTS.md                       # This file
 ```
@@ -41,6 +41,7 @@ pptx-subagent-development/
 | `pptx-subagent`           | Agent | This project only |
 | `generate-slide-skill`     | Skill | This project only |
 | `generate-template-skill` | Skill | This project only |
+| `template-modifier-skill` | Skill | This project only |
 
 Global subagents and skills are managed at `~/.config/opencode/` and are available in all projects.
 
@@ -84,6 +85,7 @@ The engine layers content-intelligence on top of the python-pptx renderer (outpu
 - **Density modes (text-overflow prevention)** — `density_mode.py` fixes a per-slide visible-text word budget per mode (`concise` 0–10 / `standard` 30–50 / `text-heavy` 75–150). The validator emits non-fatal warnings on out-of-budget slides (`validate_slide_data_list(..., density_mode=...)` / `parse_and_validate(..., density_mode=...)`); warnings never block, even in strict mode. This is the content-side defense against text overflowing placeholder boundaries.
 - **Reactive text-fitting (US-4.2, #60)** — `text_fit.py` is a pure heuristic estimator that, at render time, shrinks a placeholder's font in −2pt steps (8pt floor) when text would overflow its box. Base size is template-derived (schema `size_pt` → layout sample-run → conservative role ceiling body 14 / title 28 / subtitle 18); an explicit `run.font.size` is written **only on actual shrink** (else inheritance is preserved); an auto-grow guard skips shrinking on short-base-height placeholders. The body `Pt(14)`/`Pt(12)` hardcode is retired. Per-slide per-placeholder fit decisions (incl. the `font_size_adjusted` flag, AC3) are written to a `<output>.render.json` sidecar (the engine return type is unchanged). **AC1 is best-effort / deferred** — python-pptx has no layout engine, so a hard overflow guarantee needs an external render oracle (see GAP-ANALYSIS §US-4.2 Rev 10).
 - **Auto-chain / templated output (US-4.3, #63)** — every generated `.pptx` is **self-describing**: after `prs.save` (which strips the unmodeled part), `generate_ppt_from_data(auto_template=True)` re-embeds `ppt/template_schema.json` into the **output**, sourced from the **input template** (so the schema describes the template, never the rendered deck's cover) and skipping a stale embedded input schema. The agent detects a non-templated input at Stage 0 (`read_embedded_schema`, exception-safe) and emits *"No template found — extracting first, then generating slides..."* (AC3). The output's `<output>.render.json` gains an additive `templating` field. One user prompt → a templated, reusable deck.
+- **Header/footer detection (US-2.1, #68)** — `_detect_header_footer(prs)` scans the slide master for HEADER/FOOTER placeholders and records `{has_header, has_footer}` in `template_metadata.header_footer`. `needs_header_footer_prompt(schema)` → True when both absent → `generate-template-skill` Stage 2 prompts the user (batched with title-confirm); `pptx-subagent` Stage 0 surfaces a light note via `read_embedded_schema` (templated inputs only). `inject_default_header_zone(schema)` injects a 4-point top-strip polygon + English note (schema-only, AC3).
 
   **MANDATORY outline + density-mode checkpoint (Stage 1 → confirm → Stage 3+):** When you (the primary conversation agent) handle a PPT task **directly** — i.e. you did not delegate it to a headless subagent via the Task tool — you **MUST** pause after producing the Stage 1 outline. In a **single `question` call**, ask the user (a) the density mode (`standard` recommended default), (b) outline approval/edits, AND (c) the closing-slide presenter sign-off (name+email, or skip), then **wait for all answers before proceeding** to Stage 3 (JSON) or rendering. Never run outline → detail in one shot when a live user turn-loop is available. Only subagents (which cannot pause) run fully autonomously — they default to `standard`, skip the sign-off, and self-apply the budget.
 

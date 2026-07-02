@@ -59,6 +59,7 @@ The engine is **template-agnostic**: it accepts **any** `.pptx`, not just the bu
    "
    ```
    If `NOT_TEMPLATED`, **tell the user** (AC3): *"No template found — extracting first, then generating slides..."* You do **not** run a second command: the engine's `auto_template` (default on) extracts the schema and embeds it into the **output** `.pptx` after save, so the generated deck is self-describing/reusable. Detection is informational only; generation works either way (the engine falls back to sidecar introspection for layout resolution).
+4. **Header/footer check (US-2.1)** — if the template IS templated (step 3 returned `TEMPLATED`), check `header_footer` via `read_embedded_schema` (**not** `get_render_contract` — the adapter strips `template_metadata`). If both `has_header` and `has_footer` are false, **inform the user** (primary-agent mode only; headless skips): *"This template has no header or footer zones — slides may look bare."* The note is informational; generation proceeds regardless. For non-templated inputs, the note is deferred (the schema is only produced post-render by US-4.3's `auto_template`).
 
 ### Template-aware content (MANDATORY)
 
