@@ -262,8 +262,14 @@
         },
         "image_properties": {
           "type": "object",
-          "description": "Present on image components.",
-          "additionalProperties": true
+          "description": "Present on image components. US-4.6 (C1) captures the asset partname/content_type so the coordinate-placement path can re-source bytes from the template package.",
+          "additionalProperties": true,
+          "properties": {
+            "partname": { "type": "string", "description": "Stable /ppt/media/imageN.ext path within the PPTX package." },
+            "content_type": { "type": "string", "description": "e.g. image/png." },
+            "width_px": { "type": "integer", "minimum": 0 },
+            "height_px": { "type": "integer", "minimum": 0 }
+          }
         },
         "shape_properties": {
           "type": "object",
@@ -272,8 +278,27 @@
         },
         "text_properties": {
           "type": "object",
-          "description": "Present on text-bearing components.",
-          "additionalProperties": true
+          "description": "Present on text-bearing components. US-4.6 (AC4) populates per-paragraph bullet/spacing so the coordinate-placement path can re-apply bullets when layout inheritance is bypassed.",
+          "additionalProperties": true,
+          "properties": {
+            "bullets": {
+              "type": "array",
+              "description": "Per-paragraph bullet/spacing info. Empty when everything is default (inherit).",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "level": { "type": ["integer", "null"], "minimum": 0 },
+                  "type": { "type": ["string", "null"], "enum": ["char", "autonum", "none", null] },
+                  "char": { "type": ["string", "null"], "description": "Bullet glyph (buChar) or autonum numbering type." },
+                  "font": { "type": ["string", "null"], "description": "Bullet font typeface (buFont)." },
+                  "line_spacing": { "type": ["number", "null"], "description": "Float multiple (e.g. 1.5) or exact pt." },
+                  "space_before": { "type": ["number", "null"], "description": "pt." },
+                  "space_after": { "type": ["number", "null"], "description": "pt." }
+                }
+              }
+            }
+          }
         }
       }
     }

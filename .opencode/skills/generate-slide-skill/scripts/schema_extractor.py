@@ -33,7 +33,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import math
 import os
 import re
 import tempfile
@@ -50,13 +49,17 @@ from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.enum.shapes import PP_PLACEHOLDER
 from pptx.oxml.ns import qn
 
+# US-4.6 (m2): polygon/EMU primitives relocated to the shared pure ``geometry``
+# module. Re-exported here so ``schema_extractor.normalize_polygon`` /
+# ``_EMU_PER_INCH`` / ``_compute_ratio`` keep resolving (parity-unchanged).
+from geometry import _EMU_PER_INCH, _compute_ratio, normalize_polygon  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-_EMU_PER_INCH = 914400
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 GENERATED_BY = "opencode-pptx-subagent/schema_extractor"
 
 # US-1.5: the canonical path of the embedded schema inside the PPTX zip, and the
@@ -341,48 +344,9 @@ def map_placeholder_type(ph: Any) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
-# Task 3: polygon normalizer (basic, rectangular)
+# Task 3: polygon normalizer — relocated to ``geometry`` (US-4.6 m2).
+# normalize_polygon / _clamp_unit / _compute_ratio are imported at the top.
 # ---------------------------------------------------------------------------
-def _clamp_unit(v: float) -> float:
-    return min(max(v, 0.0), 1.0)
-
-
-def normalize_polygon(
-    shape: Any, slide_w_emu: int, slide_h_emu: int
-) -> List[Dict[str, float]]:
-    """Return 4 normalized ``{x, y}`` points (TL -> TR -> BR -> BL, 0.0-1.0).
-
-    Derived from the shape's ``left/top/width/height`` (EMU) divided by slide
-    dimensions. Rectangular only in US-1.1 (non-rectangular vertices deferred to
-    US-1.2). Values are clamped to [0, 1] and rounded to 6 decimals.
-    """
-    left = shape.left or 0
-    top = shape.top or 0
-    width = shape.width or 0
-    height = shape.height or 0
-    if slide_w_emu <= 0 or slide_h_emu <= 0:
-        return [{"x": 0.0, "y": 0.0}] * 4
-    x0 = _clamp_unit(round(left / slide_w_emu, 6))
-    y0 = _clamp_unit(round(top / slide_h_emu, 6))
-    x1 = _clamp_unit(round((left + width) / slide_w_emu, 6))
-    y1 = _clamp_unit(round((top + height) / slide_h_emu, 6))
-    return [
-        {"x": x0, "y": y0},  # top-left
-        {"x": x1, "y": y0},  # top-right
-        {"x": x1, "y": y1},  # bottom-right
-        {"x": x0, "y": y1},  # bottom-left
-    ]
-
-
-# ---------------------------------------------------------------------------
-# Helpers duplicated from template_introspector (Decision #4: accepted during
-# coexistence; consolidated in the migration epic)
-# ---------------------------------------------------------------------------
-def _compute_ratio(width_emu: int, height_emu: int) -> str:
-    if height_emu <= 0:
-        return f"{width_emu}:0"
-    g = math.gcd(width_emu, height_emu)
-    return f"{width_emu // g}:{height_emu // g}"
 
 
 def _build_slide_dimensions(prs: Presentation) -> Dict[str, Any]:
@@ -584,6 +548,134 @@ def _font_fallback(family: Optional[str], default_body: str) -> Optional[str]:
     return default_body if default_body in _BUILTIN_FONTS else _DEFAULT_FALLBACK_FONT
 
 
+# ---------------------------------------------------------------------------
+# US-4.6 (Phase 1) — paragraph bullet/spacing capture + image-asset capture.
+# These feed the coordinate-placement path's styling re-application (AC4) and
+# image-byte sourcing (C1). Bullets read the OOXML ``<a:pPr>`` children because
+# python-pptx exposes no high-level bullet API.
+# ---------------------------------------------------------------------------
+def _line_spacing_to_json(ls: Any) -> Optional[float]:
+    """Serialize ``paragraph.line_spacing`` (float multiple | Length | None).
+
+    A bare float means a line-spacing multiple (the common case); an exact/
+    AtLeast Length is serialized as its pt value (number). ``None`` -> ``None``.
+    """
+    if ls is None:
+        return None
+    if isinstance(ls, (int, float)):
+        return float(ls)
+    try:
+        return round(float(ls.pt), 2)
+    except Exception:
+        return None
+
+
+def _spacing_to_json(sp: Any) -> Optional[float]:
+    """Serialize ``space_before``/``space_after`` (Length | None) to pt (float)."""
+    if sp is None:
+        return None
+    try:
+        return round(float(sp.pt), 2)
+    except Exception:
+        return None
+
+
+def _extract_paragraph_format(tf: Any) -> List[Dict[str, Any]]:
+    """Per-paragraph bullet/spacing info for US-4.6 AC4 (bullets re-application).
+
+    Returns a list of ``{level, type, char, font, line_spacing, space_before,
+    space_after}`` for paragraphs that explicitly set any of these; empty list
+    when everything is default (the renderer then inherits). ``type`` is one of
+    ``char`` (buChar), ``autonum`` (buAutoNum), ``none`` (buNone), or ``null``.
+    """
+    out: List[Dict[str, Any]] = []
+    for p in tf.paragraphs:
+        info: Dict[str, Any] = {
+            "level": None, "type": None, "char": None, "font": None,
+            "line_spacing": None, "space_before": None, "space_after": None,
+        }
+        explicit = False
+
+        lvl = p.level or 0
+        if lvl:
+            info["level"] = lvl
+            explicit = True
+        ls = _line_spacing_to_json(p.line_spacing)
+        if ls is not None:
+            info["line_spacing"] = ls
+            explicit = True
+        sb = _spacing_to_json(p.space_before)
+        if sb is not None:
+            info["space_before"] = sb
+            explicit = True
+        sa = _spacing_to_json(p.space_after)
+        if sa is not None:
+            info["space_after"] = sa
+            explicit = True
+
+        # Bullet type/char/font live under <a:pPr> (python-pptx has no API).
+        pPr = p._p.find(qn("a:pPr"))
+        if pPr is not None:
+            if pPr.find(qn("a:buNone")) is not None:
+                info["type"] = "none"
+                explicit = True
+            else:
+                bu_char = pPr.find(qn("a:buChar"))
+                bu_autonum = pPr.find(qn("a:buAutoNum"))
+                if bu_char is not None:
+                    info["type"] = "char"
+                    info["char"] = bu_char.get("char")
+                    explicit = True
+                elif bu_autonum is not None:
+                    info["type"] = "autonum"
+                    explicit = True
+            bu_font = pPr.find(qn("a:buFont"))
+            if bu_font is not None and bu_font.get("typeface"):
+                info["font"] = bu_font.get("typeface")
+
+        if explicit:
+            out.append(info)
+    return out
+
+
+def _extract_image_properties(shape: Any) -> Dict[str, Any]:
+    """Capture enough to re-source an image's bytes (US-4.6 C1).
+
+    Returns ``{partname, content_type, [width_px, height_px]}`` — ``partname``
+    is the stable ``/ppt/media/imageN.ext`` path the executor resolves against
+    the template package. ``{}`` when the shape is not a resolvable picture.
+
+    python-pptx's ``shape.image`` exposes ``content_type``/``size`` but NOT a
+    ``partname``; the part path is resolved via the ``<a:blip r:embed>`` rId ->
+    ``part.related_part(rId)``.
+    """
+    info: Dict[str, Any] = {}
+    # content_type + pixel dims from the high-level image accessor.
+    try:
+        img = shape.image
+        info["content_type"] = img.content_type
+        try:
+            w, h = img.size
+            info["width_px"] = int(w)
+            info["height_px"] = int(h)
+        except Exception:
+            pass
+    except Exception:
+        pass
+    # partname via blip r:embed -> related ImagePart (python-pptx Image has no
+    # partname attribute, so resolve through the owning part's relationship).
+    try:
+        blip = shape._element.find(".//" + qn("a:blip"))
+        if blip is not None:
+            rId = blip.get(qn("r:embed"))
+            if rId:
+                part = shape.part.related_part(rId)
+                info["partname"] = str(part.partname)
+    except Exception:
+        pass
+    return info
+
+
 def _extract_text_fonts(
     shape: Any, default_body: str
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
@@ -681,12 +773,22 @@ def _build_component(
     else:
         component["placeholder_type"] = None
 
-    # font: present ONLY on text-bearing components (C1). Populated per-run
-    # (US-1.4); default_body is the theme-aware fallback default.
+    # font + runs + text_properties.bullets: present ONLY on text-bearing
+    # components (C1). Populated per-run (US-1.4); bullets/spacing (US-4.6 AC4).
     if comp_type in _TEXT_TYPES:
         font_summary, runs = _extract_text_fonts(shape, default_body)
         component["font"] = font_summary
         component["runs"] = runs
+        tf = getattr(shape, "text_frame", None)
+        component["text_properties"] = {
+            "bullets": _extract_paragraph_format(tf) if tf is not None else []
+        }
+
+    # image_properties: present ONLY on image components (US-4.6 C1). Captures
+    # the asset's partname/content_type so the coordinate path can re-source
+    # bytes from the template package.
+    if comp_type == "image":
+        component["image_properties"] = _extract_image_properties(shape)
 
     # content_template: text-bearing components get a simple placeholder marker.
     if comp_type in _TEXT_TYPES:
@@ -989,6 +1091,41 @@ def _validate_component(comp: Any, path: str, result: ValidationResult) -> None:
             f"non-text component type '{ctype}' must not carry a 'font' field",
             field_path=f"{path}.font",
         ))
+    # US-4.6 cross-field rules (mirror C1): text_properties only on text-bearing
+    # components; image_properties only on image components.
+    if ctype is not None and ctype not in _TEXT_TYPES and "text_properties" in comp:
+        result.add(ValidationIssue(
+            f"non-text component type '{ctype}' must not carry a 'text_properties' field",
+            field_path=f"{path}.text_properties",
+        ))
+    if ctype is not None and ctype != "image" and "image_properties" in comp:
+        result.add(ValidationIssue(
+            f"non-image component type '{ctype}' must not carry an 'image_properties' field",
+            field_path=f"{path}.image_properties",
+        ))
+    # US-4.6 bullets enum check (when text_properties.bullets is present).
+    tp = comp.get("text_properties")
+    if isinstance(tp, dict):
+        bullets = tp.get("bullets")
+        if bullets is not None:
+            if not isinstance(bullets, list):
+                result.add(ValidationIssue(
+                    "text_properties.bullets must be a list",
+                    field_path=f"{path}.text_properties.bullets",
+                ))
+            else:
+                _VALID_BULLET_TYPES = {"char", "autonum", "none"}
+                for i, b in enumerate(bullets):
+                    if not isinstance(b, dict):
+                        continue
+                    bt = b.get("type")
+                    if bt is not None and bt not in _VALID_BULLET_TYPES:
+                        result.add(ValidationIssue(
+                            f"bullets[{i}].type '{bt}' must be one of "
+                            f"{sorted(_VALID_BULLET_TYPES)} or null",
+                            field_path=f"{path}.text_properties.bullets[{i}].type",
+                            severity="warning",
+                        ))
     # US-1.4 font checks (only when a font object is present).
     font = comp.get("font")
     if isinstance(font, dict):
