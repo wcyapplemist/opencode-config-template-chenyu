@@ -417,6 +417,22 @@ The output deck uses the user template's own layouts, theme, and master — full
 
 Output files saved under `<project_root>/output/`.
 
+## Multi-aspect-ratio output (US-4.6)
+
+Pass `target_size` to render the deck at a **different aspect ratio** than the template's native size — every element (placeholders, background chrome, charts, images) scales proportionally to the new dimensions.
+
+- **Accepted forms**: a preset (`"16:9"`, `"4:3"`, `"1:1"`) or an explicit dict `{"width_in": W, "height_in": H}` (or `width_emu`/`height_emu`).
+- **No-op gate**: when the target **ratio** equals the template's native ratio (or `target_size` is omitted), the default native-size path runs unchanged — no rescaling.
+- **How it works**: the engine resizes the canvas and proportionally rescales every master/layout shape, then fills the (now target-sized) placeholders exactly as on the native path — so fonts/theme/bullets stay on-brand via normal layout inheritance.
+- **Self-describing output**: the output's embedded schema `slide_dimensions` is rewritten to the target size, so the deck is re-usable as a target-sized template. The `<output>.render.json` sidecar records `aspect_ratio` (native→target + scale factors).
+
+```python
+generate_ppt_from_data(slide_data, output_path='report_43.pptx', target_size='4:3')
+generate_ppt_from_data(slide_data, output_path='report_square.pptx', target_size={'width_in': 7.5, 'height_in': 7.5})
+```
+
+CLI: `python ppt_builder.py -d slides.json -o report.pptx --target-size 4:3` (preset or `WxH` inches like `10x7.5`).
+
 ## Execution
 
 ```bash
@@ -429,6 +445,7 @@ slide_data = <JSON_ARRAY>
 result = generate_ppt_from_data(
     slide_data,
     output_path=str(DEFAULT_OUTPUT_DIR / 'report.pptx'),
+    target_size=None,  # US-4.6: '4:3' / '16:9' / '1:1' / {'width_in':..,'height_in':..} or None (native)
 )
 print(result)
 "

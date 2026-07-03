@@ -170,7 +170,7 @@ Python's `logging` module is used across the modules. `schema_extractor.py` **do
 
 | Status | Count | Stories |
 |---|---|---|
-| ✅ Met | 13 | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-3.4, US-4.1, US-4.3, US-4.5 |
+| ✅ Met | 14 | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-3.4, US-4.1, US-4.3, US-4.5, US-4.6 |
 | 🟡 Partial | 4 | US-4.2, US-5.1, US-5.2, US-5.3 |
 | ❌ Not met | 2 | US-2.2, US-4.4 |
 | ⚪ Architecture differs | 0 | — |
@@ -179,12 +179,12 @@ Python's `logging` module is used across the modules. `schema_extractor.py` **do
 
 | | Must Have | Should Have | Could Have |
 |---|---|---|---|
-| ✅ Met | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-4.1, US-4.3 | US-3.4 | US-4.5 |
+| ✅ Met | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-4.1, US-4.3 | US-3.4, US-4.6 | US-4.5 |
 | 🟡 Partial | US-4.2, US-5.1, US-5.2 | US-5.3 | — |
 | ❌ Not met | — | US-2.2, US-4.4 | — |
 | ⚪ Differs | — | — | — |
 
-**Epics 1, 3, and US-4.1 are complete** (Rev 9); **US-4.2 delivered** (Rev 10, AC2/AC3 Met, AC1 deferred); **US-4.3 delivered** (Rev 11); **US-2.1 delivered** (Rev 13 — all Must-Have stories are now Met or Partial). The remaining gaps cluster in the rest of Epic 2 (US-2.2 common-practice suggestions), Epic 4 (US-4.4 template-less style picker, US-4.6 multi-aspect-ratio, US-4.2's deferred AC1 overflow-oracle), and Epic 5 (skill decomposition / CLI / shared-schema loading). **No fully-unmet Must-Have remains.**
+**Epics 1, 3, and US-4.1 are complete** (Rev 9); **US-4.2 delivered** (Rev 10, AC2/AC3 Met, AC1 deferred); **US-4.3 delivered** (Rev 11); **US-2.1 delivered** (Rev 13 — all Must-Have stories are now Met or Partial); **US-4.6 delivered** (Rev 14 — multi-aspect-ratio via coordinate-path prep + shared native loop; all 5 ACs Met). The remaining gaps cluster in the rest of Epic 2 (US-2.2 common-practice suggestions), Epic 4 (US-4.4 template-less style picker, US-4.2's deferred AC1 overflow-oracle), and Epic 5 (skill decomposition / CLI / shared-schema loading). **No fully-unmet Must-Have remains.**
 
 ---
 
