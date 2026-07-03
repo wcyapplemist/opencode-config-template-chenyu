@@ -12,22 +12,28 @@ pptx-subagent-development/
 │   ├── agents/
 │   │   └── pptx-subagent.md       # Project-level PPT subagent (multi-stage workflow)
 │   └── skills/
+│       ├── _common/                 # PLAN-GIT-72 (Epic 5): shared extraction/contract/schema infra (no SKILL.md — not a skill)
+│       │   └── scripts/
+│       │       ├── schema_extractor.py      # Epic 1 extraction + embed + validate_template_schema (US-1.1–1.5, US-3.1)
+│       │       ├── layout_contract.py       # PLAN-GIT-72: pure contract layer (get_render_contract, _resolve_layout_by_fingerprint, servable_slide_types)
+│       │       ├── contract_adapter.py      # US-4.1: bridge — embedded JSON -> sidecar-shape render contract
+│       │       ├── template_introspector.py # Fingerprint-contract extraction (sidecar fallback)
+│       │       ├── geometry.py              # US-4.6: pure polygon/EMU primitives + target-size resolver
+│       │       └── schemas/template_schema.json # Epic 1 spec (US-5.2 shared home)
 │       ├── generate-slide-skill/   # Template filling engine + SKILL.md
 │       │   ├── scripts/
-│       │   │   ├── ppt_builder.py          # Engine: layouts, charts, images; US-4.1: get_render_contract (embedded-preferred)
-│       │   │   ├── contract_adapter.py     # US-4.1: bridge — embedded JSON -> sidecar-shape render contract
-│       │   │   ├── template_introspector.py # Fingerprint-contract extraction (sidecar fallback)
-    │       │   │   ├── schema_extractor.py      # Epic 1: extraction + font detection + zip embed (US-1.1–1.5); US-3.1: title_source + build_extraction_summary
-│       │   │   ├── schema_validator.py      # JSON schema validation + retry (#20)
+│       │   │   ├── ppt_builder.py          # Fill engine: layouts, charts, images; imports contract layer from _common
+│       │   │   ├── schema_validator.py      # Slide-data JSON-schema validation + retry (#20; fill-side)
 │       │   │   ├── density_mode.py          # Per-slide word-budget enforcement
 │       │   │   ├── text_fit.py              # US-4.2: reactive font auto-shrink estimator (pure)
-│       │   │   ├── schemas/                 # Per-slide-type schemas + template_schema.json (Epic 1 spec)
+│       │   │   ├── coordinate_placer.py     # US-4.6: pure placement planner (reserved for freeform rebuild)
+│       │   │   ├── schemas/                 # slide_schemas.py (fill-side; template_schema.json moved to _common)
 │       │   │   ├── resolvers/               # Resource resolution pipeline (#23)
 │       │   │   ├── outline_store.py         # Multi-stage outline artifact (#21/#24)
-    │       │   │   └── tests/                   # pytest suite (408 tests; 112 for schema_extractor)
+│       │   │   └── tests/                   # pytest suite
 │       │   └── docs/                        # DESIGN-*.md architecture docs
-│       ├── generate-template-skill/         # Template extraction + embed (US-3.1; wraps schema_extractor)
-│       └── template-modifier-skill/         # Template extension (Capability B)
+│       ├── generate-template-skill/         # Template extraction + embed (US-3.1; uses _common/schema_extractor)
+│       └── template-modifier-skill/         # Template extension (Capability B; uses _common contract layer — zero prod coupling to generate-slide-skill)
 ├── docs/user-stories/              # chenyu-user-stories.md + GAP-ANALYSIS.md (+ .zh.md translations)
 ├── PLANS/                          # Phased execution plans (PLAN-GIT-48/50/52/54/55/56/58/60/63/68.md)
 ├── output/                         # Generated .pptx files
@@ -51,6 +57,7 @@ Global subagents and skills are managed at `~/.config/opencode/` and are availab
 - The `generate-template-skill` extracts a template into JSON and embeds it back (`schema_extractor`); it is a peer of the fill and extend skills, invoked directly by the primary agent for "extract/generate template" requests
 - Generated files are saved to `output/`
 - The subagent is STRICTLY FORBIDDEN from building PPTX files from scratch
+- **Shared infra lives in `_common/` (PLAN-GIT-72 / Epic 5):** the extraction/contract/schema modules (`schema_extractor`, `layout_contract`, `contract_adapter`, `template_introspector`, `geometry`, `schemas/template_schema.json`) are shared by all three skills from `.opencode/skills/_common/scripts/` — no skill `sys.path`-hacks into a sibling. `template-modifier-skill`'s production code now has **zero** coupling to `generate-slide-skill`; `generate-template-skill` resolves `schema_extractor` via `_common`. (Advances US-5.2's shared-`common/` design; US-5.1's "2 skills" intent preserved — no skills were split.)
 
 ## Epic 1: Template Extraction & JSON Schema (US-1.1–1.5 — COMPLETE)
 
