@@ -7,6 +7,12 @@ import pytest
 _SCRIPTS_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_SCRIPTS_DIR))
 
+# PLAN-GIT-72 (US-5.2): shared extraction/contract infra now lives in the
+# sibling _common/scripts package.
+_COMMON_SCRIPTS = _SCRIPTS_DIR.parent.parent / "_common" / "scripts"
+if str(_COMMON_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_COMMON_SCRIPTS))
+
 
 @pytest.fixture
 def template_path():

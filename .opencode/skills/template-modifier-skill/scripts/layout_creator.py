@@ -26,13 +26,13 @@ from pptx import Presentation
 from pptx.opc.constants import CONTENT_TYPE as CT, RELATIONSHIP_TYPE as RT
 from pptx.oxml.ns import qn
 
-# Reuse the P0 contract + P1 fingerprint donor selection from the filler skill.
-_FILLER_SCRIPTS = Path(__file__).resolve().parents[2] / "generate-slide-skill" / "scripts"
-if str(_FILLER_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(_FILLER_SCRIPTS))
+# PLAN-GIT-72: shared contract layer now in _common (no more sibling-skill hack).
+_COMMON_SCRIPTS = Path(__file__).resolve().parents[2] / "_common" / "scripts"
+if str(_COMMON_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_COMMON_SCRIPTS))
 
 from pptx.parts.slide import SlideLayoutPart  # noqa: E402
-from ppt_builder import _SLIDE_TYPE_FINGERPRINT, _resolve_layout_by_fingerprint  # noqa: E402
+from layout_contract import _SLIDE_TYPE_FINGERPRINT, _resolve_layout_by_fingerprint  # noqa: E402
 from state_machine import (  # noqa: E402 (same package dir)
     ResolutionPlan,
     template_new_path_for,

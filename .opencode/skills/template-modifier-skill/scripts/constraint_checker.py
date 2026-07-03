@@ -13,12 +13,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict
 
-# Reuse the fingerprint/servable logic from the sibling generate-slide-skill skill.
-_FILLER_SCRIPTS = Path(__file__).resolve().parents[2] / "generate-slide-skill" / "scripts"
-if str(_FILLER_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(_FILLER_SCRIPTS))
+# PLAN-GIT-72: shared contract layer now in _common (no more sibling-skill hack).
+_COMMON_SCRIPTS = Path(__file__).resolve().parents[2] / "_common" / "scripts"
+if str(_COMMON_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_COMMON_SCRIPTS))
 
-from ppt_builder import servable_slide_types  # noqa: E402
+from layout_contract import servable_slide_types  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

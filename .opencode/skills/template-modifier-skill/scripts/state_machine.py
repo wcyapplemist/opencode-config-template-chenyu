@@ -24,11 +24,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-_FILLER_SCRIPTS = Path(__file__).resolve().parents[2] / "generate-slide-skill" / "scripts"
-if str(_FILLER_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(_FILLER_SCRIPTS))
+# PLAN-GIT-72: shared contract layer now in _common (no more sibling-skill hack).
+_COMMON_SCRIPTS = Path(__file__).resolve().parents[2] / "_common" / "scripts"
+if str(_COMMON_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_COMMON_SCRIPTS))
 
-from ppt_builder import get_render_contract  # noqa: E402  (US-4.1: prefer embedded JSON)
+from layout_contract import get_render_contract  # noqa: E402  (US-4.1: prefer embedded JSON)
 from constraint_checker import Verdict, evaluate_slide  # noqa: E402 (same package dir)
 
 logger = logging.getLogger(__name__)
