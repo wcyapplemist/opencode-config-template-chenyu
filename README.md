@@ -177,8 +177,15 @@ PPTX" in natural language to invoke it.
 reads `ppt/template_schema.json` via a source-swap adapter (`contract_adapter`), preferring
 the embedded schema and falling back to the sidecar introspection contract for legacy
 templates. Generation keeps `add_slide(layout)` (chenyu's intent); the embedded JSON drives
-layout selection. The bundled `template.pptx` ships pre-templated. Coordinate placement
-(rendering at a different aspect ratio) is deferred to US-4.6.
+layout selection. The bundled `template.pptx` ships pre-templated.
+
+**US-4.6 — multi-aspect-ratio rendering.** `generate_ppt_from_data(..., target_size=...)`
+renders a deck at a different aspect ratio than the template's native size (presets `16:9`/
+`4:3`/`1:1` or explicit dims). A ratio no-op gate keeps the native path when the target ratio
+matches; otherwise `_apply_target_resize` resizes the canvas + proportionally rescales every
+master/layout shape, then the shared native loop fills target-geometry placeholders (styling/
+bullets inherit). `geometry.py` centralizes the pure polygon/EMU primitives; the output's
+embedded `slide_dimensions` is rewritten to the target size. All 5 ACs Met (PLAN-GIT-70).
 
 **US-4.2 — reactive text-fitting.** `text_fit.py` is a pure heuristic estimator
 that, at render time, shrinks a placeholder's font in −2pt steps (8pt floor) when

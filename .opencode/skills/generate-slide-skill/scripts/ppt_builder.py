@@ -21,8 +21,10 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
+import sys
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -43,6 +45,14 @@ from schema_extractor import (
     embed_schema,
     extract_schema,
     read_embedded_schema,
+)
+# US-4.6 (m2): shared pure polygon/EMU primitives + target-size resolver + the
+# AC5 ratio no-op gate.
+from geometry import (
+    _EMU_PER_INCH,
+    aspect_ratios_match,
+    compute_ratio,
+    resolve_target_size,
 )
 from text_fit import (
     LINE_SPACING_DEFAULT,
@@ -71,9 +81,9 @@ _BODY_TYPE = PP_PLACEHOLDER.BODY
 _OBJECT_TYPE = PP_PLACEHOLDER.OBJECT
 _PICTURE_TYPE = PP_PLACEHOLDER.PICTURE
 
-# EMU per inch (914400) — used to convert live-placeholder geometry to the
-# inches the text-fit estimator consumes.
-_EMU_PER_INCH = 914400
+# _EMU_PER_INCH is imported from geometry (single source of truth, US-4.6 m2);
+# it converts live-placeholder geometry to the inches the text-fit estimator
+# consumes (ppt_builder.py _box_inches).
 
 # Maps the embedded-schema ``placeholder_type`` enum to a text-fit role
 # (US-4.2). Only text-bearing placeholders participate in font-fitting.
@@ -1254,6 +1264,104 @@ def _ensure_output_templated(
     return result
 
 
+def _scale_shapes_geometry(shapes: Any, sx: float, sy: float) -> int:
+    """Proportionally scale every shape's left/top/width/height by (sx, sy).
+
+    Ratio-scaling preserves off-slide bleeds (no clamp) and repositions both
+    placeholders and background chrome. Shapes with ``None`` geometry (purely
+    inherited) are skipped. Returns the count of shapes processed without error.
+
+    **Group shapes (US-4.6 arch-review C1 fix):** do NOT recurse into a group's
+    children — only scale the group's container (``off``/``ext``). The OOXML
+    child→slide affine map ``slide_pos = off + (child − chOff) · (ext/chExt)``
+    then scales every child's *slide-space* position by exactly ``sx``/``sy``
+    (``chOff``/``chExt`` stay fixed), so children are placed correctly without a
+    second scaling pass. (Recursing AND scaling the container previously produced
+    an ``sx²`` quadratic distortion — verified fixed.) Nested groups scale
+    transitively through each level's map.
+    """
+    n = 0
+    for sh in shapes:
+        try:
+            if sh.left is not None:
+                sh.left = int(round(sh.left * sx))
+            if sh.top is not None:
+                sh.top = int(round(sh.top * sy))
+            if sh.width is not None:
+                sh.width = int(round(sh.width * sx))
+            if sh.height is not None:
+                sh.height = int(round(sh.height * sy))
+            n += 1
+        except Exception:  # never let one bad shape abort the resize
+            pass
+    return n
+
+
+def _apply_target_resize(
+    prs: Presentation, target_w: int, target_h: int
+) -> Dict[str, Any]:
+    """US-4.6 coordinate-path prep (architecture-review M1 + M2): resize the
+    canvas to the target aspect ratio and proportionally scale every master +
+    layout shape so backgrounds, chrome, and placeholder positions all move to
+    the new dimensions. The shared render loop then fills target-geometry
+    placeholders exactly as on the native path (styling/bullets inherit via
+    ``add_slide`` — AC4 satisfied without manual re-application).
+
+    Mutates ``prs`` in memory (the template file is untouched — ``prs`` was
+    loaded from it; the result is saved to the output). Returns an
+    ``aspect_ratio`` report fragment for render.json.
+    """
+    native_w, native_h = int(prs.slide_width), int(prs.slide_height)
+    sx = target_w / native_w if native_w else 1.0
+    sy = target_h / native_h if native_h else 1.0
+
+    prs.slide_width = int(target_w)
+    prs.slide_height = int(target_h)
+
+    scaled = 0
+    for master in prs.slide_masters:
+        scaled += _scale_shapes_geometry(master.shapes, sx, sy)
+    for layout in prs.slide_layouts:
+        scaled += _scale_shapes_geometry(layout.shapes, sx, sy)
+
+    logger.info(
+        "US-4.6 resized %dx%d -> %dx%d (sx=%.4f sy=%.4f); scaled %d master/layout shapes",
+        native_w, native_h, target_w, target_h, sx, sy, scaled,
+    )
+    return {
+        "native": [native_w, native_h],
+        "target": [int(target_w), int(target_h)],
+        "scale": [round(sx, 6), round(sy, 6)],
+        "shapes_scaled": scaled,
+    }
+
+
+def _rewrite_output_schema_target(
+    output_path: str, target_w: int, target_h: int
+) -> None:
+    """US-4.6 M4: rewrite the OUTPUT's embedded schema ``slide_dimensions`` to
+    the target size so the target-sized output is self-describing / re-usable as
+    a target-sized template. Non-fatal: a no-op when the output has no embedded
+    schema (e.g. extraction failed). US-4.3 already embeds a schema (freshly
+    extracted for a non-templated input — satisfying M3); this post-step only
+    rewrites the size fields.
+    """
+    try:
+        schema = read_embedded_schema(output_path)
+        if not schema:
+            return
+        dims = schema.setdefault("template_metadata", {}).setdefault("slide_dimensions", {})
+        dims["width_emu"] = int(target_w)
+        dims["height_emu"] = int(target_h)
+        dims["width_inches"] = round(int(target_w) / _EMU_PER_INCH, 4)
+        dims["height_inches"] = round(int(target_h) / _EMU_PER_INCH, 4)
+        dims["aspect_ratio"] = compute_ratio(int(target_w), int(target_h))
+        embed_schema(output_path, schema, output_path)  # atomic temp + replace
+        logger.info("US-4.6 rewrote output schema slide_dimensions -> %s", dims["aspect_ratio"])
+    except Exception as exc:  # never block a successful render
+        logger.debug("US-4.6 output-schema rewrite skipped (%s): %s", output_path, exc)
+
+
 def generate_ppt_from_data(
     slide_data_list: List[Dict[str, Any]],
     template_path: Optional[str] = None,
@@ -1266,7 +1374,14 @@ def generate_ppt_from_data(
     default_closing: bool = True,
     config_overrides: Optional[Dict[str, str]] = None,
     auto_template: bool = True,
+    target_size: Optional[Any] = None,
 ) -> str:
+    # US-4.6 (AC5): a target aspect ratio. ``None`` (or a ratio equal to the
+    # template's native ratio) -> the default US-4.1 ``add_slide(layout)``
+    # native path (no-op for this story). A different ratio -> the coordinate-
+    # path PREP (_apply_target_resize). ``target_size`` accepts a preset
+    # ("16:9"/"4:3"/"1:1") or an explicit {width_in,height_in}/{width_emu,
+    # height_emu} dict (see geometry.resolve_target_size).
     # #37: resolve resource placeholders (data_query) into concrete assets
     # BEFORE validation, so the validator sees materialized data.
     # Graceful no-op when resolver.config.json is absent.
@@ -1358,6 +1473,23 @@ def generate_ppt_from_data(
     logger.info("Cleared %d example slides", removed)
 
     exact_idx, norm_idx = _build_layout_index(prs)
+
+    # US-4.6 (AC5): decide native vs coordinate path by ASPECT RATIO (m1).
+    # None or same-ratio target -> native path (no-op for this story). A
+    # different ratio -> coordinate-path PREP (resize + geometry scaling, M2)
+    # applied to ``prs`` in place, then the SAME shared render loop runs. The
+    # coordinate path is a prep step, not a second render strategy (M1).
+    target_dims: Optional[Tuple[int, int]] = None
+    if target_size is not None:
+        try:
+            target_dims = resolve_target_size(target_size)
+        except ValueError as exc:
+            raise ValueError(f"Invalid target_size: {exc}") from exc
+    coordinate_report: Optional[Dict[str, Any]] = None
+    if target_dims is not None and not aspect_ratios_match(
+        int(prs.slide_width), int(prs.slide_height), target_dims[0], target_dims[1]
+    ):
+        coordinate_report = _apply_target_resize(prs, target_dims[0], target_dims[1])
 
     for page_num, slide_data in enumerate(slide_data_list, start=1):
         slide_type = slide_data.get("slide_type", "")
@@ -1533,6 +1665,14 @@ def generate_ppt_from_data(
         str(output), str(template), auto_template
     )
 
+    # US-4.6 (M4): a target-sized output is self-describing at the TARGET size.
+    # Rewrite the output's embedded schema slide_dimensions to target so the
+    # deck can be re-used as a target-sized template; record source->target
+    # provenance in render.json. Non-fatal.
+    if coordinate_report is not None:
+        _rewrite_output_schema_target(str(output), target_dims[0], target_dims[1])
+        render_report["aspect_ratio"] = coordinate_report
+
     # US-4.2: write the per-slide font-fit render report sidecar (AC3). Never
     # blocks a successful render.
     _write_render_report(str(output), render_report)
@@ -1552,8 +1692,8 @@ def generate_ppt_from_data(
     return str(output.resolve())
 
 
-def main() -> None:
-    mock: List[Dict[str, Any]] = [
+def _demo_deck() -> List[Dict[str, Any]]:
+    return [
         {
             "slide_type": "title_slide",
             "title": "AI Empowering Finance",
@@ -1607,13 +1747,85 @@ def main() -> None:
         },
     ]
 
-    print("Test: template.pptx (placeholder-based)")
-    result = generate_ppt_from_data(
-        mock,
-        output_path=str(DEFAULT_OUTPUT_DIR / "test_template.pptx"),
+
+def _is_number_literal(s: str) -> bool:
+    """True if ``s`` parses as a float (used by the ``--target-size WxH`` guard)."""
+    try:
+        float(s)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    """CLI entry. Reads a slide-data JSON array from ``--data`` (or runs the demo
+    deck) and writes a PPTX. ``--target-size`` triggers the US-4.6 coordinate
+    path (preset ``16:9``/``4:3``/``1:1`` or ``WxH`` inches). Exit codes:
+    0 success, 1 validation error, 2 runtime error (US-5.1 convention).
+    """
+    parser = argparse.ArgumentParser(
+        prog="ppt_builder",
+        description="Generate a PPTX from a slide-data JSON array using a template.",
     )
-    print(f"Output: {result}")
+    parser.add_argument("--template", "-t", help="path to the template .pptx (defaults to the bundled template).")
+    parser.add_argument("--output", "-o", default="output.pptx", help="output .pptx path.")
+    parser.add_argument("--data", "-d", help="path to a JSON file containing a slide-data array.")
+    parser.add_argument(
+        "--target-size",
+        help="US-4.6 target aspect ratio — a preset (16:9/4:3/1:1) or 'WxH' inches "
+             "(e.g. '10x7.5'). Omit to render at the template's native size.",
+    )
+    parser.add_argument("--log-level", default="info", help="log level (debug/info/warn/error).")
+    args = parser.parse_args(argv)
+
+    logging.basicConfig(
+        level=getattr(logging, args.log_level.upper(), logging.INFO),
+        format="%(levelname)s %(name)s: %(message)s",
+    )
+
+    # Resolve target_size: preset string OR "WxH" inches shorthand -> dict.
+    # The WxH shorthand requires EXACTLY two numeric segments (guard against
+    # "5x3x2" which would otherwise raise an uncaught ValueError on unpack).
+    target_size: Any = None
+    if args.target_size:
+        ts = args.target_size.strip()
+        parts = ts.split("x")
+        if (
+            len(parts) == 2
+            and all(_is_number_literal(p.strip()) for p in parts)
+        ):
+            target_size = {"width_in": float(parts[0].strip()),
+                           "height_in": float(parts[1].strip())}
+        else:
+            target_size = ts  # preset name (validated downstream by resolve_target_size)
+
+    if args.data:
+        try:
+            slide_data_list = json.loads(Path(args.data).read_text(encoding="utf-8"))
+        except Exception as exc:
+            print(f"error: cannot read --data {args.data}: {exc}", file=sys.stderr)
+            return 1
+    else:
+        print("No --data given; running the demo deck.", file=sys.stderr)
+        slide_data_list = _demo_deck()
+
+    try:
+        result = generate_ppt_from_data(
+            slide_data_list,
+            template_path=args.template,
+            output_path=args.output,
+            target_size=target_size,
+        )
+    except ValueError as exc:  # validation error (bad target_size / schema)
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:  # runtime error
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    print(result)  # stdout: the output path only (US-5.3 convention)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

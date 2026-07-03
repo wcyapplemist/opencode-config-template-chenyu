@@ -114,6 +114,8 @@ Analyze the request: how many slides, what content per slide, language (English 
 
 **Template awareness.** If the user supplied a template (or you are unsure the bundled one is in place), run `servable_slide_types` (see **User-Supplied Templates** above) to learn which `slide_type`s the template can serve and each layout's `content_area_in2`. Carry the **available** set + the tightest content area forward into the outline (Stage 1) and density choice (Stage 2): never plan a slide_type the template can't render, and downshift density when the content area is small.
 
+**Multi-aspect-ratio output (US-4.6).** If the user asks for a different slide format than the template's native size (e.g. "make it 4:3", "square version", "render for an older 4:3 screen"), pass `target_size` to `generate_ppt_from_data` at Stage 4 — a preset (`"16:9"`/`"4:3"`/`"1:1"`) or explicit `{"width_in": W, "height_in": H}`. The engine resizes the canvas and proportionally scales every element; fonts/theme/bullets stay on-brand via normal layout inheritance. When the requested **ratio** equals the template's native ratio, the native path runs unchanged (no-op). If the user does **not** request a different format, omit `target_size` (native size). When unsure which preset, ask in the Stage 2 checkpoint (batch with the density/sign-off questions) — but never block on it; default to native.
+
 **Slide count convention.** When the user specifies "N pages" / "N slides", that number is the **total** deck size, **including** the cover and closing slides:
 
 | Requested | Deck composition |

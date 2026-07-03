@@ -23,11 +23,12 @@ Public API
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
-# Physical constant (EMU per inch). Defined locally to keep this module
-# dependency-free (it must not import the renderer or the introspector).
-_EMU_PER_INCH = 914400
+# US-4.6 (m2): the polygon/EMU primitives now live in the shared pure
+# ``geometry`` module. Imported here (and re-exported) so this module's public
+# surface and internal call sites are unchanged (parity-preserving relocation).
+from geometry import _EMU_PER_INCH, denormalize_polygon  # noqa: F401 (re-exported)
 
 # Embedded ``placeholder_type`` -> sidecar canonical type (architecture review
 # M3). Mirrors ``template_introspector._TYPE_CANONICAL`` via the embedded enum.
@@ -65,28 +66,6 @@ def _to_canonical(placeholder_type: Any) -> str:
     if placeholder_type is None:
         return "OBJECT"
     return _CANONICAL_MAP.get(placeholder_type, "OBJECT")
-
-
-def denormalize_polygon(
-    polygon: List[Dict[str, float]], dims: Dict[str, Any]
-) -> Tuple[float, float, float, float]:
-    """Denormalize a 4-point [0,1] polygon (TL, TR, BR, BL) to inches.
-
-    Returns ``(left_in, top_in, width_in, height_in)`` rounded to 4 dp (mirrors
-    ``template_introspector._inches``). Inverse of
-    ``schema_extractor.normalize_polygon``.
-    """
-    width_emu = dims.get("width_emu") or 0
-    height_emu = dims.get("height_emu") or 0
-    if len(polygon) < 4 or not width_emu or not height_emu:
-        return 0.0, 0.0, 0.0, 0.0
-    tl_x, tl_y = polygon[0]["x"], polygon[0]["y"]
-    br_x, br_y = polygon[2]["x"], polygon[2]["y"]
-    left_in = round(tl_x * width_emu / _EMU_PER_INCH, 4)
-    top_in = round(tl_y * height_emu / _EMU_PER_INCH, 4)
-    width_in = round((br_x - tl_x) * width_emu / _EMU_PER_INCH, 4)
-    height_in = round((br_y - tl_y) * height_emu / _EMU_PER_INCH, 4)
-    return left_in, top_in, width_in, height_in
 
 
 def _placeholder_components(components: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
