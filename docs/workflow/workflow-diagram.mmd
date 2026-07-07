@@ -2,13 +2,13 @@
 %% Render at https://mermaid.live (paste everything below the line)
 %% Lanes = participants; cross-lane arrows = responsibility handoffs.
 flowchart LR
-    subgraph User["👤 User"]
-        U0([Start: Request — topic + page count])
-        U1["Review outline + select density + approve/edits"]
-        Uend([End: Receive .pptx])
+    subgraph User["User"]
+        U0([“Request for a deck”])
+        U1["Review outline + select density"]
+        Uend([Receive generated slides])
     end
 
-    subgraph Subagent["🤖 PPT Subagent"]
+    subgraph Subagent["pptx-subagent"]
         direction TB
         A0["Stage 0: Understand request + introspect template"]
         A1["Stage 1: Generate outline + save artifact"]
@@ -20,9 +20,9 @@ flowchart LR
         A6["Stage 5: Return .pptx path"]
     end
 
-    subgraph Modifier["🧩 template-modifier-skill"]
+    subgraph Modifier["template-modifier-skill"]
         direction TB
-        T0{"Does template serve every slide?"}
+        T0{"Can template serve every slide?"}
         T1["Persistently extend template.pptx:<br/>① backup→template.original.pptx (first time)<br/>② inject extended-layout OOXML parts + relationships<br/>③ notify user"]
     end
 
