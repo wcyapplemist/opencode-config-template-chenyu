@@ -448,8 +448,10 @@ The technical foundation: how the two skills are implemented as OpenCode agent s
 
 **Acceptance Criteria:**
 - [ ] Each skill has its own directory with `skill.yaml`, script, and README.
-- [ ] Both scripts are runnable from the CLI independently of the LLM.
-- [ ] Exit codes are documented and used consistently.
+- [x] Both scripts are runnable from the CLI independently of the LLM.
+- [x] Exit codes are documented and used consistently.
+
+> **Implementation note (Rev 16, PLAN-GIT-70 + PLAN-GIT-72):** AC2 + AC3 now Met — both engine scripts ship argparse CLIs with documented 0/1/2 exit codes: `schema_extractor.py` (`--input/-i --output/-o --log-level`) and `ppt_builder.py` `main()` (`--template/-t --data/-d --output/-o --target-size --log-level`, added with US-4.6). The Epic 5 `_common/` refactor additionally made `template-modifier-skill`'s production code **zero-coupling** to `generate-slide-skill` (shared infra extracted to `_common/`). AC1 still unmet: the manifests are `SKILL.md` (OpenCode convention), not `skill.yaml`, and the system exposes 3 skills (fill / extract / extend), not the story's "exactly 2". Story stays Partial.
 
 **Tags:** architecture, cli, testability, single-responsibility
 
@@ -466,9 +468,11 @@ The schema file (`template_schema.json`) lives in a shared `common/` directory. 
 
 **Acceptance Criteria:**
 - [ ] A `.json` schema file exists and is referenced by both scripts.
-- [ ] Template generator validates its output before embedding.
+- [x] Template generator validates its output before embedding.
 - [ ] Slide generator validates the JSON before reading it.
-- [ ] Schema version is tracked in `template_metadata.schema_version`.
+- [x] Schema version is tracked in `template_metadata.schema_version`.
+
+> **Implementation note (Rev 16, PLAN-GIT-72):** the story's "shared `common/` directory" is now real — `template_schema.json` + `validate_template_schema` (in `schema_extractor`) live in `.opencode/skills/_common/scripts/` and are shared by all three skills. AC2 Met (the extract→embed CLI runs `validate_template_schema` before embedding). AC4 Met (`schema_version` = "1.1.0" in `_build_metadata`). AC1/AC3 still open: the schema file is **not loaded at runtime** — the validator is hand-rolled (no `jsonschema` dependency), so the spec and validator are kept in sync manually and schema-driven runtime validation (the slide generator validating the template JSON on read) is not yet wired. Story stays Partial.
 
 **Tags:** json-schema, validation, contract, versioning
 
