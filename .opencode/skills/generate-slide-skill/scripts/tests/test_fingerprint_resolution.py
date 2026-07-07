@@ -10,13 +10,15 @@ Covers the #44 acceptance areas:
 """
 import pytest
 
-from ppt_builder import (
+# PLAN-GIT-72: the pure contract symbols now live in layout_contract (_common);
+# _select_layout stays in ppt_builder.
+from layout_contract import (
     _SLIDE_TYPE_FINGERPRINT,
     _composition_diff,
     _name_affinity,
     _resolve_layout_by_fingerprint,
-    _select_layout,
 )
+from ppt_builder import _select_layout
 from pptx import Presentation
 from template_introspector import introspect
 
@@ -208,7 +210,7 @@ class TestRenamedTemplateIntegration:
         exact, norm = {}, {}
         for layout in prs.slide_layouts:
             exact[layout.name.lower()] = layout
-            from ppt_builder import _normalize_layout_name
+            from layout_contract import _normalize_layout_name
             norm.setdefault(_normalize_layout_name(layout.name), layout)
         # chart_slide maps to "Blank", which the bundled template spells "BLANK"
         # (matched case-insensitively by the name resolver).
@@ -222,7 +224,7 @@ class TestRenamedTemplateIntegration:
 # ============================================================
 class TestServableSlideTypes:
     def test_real_template_serves_all_eight(self, template_path):
-        from ppt_builder import servable_slide_types
+        from layout_contract import servable_slide_types
         contract = introspect(template_path)
         report = servable_slide_types(contract)
         assert set(report) == set(_SLIDE_TYPE_FINGERPRINT)
@@ -232,7 +234,7 @@ class TestServableSlideTypes:
             assert info["layout"]
 
     def test_missing_type_reported_unavailable(self):
-        from ppt_builder import servable_slide_types
+        from layout_contract import servable_slide_types
         # A title-only contract cannot serve content_slide (no OBJECT).
         contract = {"layouts": [
             {"index": 0, "name": "Title", "fingerprint": ["TITLE", "SUBTITLE"], "content_area_in2": 0},

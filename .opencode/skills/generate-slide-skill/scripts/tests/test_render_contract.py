@@ -12,7 +12,10 @@ import zipfile
 import pytest
 from pptx import Presentation
 
-from ppt_builder import get_render_contract, generate_ppt_from_data
+# PLAN-GIT-72: get_render_contract now lives in layout_contract (_common);
+# generate_ppt_from_data stays in ppt_builder.
+from layout_contract import get_render_contract
+from ppt_builder import generate_ppt_from_data
 from schema_extractor import (
     extract_schema,
     embed_schema,
