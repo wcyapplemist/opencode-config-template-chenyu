@@ -1,9 +1,9 @@
 # Gap Analysis — chenyyu-user-stories vs Current Implementation
 
 > **Document type:** Requirements-vs-implementation gap analysis (analysis only — no code changes)
-> **Requirements source:** `docs/user-stories/chenyu-user-stories.md` (5 Epics, 19 Stories)
+> **Requirements source:** `docs/user-stories/chenyu-user-stories.md` (6 Epics, 21 Stories)
 >
-> *Note: the source document's own header states "17 Stories", but it actually contains 19 (Epic 1: 5, Epic 2: 2, Epic 3: 4, Epic 4: 5, Epic 5: 3). This report counts 19.*
+> *Note: the source document's own header states "17 Stories", but it actually contains 21 (Epic 1: 5, Epic 2: 2, Epic 3: 4, Epic 4: 6, Epic 5: 3, Epic 6: 1). This report counts 21.*
 > **Implementation audited:** `.opencode/skills/generate-slide-skill/`, `.opencode/skills/template-modifier-skill/`, `.opencode/agents/pptx-subagent.md`
 > **Date:** June 2026 (Revision 2 — post-US-1.1)
 >
@@ -30,6 +30,10 @@
 > **Revision 12 (skill rename):** the `ppt-template-filler` skill was renamed to **`generate-slide-skill`** — the slide-generation engine that realizes chenyu's `generate-slides` skill (Epic 4 / US-5.1). The directory was `git mv`'d and **every reference updated** (agent `permission.task`, cross-skill `sys.path` in `template-modifier-skill`, all SKILL.md/README/AGENTS/path strings). This **narrows the US-5.1 naming divergence** (the skill name now matches chenyu's `generate-slides` intent, modulo the `slide`/`slides` wording and the lack of a standalone CLI). Historical revision paragraphs above that now read `generate-slide-skill` refer to the same skill under its former name `ppt-template-filler`. Suites green: 396 + 33. Counts unchanged.
 >
 > **Revision 13 (post-US-2.1, issue #68):** US-2.1 reclassified ❌ Not met → ✅ Met. `_detect_header_footer(prs)` scans the slide master for HEADER/FOOTER placeholders and records `{has_header, has_footer}` in `template_metadata.header_footer` (AC1). `needs_header_footer_prompt(schema)` returns True when both absent (AC2 — `generate-template-skill` Stage 2 prompts, batched with title-confirm per arch-review M2; `pptx-subagent` Stage 0 surfaces a light note via `read_embedded_schema`, scoped to templated inputs per arch-review M1). `inject_default_header_zone(schema)` injects a 4-point top-strip polygon + English note (AC3, schema-only). **No fully-unmet Must-Have remains.** Full suite 405 passed. Counts: Met 13 / Partial 4 / Not met 2 / Differs 0.
+>
+> **Revision 14 (backfill — US-4.6, PLAN-GIT-70):** US-4.6 — Multi-Aspect-Ratio Rendering `[Should Have]` — ✅ Met. Delivered via a coordinate-path **prep** step (resize canvas + proportionally rescale every master/layout shape) then the shared native render loop; all 5 ACs Met; a ratio no-op gate keeps the native path when the target ratio matches; the output's embedded `slide_dimensions` is rewritten to the target size (self-describing). This entry backfills the missing revision-log record (§3.1 already counted it). Epic 4 grew to 6 stories when US-4.6 was added — header count corrected 19 → 20. Counts: Met 14 / Partial 4 / Not met 2.
+>
+> **Revision 15 (US-6.1 added — Epic 6 inserted, method B):** new story **US-6.1 — Extend Template When a Layout Is Missing `[Should Have]` — ✅ Met**, retroactively entering the story set. Realized by `template-modifier-skill` (Capability B; beyond chenyu's original 2-skill scope — stakeholder requirement per `DESIGN-template-agnostic.md` §7). A new **Epic 6 — Skill: Template Extender** is inserted between Epic 4 and Epic 5 (placement option B: three skill-Epics grouped 3/4/6, with Epic 5 "Architecture" retained as the concluding meta-Epic); no existing story is renumbered (stable-ID convention preserved — the `chenyu-user requirement.html` source and all prior commits/issues keep their original US-5.x references). Counts: Met 15 / Partial 4 / Not met 2 (21 stories, 6 Epics).
 
 ---
 
@@ -42,9 +46,9 @@ This report compares `chenyu-user-stories.md` (the requirements document) agains
 
 Both achieve "fill any template", but they differ on **data model, skill decomposition, and artifact form**.
 
-**Story-by-story summary** (19 stories): Met 11 / Partial 4 / Not met 3 / Architecture differs 1.
+**Story-by-story summary** (21 stories, 6 Epics): Met 15 / Partial 4 / Not met 2.
 
-**Epics 1, 3, and US-4.1 are now complete** (Rev 9). The remaining gaps cluster in **Epic 2** (header/footer detection + common practices), the rest of **Epic 4** (US-4.2 text-fitting, US-4.4 template-less style picker, US-4.6 multi-aspect-ratio), and **Epic 5** (skill decomposition / CLI / shared-schema runtime loading). The single unmet Must-Have is **US-2.1** (header/footer).
+**Epics 1, 3, and US-4.1 are complete** (Rev 9); **US-2.1 delivered** (Rev 13); **US-4.6 delivered** (Rev 14); **US-6.1 added** (Rev 15 — Epic 6 "Template Extender", beyond the original 2-skill scope, Met). The remaining gaps cluster in **Epic 2** (US-2.2 common-practice suggestions), the rest of **Epic 4** (US-4.4 template-less style picker, US-4.2's deferred AC1 overflow-oracle), and **Epic 5** (skill decomposition / CLI / shared-schema runtime loading). **No fully-unmet Must-Have remains.**
 
 For the full comparison see §2; for remediation suggestions see §4.
 
@@ -148,6 +152,16 @@ A template is **required** (`template.pptx` must exist or the engine raises `Fil
 
 The multi-stage pipeline (outline → critique → detail → render) generates 2–20+ slides from one prompt, the outline is shown for user approval, and the stages act as a progress indicator. Fully satisfied.
 
+#### US-4.6 — Multi-Aspect-Ratio Rendering `[Should Have]` — ✅ Met (Rev 14)
+
+Delivered via the coordinate path. `generate_ppt_from_data(..., target_size=...)` accepts a preset (`16:9`/`4:3`/`1:1`) or explicit `{width_in,height_in}`. A **ratio** no-op gate (`geometry.aspect_ratios_match`) keeps the native US-4.1 path when the target ratio matches the template's native ratio (AC5); otherwise a coordinate-path **prep** (`_apply_target_resize` + `_scale_shapes_geometry`) resizes the canvas and proportionally rescales every master/layout shape, then the shared native `add_slide` loop fills target-geometry placeholders — so fonts/theme/bullets stay on-brand via normal layout inheritance (AC4, no manual re-application needed). AC3 ("within 1%") is mechanical (pure ratio scaling / polygon round-trip). Pure modules: `geometry.py` (polygon/EMU primitives, de-duped from 3 modules) + `coordinate_placer.py` (placement planner, reserved for a future freeform rebuild). Schema gains `text_properties.bullets` + `image_properties` (partname/rId); `schema_version` → 1.1.0. The output's embedded `slide_dimensions` is rewritten to the target size (self-describing); `<output>.render.json` gains an `aspect_ratio` field. CLI `--target-size`. All 5 ACs Met (PLAN-GIT-70, PR #71).
+
+### Epic 6 — Skill: Template Extender
+
+#### US-6.1 — Extend Template When a Layout Is Missing `[Should Have]` — ✅ Met (Rev 15)
+
+`template-modifier-skill` delivers Capability B. `constraint_checker.evaluate_slide` flags a slide type whose layout is absent in the template (no fingerprint-matching layout) — the `cause="missing"` verdict (AC1). `state_machine.resolve_and_clone` runs the full lifecycle (① delete leftover → ② `get_render_contract` → ③ scan → ④ clone → ⑤ notify); on a missing layout, `layout_creator.clone_for_over_limit` performs the 7-step XML/part clone into a derived `template_new.pptx` (AC2; the base is never written), returning `config_overrides` that pin the slide type to the cloned layout so the fill engine renders the whole deck in one pass against the active template (AC3). Clone failure is caught and falls back to the base template — the deck still renders (AC4); the base stays immutable (reload-verify + rollback-delete). The mandatory `build_notification` names the derived template + reason whenever it is used (AC5). Default policy `clone_on="missing"` handles only missing layouts; over-limit content is handled by density downshift (`clone_on="any"` is the opt-in that also clones for over-limit). This capability is **beyond chenyu's original 2-skill scope** (a stakeholder requirement, `DESIGN-template-agnostic.md` §7), retroactively entered into the story set. With the bundled template (all 8 slide types servable) this path is rarely exercised — it matters mainly for incomplete user-supplied templates. Tests in `template-modifier-skill/scripts/tests/`.
+
 ### Epic 5 — Skill Architecture & Scripts
 
 #### US-5.1 — Two Independent Skills with CLI Scripts `[Must Have]` — 🟡 Partial
@@ -170,7 +184,7 @@ Python's `logging` module is used across the modules. `schema_extractor.py` **do
 
 | Status | Count | Stories |
 |---|---|---|
-| ✅ Met | 14 | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-3.4, US-4.1, US-4.3, US-4.5, US-4.6 |
+| ✅ Met | 15 | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-3.4, US-4.1, US-4.3, US-4.5, US-4.6, US-6.1 |
 | 🟡 Partial | 4 | US-4.2, US-5.1, US-5.2, US-5.3 |
 | ❌ Not met | 2 | US-2.2, US-4.4 |
 | ⚪ Architecture differs | 0 | — |
@@ -179,12 +193,12 @@ Python's `logging` module is used across the modules. `schema_extractor.py` **do
 
 | | Must Have | Should Have | Could Have |
 |---|---|---|---|
-| ✅ Met | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-4.1, US-4.3 | US-3.4, US-4.6 | US-4.5 |
+| ✅ Met | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-4.1, US-4.3 | US-3.4, US-4.6, US-6.1 | US-4.5 |
 | 🟡 Partial | US-4.2, US-5.1, US-5.2 | US-5.3 | — |
 | ❌ Not met | — | US-2.2, US-4.4 | — |
 | ⚪ Differs | — | — | — |
 
-**Epics 1, 3, and US-4.1 are complete** (Rev 9); **US-4.2 delivered** (Rev 10, AC2/AC3 Met, AC1 deferred); **US-4.3 delivered** (Rev 11); **US-2.1 delivered** (Rev 13 — all Must-Have stories are now Met or Partial); **US-4.6 delivered** (Rev 14 — multi-aspect-ratio via coordinate-path prep + shared native loop; all 5 ACs Met). The remaining gaps cluster in the rest of Epic 2 (US-2.2 common-practice suggestions), Epic 4 (US-4.4 template-less style picker, US-4.2's deferred AC1 overflow-oracle), and Epic 5 (skill decomposition / CLI / shared-schema loading). **No fully-unmet Must-Have remains.**
+**Epics 1, 3, and US-4.1 are complete** (Rev 9); **US-4.2 delivered** (Rev 10, AC2/AC3 Met, AC1 deferred); **US-4.3 delivered** (Rev 11); **US-2.1 delivered** (Rev 13 — all Must-Have stories are now Met or Partial); **US-4.6 delivered** (Rev 14 — multi-aspect-ratio via coordinate-path prep + shared native loop; all 5 ACs Met); **US-6.1 added** (Rev 15 — Epic 6 "Template Extender", a capability beyond the original 2-skill scope, Met). The remaining gaps cluster in the rest of Epic 2 (US-2.2 common-practice suggestions), Epic 4 (US-4.4 template-less style picker, US-4.2's deferred AC1 overflow-oracle), and Epic 5 (skill decomposition / CLI / shared-schema loading). **No fully-unmet Must-Have remains.**
 
 ---
 

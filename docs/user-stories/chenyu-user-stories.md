@@ -2,7 +2,7 @@
 
 > **Project:** opencode.ai / pptx-subagent
 > **Date:** June 2025
-> **Scope:** 5 Epics, 19 Stories
+> **Scope:** 6 Epics, 21 Stories
 > **Author:** Founder (OpenCode User)
 > **Source:** `chenyu-user requirement.html` (`.md` export) — pure requirements, stripped of HTML/CSS/JS boilerplate.
 
@@ -14,6 +14,7 @@
 - [Epic 2: Header, Footer & Best Practices](#epic-2-header-footer--best-practices)
 - [Epic 3: Skill — Template Generator](#epic-3-skill--template-generator)
 - [Epic 4: Skill — Slide Generator](#epic-4-skill--slide-generator)
+- [Epic 6: Skill — Template Extender](#epic-6-skill--template-extender)
 - [Epic 5: Skill Architecture & Scripts](#epic-5-skill-architecture--scripts)
 - [Reference: Proposed JSON Schema](#reference-proposed-json-schema)
 
@@ -395,6 +396,36 @@ When the target slide dimensions differ from the template's native size, the sli
 > **Implementation note (US-4.6, PLAN-GIT-70):** Delivered via a coordinate-path **prep** step (resize canvas + proportionally rescale every master/layout shape) followed by the shared native render loop — so styling/bullets are inherited via `add_slide` (on-brand by inheritance, AC4). AC3 within-1% is mechanical (pure ratio scaling / polygon round-trip). All 5 ACs Met. Note: the ratio gate compares aspect ratio (not absolute EMU); the output's embedded schema `slide_dimensions` is rewritten to the target size (self-describing).
 
 **Tags:** multi-aspect-ratio, coordinate-placement, proportional-scaling, resolution-independent
+
+---
+
+## Epic 6: Skill — Template Extender
+
+Extending a template when its layouts cannot serve a planned slide — cloning a new layout into a derived file so the deck still renders, instead of silently skipping the slide. A capability added beyond the original 2-skill scope; realized by the `template-modifier-skill` skill ("Capability B").
+
+---
+
+### US-6.1 — Extend Template When a Layout Is Missing `[Should Have]`
+
+**As a** OpenCode user with a minimal or specialized custom template,
+**I want** the subagent to detect when my template lacks a layout needed for a planned slide, and automatically extend the template with a cloned layout into a derived file (never modifying my original),
+**so that** my deck still renders with an appropriate layout instead of silently skipping the slide or crashing.
+
+**Details:**
+- Runs as a pre-render step: for each planned slide, check whether the template provides a layout whose placeholder-composition fingerprint matches the slide's type.
+- When a slide type has no matching layout, clone a donor layout (closest fingerprint) into a derived `template_new.pptx` via XML/part cloning (python-pptx exposes no public API to add layouts), and pin the slide type to the cloned layout via config overrides.
+- The base `template.pptx` is **immutable** — never written. Clones save only to the derived file. After cloning, reload-verify (the new layout must be findable by name); on any failure, roll back (delete the derived file) and fall back to the base so the deck still renders.
+- By default, over-limit content (a body too large for its placeholder) is handled by density-mode downshift, **not** by cloning. Cloning for over-limit content is an opt-in policy.
+- Whenever the derived template is used, a mandatory notification states which template was used and why.
+
+**Acceptance Criteria:**
+- [x] Before render, the engine detects any slide type whose layout is missing from the template (no fingerprint match) and flags it for extension.
+- [x] A missing layout is cloned into a derived `template_new.pptx`; the original `template.pptx` is never modified.
+- [x] The cloned layout is pinned to its slide type via config overrides, and the fill engine renders the entire deck against the active (base or derived) template in one pass.
+- [x] Clone failure is non-fatal: the derived file is discarded and the base template is used; the deck still renders.
+- [x] Whenever the derived template is used, the user is notified which template was used and the reason.
+
+**Tags:** template-extension, layout-cloning, capability-b, graceful-degradation
 
 ---
 
