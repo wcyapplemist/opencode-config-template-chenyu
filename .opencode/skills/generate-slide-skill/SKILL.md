@@ -38,18 +38,23 @@ The engine is **template-agnostic** (Capability A, issues #43/#44/#45): it accep
 
 | File | Description |
 |------|-------------|
-| `scripts/templates/template.pptx` | Slide Master template. A user-supplied template **replaces this file at the same path** (new overwrites old). |
-| `scripts/templates/template.config.json` | Optional layout-name pins (`<slide_type>_layout` for any of the 8 types). |
-| `scripts/templates/template.pptx.contract.json` | Auto-generated introspection contract (mtime-cached, gitignored). |
+| `template/default.pptx` | Slide Master template (repo root) — the **bundled default**, used when no `template_path` is given. |
+| `template/default.config.json` | Optional layout-name pins (`<slide_type>_layout` for any of the 8 types). |
+| `template/default.pptx.contract.json` | Auto-generated introspection contract (mtime-cached, gitignored). |
 
-### User-supplied template (same-path replacement)
+### User-supplied template (path pass-through)
 
-To render from a user's own template, **overwrite the base at the single path**, then render normally — introspection runs automatically before every render:
+To render from a user's own template, **pass its path as `template_path`** (or CLI `--template`) — do NOT overwrite the default. The engine introspects it automatically before every render. Omitting `template_path` uses `template/default.pptx`:
 
 ```bash
-cp "<user_template>.pptx" scripts/templates/template.pptx
-# then call generate_ppt_from_data(...) as usual
+# default template (no path given)
+python ppt_builder.py --output report.pptx --data slides.json
+
+# user template (path pass-through, default untouched)
+python ppt_builder.py --template /path/to/user.pptx --output report.pptx --data slides.json
 ```
+
+**Severe template problems abort (US-4.7):** if the chosen template is corrupt / not a PPTX / has no slide master / has zero layouts / serves none of the 8 slide types, the engine raises `TemplateError` instead of silently producing a broken deck. Minor issues (missing fonts, no header/footer, small content area) stay non-fatal warnings.
 
 ### Template introspection + capability report
 
@@ -59,7 +64,7 @@ cp "<user_template>.pptx" scripts/templates/template.pptx
 python -c "
 import sys, json; sys.path.insert(0,'scripts')
 from ppt_builder import servable_slide_types, get_render_contract
-print(json.dumps(servable_slide_types(get_render_contract('scripts/templates/template.pptx')), indent=2))
+print(json.dumps(servable_slide_types(get_render_contract('template/default.pptx')), indent=2))
 "
 ```
 
@@ -67,7 +72,7 @@ print(json.dumps(servable_slide_types(get_render_contract('scripts/templates/tem
 
 Layouts are resolved **by placeholder-composition fingerprint**, not by index. For each `slide_type` the engine has an ideal placeholder composition (a built-in constant); it matches that to the template layout whose composition fits best. **Layout names are only a tie-breaker / fallback.** Resolution precedence:
 
-1. `template.config.json` pin (`<slide_type>_layout`) — explicit layout name, highest precedence.
+1. `default.config.json` pin (`<slide_type>_layout`) — explicit layout name, highest precedence.
 2. **Fingerprint match** — composition-closest layout (the template-agnostic path).
 3. Name-based fallback (`_LAYOUT_NAME_MAP`) — backward-compatible safety net.
 4. Degradation — skip the slide + clear warning (never silent).
@@ -309,7 +314,7 @@ For LLM-produced JSON, `parse_and_validate(raw_text)` first **repairs** common m
 
 ## Density Modes
 
-A deck-wide **density mode** fixes a per-slide visible-text word budget. It is the primary content-side lever for preventing the text-overflow defect (long content exceeding placeholder boundaries and overlapping neighboring shapes). The agent picks the mode with the user at the outline-confirmation checkpoint (see `pptx-subagent` Stage 2); the validator then warns on any slide whose visible text falls outside the budget.
+A deck-wide **density mode** fixes a per-slide visible-text word budget. It is the primary content-side lever for preventing the text-overflow defect (long content exceeding placeholder boundaries and overlapping neighboring shapes). The agent **defaults to `standard` for the first generation** (auto-downshifted to `concise` for small content areas `< ~30 in²`; a user-stated density intent from the first message is honored) and may adjust the mode **post-generation** per the user's refinement choice (see `pptx-subagent` Stage 5); the validator then warns on any slide whose visible text falls outside the budget.
 
 | Mode | Per-slide words | Use when |
 |------|-----------------|----------|
@@ -335,7 +340,7 @@ print(validate_density(<JSON_ARRAY>, 'standard'))  # [] when all in budget
 
 ## Multi-Stage Generation
 
-For best quality on longer decks, the agent generates in three stages: **outline → critique/review → detail+JSON**, with each JSON stage schema-validated before continuing. When run as the **primary** agent, it can pause after the outline for the user to approve/edit; as a **subagent** it runs fully autonomously (self-critique). See `docs/DESIGN-multi-stage-generation.md`.
+For best quality on longer decks, the agent generates in three stages: **outline → critique/review → detail+JSON**, with each JSON stage schema-validated before continuing. The **primary agent no longer pauses** after the outline — the first generation is autonomous with template-aware defaults (self-critique, no pre-generation prompt); post-generation refinements are offered after the file is returned (see `pptx-subagent` Stage 5). A **subagent** runs fully autonomously and skips the refinement prompt too. See `docs/DESIGN-multi-stage-generation.md`.
 
 **Slide count convention.** When the user requests "N pages/slides", that number is the **total** deck size including cover and closing: N ≥ 3 → 1 cover + (N−2) content + 1 closing; N = 2 → cover + 1 content; N = 1 → cover only. The closing slide defaults to `"Thank You"` as its title (matching the `End` layout built-in) with no `subtitle` authored.
 
@@ -384,14 +389,14 @@ A single deck combining text slides, an image slide (via a local `image_path`), 
 Fill a deck from a template the user brings — no matter its layout names.
 
 ```bash
-# 1. Replace the base template at the single path.
-cp ~/my_company_template.pptx scripts/templates/template.pptx
+# 1. Point at the user template (path pass-through — default untouched).
+TPL=~/my_company_template.pptx
 
 # 2. Learn what the template can serve (which slide_types, content areas).
 python -c "
 import sys, json; sys.path.insert(0,'scripts')
 from ppt_builder import servable_slide_types, get_render_contract
-print(json.dumps(servable_slide_types(get_render_contract('scripts/templates/template.pptx')), indent=2))
+print(json.dumps(servable_slide_types(get_render_contract('$TPL')), indent=2))
 "
 # → e.g. {"content_slide": {"available": true, "layout": "Content Page", "content_area_in2": 42.1}, ...}
 #   Note the layout NAME differs from the default ("Title and Content") — fingerprint
@@ -407,7 +412,7 @@ slide_data = [
   {'slide_type': 'content_slide', 'title': 'Highlights', 'body': '**A** — x\n**B** — y', 'notes': '...'},
   {'slide_type': 'closing_slide', 'title': 'Thank You', 'notes': '...'},
 ]
-print(generate_ppt_from_data(slide_data, output_path=str(DEFAULT_OUTPUT_DIR / 'from_user_template.pptx')))
+print(generate_ppt_from_data(slide_data, template_path='$TPL', output_path=str(DEFAULT_OUTPUT_DIR / 'from_user_template.pptx')))
 "
 ```
 

@@ -478,7 +478,6 @@ def _build_metadata(prs: Presentation, path: str) -> Dict[str, Any]:
         "slide_dimensions": _build_slide_dimensions(prs),
         "missing_fonts": [],  # initially empty; populated below in extract_schema
         "header_footer": _detect_header_footer(prs),  # US-2.1 AC1
-        "common_practices": {},  # populated in US-2.2
     }
 
 

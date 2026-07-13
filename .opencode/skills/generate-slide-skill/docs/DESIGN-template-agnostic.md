@@ -36,9 +36,9 @@ The stakeholder's requirements, verbatim intent:
 | # | Decision |
 |---|----------|
 | 1 | Introspection runs **automatically** before render; the contract is cached in `template.contract.json` and invalidated by the template's `mtime`. |
-| 2 | The ideal `slide_type` → placeholder **fingerprint** map is a **built-in engine constant** (8 types); it can be overridden by the contract or `template.config.json`. When a template lacks a needed type, the engine **degrades** (skips that slide with a warning) — accepted. |
+| 2 | The ideal `slide_type` → placeholder **fingerprint** map is a **built-in engine constant** (8 types); it can be overridden by the contract or `default.config.json`. When a template lacks a needed type, the engine **degrades** (skips that slide with a warning) — accepted. |
 | 3 | Layout creation uses **Approach 2 only — pure dynamic cloning** (deep-copy a donor layout's `<p:sldLayout>` + part + relationships, register under the master's `<p:sldLayoutIdLst>`, then resize placeholders per the computed dimensions). **No** external "layout library" file (Approach 3 was rejected). |
-| 4 | The base template is always a single path, `scripts\templates\template.pptx` (new templates replace the old, same name/location). When the base cannot satisfy a layout requirement, a derived `template_new.pptx` is produced — see the state machine in §4. |
+| 4 | The default template is `template/default.pptx` (repo root); a user template is passed via `template_path`/`--template` (path pass-through, default untouched — US-4.7). When the base cannot satisfy a layout requirement, a derived `template_new.pptx` is produced — see the state machine in §4. |
 
 ### Why not python-pptx public API for layout creation
 
@@ -62,11 +62,11 @@ is impossible; Approach 3 (cross-template layout import) was considered and
 
 | Current behaviour | Location | Problem |
 |---|---|---|
-| Hardcoded default template | `ppt_builder.py:50` `_TEMPLATE_FILE` | Defaults only to `templates/template.pptx` |
+| Hardcoded default template | `ppt_builder.py` `_TEMPLATE_FILE` | Defaults to repo-root `template/default.pptx` (overridable via `template_path` / `--template`) |
 | `template_path` param exists | `ppt_builder.py:533` | Present, but the workflow does not drive it |
 | Hardcoded layout-name map | `ppt_builder.py:60-69` `_LAYOUT_NAME_MAP` | Different template ⇒ names mismatch ⇒ slides skipped |
 | Layout match by **name only** | `ppt_builder.py:147-170` `_build_layout_index` / `_resolve_layout` | No placeholder-composition fingerprint |
-| Config overrides only 2 types | `template.config.json` (title / content) | Coverage too narrow |
+| Config overrides only 2 types | `default.config.json` (title / content) | Coverage too narrow |
 | Introspection scattered | `research_layouts.py` / `research_theme.py` | One-off scripts, not productized |
 | `template-modifier-skill` | does not exist | Entirely missing |
 

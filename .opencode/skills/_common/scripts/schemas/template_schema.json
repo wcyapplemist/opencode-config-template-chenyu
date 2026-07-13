@@ -82,11 +82,6 @@
           "type": "object",
           "description": "Header/footer detection metadata. Empty/stub in US-1.1 (populated in US-2.1).",
           "additionalProperties": true
-        },
-        "common_practices": {
-          "type": "object",
-          "description": "Best-practice suggestions. Empty/stub in US-1.1 (populated in US-2.2).",
-          "additionalProperties": true
         }
       }
     },

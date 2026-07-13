@@ -7,7 +7,7 @@ Loads the template, adds new slides from named layouts (resolved by name, not
 index, so layout reordering does not break it), fills placeholders by type
 (TITLE, SUBTITLE, OBJECT), and saves the result.
 
-Layouts are matched by name via ``_LAYOUT_NAME_MAP``; ``template.config.json``
+Layouts are matched by name via ``_LAYOUT_NAME_MAP``; ``default.config.json``
 may override the layout name for ``title_slide`` / ``content_slide``.
 
 Usage:
@@ -61,6 +61,7 @@ from layout_contract import (
     _normalize_layout_name,
     _resolve_layout_by_fingerprint,
     get_render_contract,
+    servable_slide_types,
 )
 # US-4.6 (m2): shared pure polygon/EMU primitives + target-size resolver + the
 # AC5 ratio no-op gate.
@@ -86,10 +87,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
-TEMPLATES_DIR = _SCRIPT_DIR / "templates"
+# Template is a fixed project asset at the repo root (template/), not bundled
+# inside the engine folder — keeps it easy to find/edit (mirrors output/).
+# US-4.7: the default template is template/default.pptx.
+# scripts → generate-slide-skill → skills → .opencode → repo root
+_REPO_ROOT = _SCRIPT_DIR.parents[3]
+TEMPLATES_DIR = _REPO_ROOT / "template"
 DEFAULT_OUTPUT_DIR = Path.cwd() / "output"
 
-_TEMPLATE_FILE = TEMPLATES_DIR / "template.pptx"
+_TEMPLATE_FILE = TEMPLATES_DIR / "default.pptx"
+
+
+class TemplateError(Exception):
+    """Severe template problems that make generation impossible (US-4.7).
+
+    Raised by the template pre-flight when the chosen template is structurally
+    unusable: not a readable PPTX, has no slide master, has zero layouts, or
+    cannot serve any of the 8 slide types. Minor issues (missing fonts, no
+    header/footer, small content area, no embedded schema) stay non-fatal.
+    """
+
 
 _TITLE_TYPES = {PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE}
 _SUBTITLE_TYPE = PP_PLACEHOLDER.SUBTITLE
@@ -304,11 +321,57 @@ def _select_layout(
 
 
 def _load_config() -> Dict[str, Any]:
-    config_path = TEMPLATES_DIR / "template.config.json"
+    config_path = TEMPLATES_DIR / "default.config.json"
     if config_path.exists():
         with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
     return {}
+
+
+def _validate_template(
+    prs: Presentation,
+    template_path: str,
+    contract: Optional[Dict[str, Any]] = None,
+) -> None:
+    """US-4.7 pre-flight: abort with :class:`TemplateError` on severe problems.
+
+    Severe (fatal): no slide master / zero layouts / serves none of the 8 slide
+    types. Openability is checked by the caller (``Presentation(...)`` is wrapped).
+    Minor issues (missing fonts, no header/footer, small content area, no embedded
+    schema) are NOT checked here — they stay non-fatal warnings elsewhere.
+    """
+    try:
+        masters = list(prs.slide_masters)
+    except Exception:
+        masters = []
+    if not masters:
+        raise TemplateError(
+            f"Template has no slide master — cannot generate slides. This file "
+            f"cannot be used as a template (a slide master is required, and "
+            f"injecting one is not supported). Provide a valid .pptx that has a "
+            f"slide master, or omit --template to use the default template. "
+            f"Path: {template_path}"
+        )
+
+    if len(prs.slide_layouts) == 0:
+        raise TemplateError(
+            f"Template has no slide layouts — cannot add any slide: {template_path}"
+        )
+
+    # Servability (AC6) can only be judged when the contract is available. When
+    # contract build failed we cannot make this determination, so skip (warned
+    # upstream) rather than risk a false fatal.
+    if contract is not None:
+        try:
+            served = servable_slide_types(contract)
+        except Exception:
+            served = {}
+        available = [t for t, info in served.items() if info and info.get("available")]
+        if not available:
+            raise TemplateError(
+                f"Template serves none of the 8 slide types — cannot generate "
+                f"any slide: {template_path}"
+            )
 
 
 def _remove_all_slides(prs: Presentation) -> int:
@@ -1217,7 +1280,15 @@ def generate_ppt_from_data(
         config = {**config, **config_overrides}
 
     logger.info("Loading template: %s", template.name)
-    prs = Presentation(str(template))
+    # US-4.7 (AC3): a corrupt / non-PPTX file must surface a clear TemplateError
+    # instead of a raw python-pptx traceback.
+    try:
+        prs = Presentation(str(template))
+    except Exception as exc:
+        raise TemplateError(
+            f"Could not open template as PPTX ({exc.__class__.__name__}: {exc}): "
+            f"{template}"
+        ) from exc
     logger.info("Template: %d slides, %d layouts", len(prs.slides), len(prs.slide_layouts))
 
     # #43 (P0): auto-introspect the template into a JSON contract before render.
@@ -1230,6 +1301,11 @@ def generate_ppt_from_data(
         contract = get_render_contract(str(template))
     except Exception as exc:  # pragma: no cover - defensive; never block render
         logger.warning("Template contract unavailable (%s); using name matching", exc)
+
+    # US-4.7 (AC4/AC5/AC6): severe template problems abort before the render loop.
+    # Structural checks (no master / zero layouts) always run; servability (AC6)
+    # runs only when the contract is available. See ``_validate_template``.
+    _validate_template(prs, str(template), contract)
 
     # US-4.2: build a {layout_name: {role: size_pt}} map from the embedded
     # schema (best-effort) for the M1 base-size resolution chain. Absent/corrupt
@@ -1589,7 +1665,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             output_path=args.output,
             target_size=target_size,
         )
-    except ValueError as exc:  # validation error (bad target_size / schema)
+    except (ValueError, TemplateError) as exc:  # validation / template error (bad input)
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except Exception as exc:  # runtime error

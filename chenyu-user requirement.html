@@ -1094,36 +1094,6 @@
         </div>
       </article>
 
-      <!-- US 4.4 -->
-      <article class="story">
-        <div class="story-top">
-          <span class="story-id">US-4.4</span>
-          <span class="story-priority should">Should Have</span>
-        </div>
-        <div class="story-format">
-          <span class="actor">As a</span> OpenCode user,
-          <span class="feature">I want</span> the subagent to ask me about my preferred visual style when I request slide generation without providing a template — offering options like "minimalist", "corporate", "creative", "dark mode", etc.,
-          <span class="reason">so that</span> even without a pre-made template, the generated slides match my aesthetic expectations rather than defaulting to a generic look.
-        </div>
-        <div class="story-details">
-          When no PPTX is provided and no embedded JSON exists, the subagent presents a style picker. Each style maps to a built-in JSON schema (shipped with the skill) that defines layout, colors, and fonts. The user can also say "just use default" to skip the prompt.
-        </div>
-        <div class="ac-section">
-          <h5>Acceptance Criteria</h5>
-          <ul class="ac-list">
-            <li>At least 4 built-in style presets are included with the skill.</li>
-            <li>The user can select a style by name or description.</li>
-            <li>"Default" is always an option and requires no extra interaction.</li>
-            <li>Selected style's JSON is embedded in the output PPTX for future reuse.</li>
-          </ul>
-        </div>
-        <div class="story-tags">
-          <span class="story-tag">style-picker</span>
-          <span class="story-tag">presets</span>
-          <span class="story-tag">fallback</span>
-        </div>
-      </article>
-
       <!-- US 4.5 -->
       <article class="story">
         <div class="story-top">
@@ -1964,25 +1934,6 @@ The subagent detects the absence of \`ppt/template_schema.json\`, automatically 
 - [x] User sees a status message like "No template found — extracting first, then generating slides..."
 
 **Tags:** chaining, auto-detect, ux
-
----
-
-### US-4.4 — Style Picker for Template-Less Generation \`[Should Have]\`
-
-**As a** OpenCode user,
-**I want** the subagent to ask me about my preferred visual style when I request slide generation without providing a template — offering options like "minimalist", "corporate", "creative", "dark mode", etc.,
-**so that** even without a pre-made template, the generated slides match my aesthetic expectations rather than defaulting to a generic look.
-
-**Details:**
-When no PPTX is provided and no embedded JSON exists, the subagent presents a style picker. Each style maps to a built-in JSON schema (shipped with the skill) that defines layout, colors, and fonts. The user can also say "just use default" to skip the prompt.
-
-**Acceptance Criteria:**
-- [x] At least 4 built-in style presets are included with the skill.
-- [x] The user can select a style by name or description.
-- [x] "Default" is always an option and requires no extra interaction.
-- [x] Selected style's JSON is embedded in the output PPTX for future reuse.
-
-**Tags:** style-picker, presets, fallback
 
 ---
 

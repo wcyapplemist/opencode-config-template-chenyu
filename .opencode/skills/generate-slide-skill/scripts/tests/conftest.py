@@ -16,7 +16,8 @@ if str(_COMMON_SCRIPTS) not in sys.path:
 
 @pytest.fixture
 def template_path():
-    return str(_SCRIPTS_DIR / "templates" / "template.pptx")
+    # Template lives at the repo-root template/ (scripts→skill→skills→.opencode→repo).
+    return str(_SCRIPTS_DIR.parents[3] / "template" / "default.pptx")
 
 
 @pytest.fixture

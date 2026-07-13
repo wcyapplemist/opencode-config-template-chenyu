@@ -1,48 +1,40 @@
-%% PPTX Subagent System — Workflow Diagram (swimlane / cross-functional flowchart)
-%% Render at https://mermaid.live (paste everything below the line)
-%% Lanes = participants; cross-lane arrows = responsibility handoffs.
+%% PPTX Subagent System — Workflow Diagram (KEY steps · swimlane / responsibility view)
+%% Replaces the previous version. For the simplest linear view see workflow-diagram-linear.mmd;
+%% for the full mechanism see workflow-diagram-detailed.mmd.
+%% Render at https://mermaid.live
 flowchart LR
-    subgraph User["User"]
-        U0([“Request for a deck”])
-        U1["Review outline + select density"]
-        Uend([Receive generated slides])
+    subgraph User["👤 User"]
+        U0([Request a deck<br/>+ optional template])
+        U1[Confirm outline<br/>+ density mode]
+        Uend([Receive .pptx])
     end
 
-    subgraph Subagent["pptx-subagent"]
+    subgraph Agent["pptx-subagent"]
         direction TB
-        A0["Stage 0: Understand request + introspect template"]
-        A1["Stage 1: Generate outline + save artifact"]
-        A2{"Stage 2: execution context?"}
-        A3["Stage 3: Author JSON + webfetch real chart data"]
-        A4["Stage 3: Validate JSON before render (schema + density)"]
-        A4d{"Valid?"}
-        A5["Stage 4: Hand off — template check + render"]
-        A6["Stage 5: Return .pptx path"]
+        S0["Understand<br/>+ introspect template"]
+        S1["Generate outline"]
+        S2{"Context?"}
+        S3["Author JSON<br/>+ validate (retry on error)"]
+        S4["Resolve + render"]
+        S5["Return result"]
+        S0 --> S1 --> S2
+        S3 --> S4 --> S5
     end
 
-    subgraph Modifier["template-modifier-skill"]
-        direction TB
-        T0{"Can template serve every slide?"}
-        T1["Persistently extend template.pptx:<br/>① backup→template.original.pptx (first time)<br/>② inject extended-layout OOXML parts + relationships<br/>③ notify user"]
+    subgraph Ext["template-modifier-skill"]
+        X0{"Layout missing?"}
+        X1[Clone extended layout<br/>→ template_new.pptx]
     end
 
-    subgraph Engine["⚙️ generate-slide-skill Engine"]
-        E0["Render — generate_ppt_from_data<br/>validate → introspect → render → save → cleanup"]
+    subgraph Engine["⚙️ generate-slide-skill"]
+        E0[Fill template layouts<br/>→ native .pptx]
     end
 
-    U0 --> A0
-    A0 --> A1
-    A1 --> A2
-    A2 -->|"interactive"| U1
-    U1 --> A3
-    A2 -->|"autonomous — self-critique + standard"| A3
-    A3 --> A4
-    A4 --> A4d
-    A4d -->|"invalid — re-author"| A3
-    A4d -->|"valid"| A5
-    A5 --> T0
-    T0 -->|"missing layout / over-limit"| T1
-    T1 --> E0
-    T0 -->|"serves all"| E0
-    E0 --> A6
-    A6 --> Uend
+    U0 --> S0
+    S2 -->|"primary agent"| U1
+    S2 -->|"headless subagent<br/>(auto = standard)"| S3
+    U1 --> S3
+    S4 --> X0
+    X0 -->|"no"| E0
+    X0 -->|"yes"| X1 --> E0
+    E0 --> S5 --> Uend

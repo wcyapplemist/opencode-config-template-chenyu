@@ -17,9 +17,9 @@ from constraint_checker import Verdict
 
 class TestTemplateNewPath:
     def test_derived_name(self):
-        p = template_new_path_for("scripts/templates/template.pptx")
-        assert p.name == "template_new.pptx"
-        assert p.parent.name == "templates"
+        p = template_new_path_for("template/default.pptx")
+        assert p.name == "default_new.pptx"
+        assert p.parent.name == "template"
 
 
 class TestDeleteLeftover:

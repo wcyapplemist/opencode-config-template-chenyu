@@ -62,7 +62,7 @@ from state_machine import resolve_and_clone
 from ppt_builder import generate_ppt_from_data, DEFAULT_OUTPUT_DIR
 
 active, overrides, note = resolve_and_clone(
-    '.opencode/skills/generate-slide-skill/scripts/templates/template.pptx',
+    'template/default.pptx',
     <SLIDE_DATA_LIST>,
 )
 out = generate_ppt_from_data(

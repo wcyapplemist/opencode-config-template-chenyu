@@ -32,7 +32,7 @@ class TestContractShape:
 
     def test_source_file_and_mtime(self, template_path):
         c = introspect(template_path)
-        assert c["source_file"] == "template.pptx"
+        assert c["source_file"] == os.path.basename(template_path)
         assert isinstance(c["source_mtime"], float)
         assert c["source_mtime"] == pytest.approx(os.path.getmtime(template_path))
 

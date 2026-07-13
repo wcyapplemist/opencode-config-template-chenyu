@@ -1,0 +1,63 @@
+%% PPTX Subagent System — Workflow Diagram (DETAILED — full mechanism)
+%% Covers: all stages, validation gates, contract layer, resource pipeline,
+%% auto-template (US-4.3), aspect-ratio (US-4.6), header/footer (US-2.1),
+%% reactive text-fit (US-4.2), and the generate-template-skill extraction branch.
+%% Render at https://mermaid.live
+flowchart TD
+    Start([User request: topic + page count<br/>+ optional template]) --> Route{"Intent?"}
+
+    %% ===== EXTRACTION BRANCH =====
+    Route -->|"extract / fingerprint template"| Ext0
+    subgraph GT["generate-template-skill"]
+        direction TB
+        Ext0["Stage 0 · receive + validate path"]
+        Ext1["Stage 1 · extract_schema + validate_template_schema"]
+        Ext2["Stage 2 · title confirm + header/footer prompt<br/>(batched single question · skip if headless)"]
+        Ext3["Stage 3 · embed_schema → output/&lt;stem&gt;.templated.pptx"]
+        Ext4["Stage 4 · build_extraction_summary + return path"]
+        Ext0 --> Ext1 --> Ext2 --> Ext3 --> Ext4
+    end
+    Ext4 --> EndExt([Templated .pptx<br/>(schema embedded at ppt/template_schema.json)])
+
+    %% ===== GENERATION BRANCH =====
+    Route -->|"generate slides / deck"| S0
+    subgraph Agent["pptx-subagent — orchestration pipeline"]
+        direction TB
+
+        S0["Stage 0 · Understand + calibrate<br/>· servable_slide_types (available layouts + content_area_in2)<br/>· TEMPLATED? read_embedded_schema → auto-chain flag (US-4.3)<br/>· header_footer check → note if absent (US-2.1)<br/>· target_size? (US-4.6 aspect-ratio)<br/>· read 2–3 house notes (style calibration)"]
+
+        S1["Stage 1 · plain-text outline<br/>one line/slide: order · slide_type · title · key pts<br/>save_outline() artifact"]
+        S0 --> S1
+
+        S1 --> S2{"Execution context?"}
+        S2 -->|"primary agent"| S2i["one question call:<br/>(1) density mode · (2) outline approval<br/>(3) closing sign-off (name+email / skip)"]
+        S2 -->|"headless subagent"| S2a["autonomous: self-critique<br/>default = standard · skip sign-off"]
+        S2i --> S2c["re-save outline w/ mode header"]
+        S2a --> S2c
+
+        S2c --> S3["Stage 3 · author slide_data_list<br/>· body sized to density budget<br/>· notes ~120–180 words (KEY MSG / quotes / TRANSITION / COACHING)<br/>· chart: webfetch REAL data → concrete categories/series<br/>  (data_query never networks · fabrication forbidden)"]
+        S3 --> S3v["pre-flight validate<br/>validate_slide_data_list(strict=True, density_mode)"]
+        S3v --> S3d{"result?"}
+        S3d -->|"INVALID — schema error"| S3
+        S3d -->|"VALID + content over-budget"| S3t["tighten prose → budget"] --> S3v
+        S3d -->|"VALID (title/section underflow OK)"| S4
+
+        S4["Stage 4 · resolve + render"]
+        S4 --> R1["resolve_slide_data_list()<br/>placeholders → assets · non-fatal"]
+        R1 --> R2["resolve_and_clone()<br/>① delete leftover template_new · ② get_render_contract<br/>③ scan (fingerprint + content fit) · ④ plan_resolution"]
+        R2 --> R2d{"over-limit / missing layout?"}
+        R2d -->|"yes"| R2k["clone_for_over_limit()<br/>7-step OOXML clone → template_new.pptx<br/>(backup-first · reload-verify · rollback on fail)"]
+        R2d -->|"no"| R2b["use base template.pptx"]
+        R2k --> R3
+        R2b --> R3["generate_ppt_from_data()<br/>· fingerprint layout resolution · native charts + images<br/>· reactive text-fit (US-4.2: −2pt → 8pt floor · render.json flag)<br/>· target_size rescale if ratio ≠ native (US-4.6)<br/>· auto_template: if input NOT templated → embed schema in OUTPUT (US-4.3)<br/>· save → output/&lt;name&gt;.pptx · cleanup_temp"]
+        R3 --> S5["Stage 5 · return absolute path<br/>(surface template_new notice if any)"]
+    end
+
+    S5 --> EndGen([Output .pptx + &lt;output&gt;.render.json sidecar])
+
+    %% ===== shared contract layer =====
+    subgraph Common["⚙️ _common contract layer (shared by all 3 skills)"]
+        CC["get_render_contract:<br/>embedded ppt/template_schema.json → contract_adapter (preferred)<br/>↓ fallback → template_introspector sidecar contract (GAP §5 D1)"]
+    end
+    R2 -.->|"resolves layouts"| CC
+    R3 -.->|"prefers embedded"| CC
