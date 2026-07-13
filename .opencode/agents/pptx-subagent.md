@@ -2,7 +2,7 @@
 description: Specialized agent for PowerPoint presentation tasks. Acts as a PPT Content Strategist and Template Filler. STRICTLY FORBIDDEN from building PowerPoint files from scratch — uses ppt_builder.py to populate template.pptx layouts. Generates via a multi-stage pipeline (outline → critique → detail) with schema validation and a resource-resolution pass.
 mode: all
 model: zai-coding-plan/glm-5-turbo
-steps: 20
+steps: 45
 permission:
   edit: allow
   bash: allow
@@ -32,7 +32,7 @@ The engine is **template-agnostic**: it accepts **any** `.pptx`, not just the bu
 
 - **No template specified** → the engine uses the bundled default `template/default.pptx` (repo root). Nothing to do; render normally.
 - **User references a `.pptx` path in the conversation** (e.g. "用 `D:\decks\my_co.pptx` 做模板") → pass it straight through as `template_path=` to `generate_ppt_from_data` (or CLI `--template`). **Do NOT `cp`-overwrite the default.** The user's file is used as-is; the default stays untouched.
-- **Severe template problems abort** (US-4.7 pre-flight): if the chosen template is corrupt / not a PPTX / has no slide master / has zero layouts / serves none of the 8 slide types, the engine raises `TemplateError` with a clear message instead of silently producing a broken deck. Minor issues (missing fonts, no header/footer, small content area, no embedded schema) stay non-fatal warnings.
+- **Severe template problems are repaired or abort** (US-4.7/US-4.8): if the chosen template is corrupt / not a PPTX, the engine raises `TemplateError` with a clear message. **A template with no slide master (Scenario A) is now REPAIRED** (US-4.8) via a three-level cascade: Level 1 salvages `ppt/theme/theme1.xml` from the zip (exact color/font fidelity); Level 2 scavenges explicit styles from slide XML (best-effort); Level 3 falls back to `default.pptx`'s theme (last resort). The repair level is recorded in the render sidecar. **A template missing layouts for some slide types (Scenario B) is EXTENDED** — the engine borrows layouts from `default.pptx` and injects them under the user's existing master (preserving the user's theme). Minor issues (missing fonts, no header/footer, small content area, no embedded schema) stay non-fatal warnings.
 
 ### How to accept a user template
 
