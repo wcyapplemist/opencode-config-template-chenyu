@@ -69,8 +69,11 @@ from geometry import (
     _EMU_PER_INCH,
     aspect_ratios_match,
     compute_ratio,
+    denormalize_polygon,
+    normalize_polygon,
     resolve_target_size,
 )
+from errors import TemplateError  # noqa: E402 — US-4.8/MINOR-2: relocated to _common
 from text_fit import (
     LINE_SPACING_DEFAULT,
     MIN_FONT_SIZE_PT,
@@ -97,15 +100,9 @@ DEFAULT_OUTPUT_DIR = Path.cwd() / "output"
 
 _TEMPLATE_FILE = TEMPLATES_DIR / "default.pptx"
 
-
-class TemplateError(Exception):
-    """Severe template problems that make generation impossible (US-4.7).
-
-    Raised by the template pre-flight when the chosen template is structurally
-    unusable: not a readable PPTX, has no slide master, has zero layouts, or
-    cannot serve any of the 8 slide types. Minor issues (missing fonts, no
-    header/footer, small content area, no embedded schema) stay non-fatal.
-    """
+# TemplateError is imported from _common/scripts/errors.py (US-4.8/MINOR-2).
+# It is re-exported here for back-compat: callers that do
+# ``from ppt_builder import TemplateError`` continue to work.
 
 
 _TITLE_TYPES = {PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE}
