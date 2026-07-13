@@ -343,11 +343,10 @@ def _validate_template(
         masters = []
     if not masters:
         raise TemplateError(
-            f"Template has no slide master — cannot generate slides. This file "
-            f"cannot be used as a template (a slide master is required, and "
-            f"injecting one is not supported). Provide a valid .pptx that has a "
-            f"slide master, or omit --template to use the default template. "
-            f"Path: {template_path}"
+            f"Template has no slide master — cannot generate slides. Auto-repair "
+            f"was attempted but failed (see logged repair level). Provide a "
+            f"valid .pptx that has a slide master, or omit --template to use "
+            f"the default template. Path: {template_path}"
         )
 
     if len(prs.slide_layouts) == 0:
@@ -1288,6 +1287,30 @@ def generate_ppt_from_data(
         ) from exc
     logger.info("Template: %d slides, %d layouts", len(prs.slides), len(prs.slide_layouts))
 
+    # US-4.8 (CRIT-1): if the template has no slide master (Scenario A), repair
+    # it BEFORE get_render_contract so the contract describes the repaired prs.
+    # The repair copies default.pptx's master skeleton + optionally replaces
+    # the theme with salvaged/scavenged user styling (3-level cascade).
+    repair_report: Optional[Dict[str, Any]] = None
+    try:
+        masters_check = list(prs.slide_masters)
+    except Exception:
+        masters_check = []
+    if not masters_check:
+        from master_repairer import repair_if_needed
+        repair = repair_if_needed(prs, str(template), str(_TEMPLATE_FILE))
+        if repair.mutated and repair.repaired_path:
+            template = Path(repair.repaired_path)
+            prs = Presentation(str(template))
+            repair_report = {
+                "level": repair.level,
+                "theme_source": repair.theme_source,
+            }
+            logger.info(
+                "Template repaired (level=%s, theme=%s): %s",
+                repair.level, repair.theme_source, template,
+            )
+
     # #43 (P0): auto-introspect the template into a JSON contract before render.
     # US-4.1: prefer the embedded JSON (via the adapter); fall back to the
     # mtime-cached sidecar contract. Non-fatal: on any failure the engine falls
@@ -1510,6 +1533,10 @@ def generate_ppt_from_data(
     render_report["templating"] = _ensure_output_templated(
         str(output), str(template), auto_template
     )
+
+    # US-4.8 (MAJOR-7): record repair provenance in the render sidecar.
+    if repair_report is not None:
+        render_report["templating"]["repair"] = repair_report
 
     # US-4.6 (M4): a target-sized output is self-describing at the TARGET size.
     # Rewrite the output's embedded schema slide_dimensions to target so the
