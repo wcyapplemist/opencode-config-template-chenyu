@@ -171,14 +171,65 @@ def resolve_and_clone(
         return template_path, {}, None
 
     contract = get_render_contract(template_path)
-    try:
-        from layout_creator import clone_for_over_limit  # lazy: avoid circular import
-        active, overrides = clone_for_over_limit(template_path, plan, contract)
-    except Exception as exc:  # clone failed → safe fallback to the base template
-        logger.warning(
-            "Layout cloning failed (%s); rendering against the base template", exc
-        )
-        return template_path, {}, None
+
+    # US-4.8 (CRIT-4): Level 0 (same-file donor clone) + Level 1 (borrow from
+    # default.pptx). The dispatch lives HERE in state_machine (not in
+    # layout_creator) to avoid the master_cloner ↔ layout_creator circular import.
+    from layout_contract import _resolve_layout_by_fingerprint  # already on sys.path
+
+    # Partition: which slide_types have a donor in the user's template (Level 0)
+    # vs which are genuinely missing and need borrowing from default (Level 1).
+    level0_slide_types = set()
+    level1_slide_types = set()
+    for req in plan.over_limit_slides:
+        idx, _ = _resolve_layout_by_fingerprint(req.slide_type, contract)
+        if idx is not None:
+            level0_slide_types.add(req.slide_type)
+        else:
+            level1_slide_types.add(req.slide_type)
+
+    active = template_path
+    overrides: Dict[str, str] = {}
+
+    # --- Level 0: clone from same-file donor (existing capability) ---
+    if level0_slide_types:
+        try:
+            from layout_creator import clone_for_over_limit  # lazy: avoid circular import
+            active, overrides = clone_for_over_limit(template_path, plan, contract)
+        except Exception as exc:  # clone failed → safe fallback to the base template
+            logger.warning(
+                "Layout cloning failed (%s); rendering against the base template", exc
+            )
+            active = template_path
+            overrides = {}
+
+    # --- Level 1: borrow from default.pptx (US-4.8 NEW) ---
+    if level1_slide_types and active:
+        # Determine default.pptx path (repo root / template / default.pptx).
+        # The repo root is 4 levels up from _common/scripts.
+        _repo_root = Path(template_path).resolve().parent
+        default_path = str(_repo_root / "template" / "default.pptx")
+        # If template_path IS the default, borrowing is meaningless.
+        if os.path.normcase(os.path.abspath(template_path)) != os.path.normcase(os.path.abspath(default_path)):
+            try:
+                from master_cloner import clone_master_and_borrow  # CRIT-4: lazy import
+                base_for_borrow = active if active != template_path else template_path
+                extended, l1_overrides = clone_master_and_borrow(
+                    base_for_borrow,
+                    list(level1_slide_types),
+                    default_path,
+                )
+                if l1_overrides:
+                    active = extended
+                    overrides.update(l1_overrides)
+                    logger.info(
+                        "Level 1 borrow: %d layout(s) from default.pptx",
+                        len(l1_overrides),
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Level 1 borrow failed (%s); continuing with Level 0 only", exc
+                )
     # C1 (architecture review): python-pptx's prs.save() inside the clone strips
     # the unmodeled ppt/template_schema.json part from template_new.pptx. Re-embed
     # so the derived file carries a schema describing the CLONED layout — otherwise
