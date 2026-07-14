@@ -18,7 +18,7 @@ Public API:
 
 Usage:
     from template_introspector import get_contract
-    contract = get_contract("templates/template.pptx")
+    contract = get_contract("template/default.pptx")
 """
 
 from __future__ import annotations

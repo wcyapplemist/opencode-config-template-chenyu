@@ -361,18 +361,21 @@ def _build_slide_dimensions(prs: Presentation) -> Dict[str, Any]:
     }
 
 
-def _raw_theme_colors_and_fonts(prs: Presentation) -> Tuple[Dict[str, str], Dict[str, str]]:
-    """Extract raw clrScheme roles + major/minor Latin fonts from theme1.xml.
+def parse_theme_xml(theme_xml_bytes: bytes) -> Tuple[Dict[str, str], Dict[str, str]]:
+    """Parse clrScheme + fontScheme from raw theme1.xml bytes (US-4.8 / CRIT-2).
 
-    Returns (colors_by_role, fonts_by_role). Best-effort: returns empty dicts on
-    failure (logged at warning level).
+    Pure function — does NOT require a ``Presentation`` or ``prs.slide_masters``
+    access. Used by ``_raw_theme_colors_and_fonts`` (the legacy prs-based
+    delegate) and by ``master_repairer._salvage_theme_part`` (zip-level salvage
+    that has no prs at all).
+
+    Returns (colors_by_role, fonts_by_role). Best-effort: returns empty dicts
+    on parse failure.
     """
     colors: Dict[str, str] = {}
     fonts: Dict[str, str] = {}
     try:
-        master = prs.slide_masters[0]
-        theme_part = master.part.part_related_by(_THEME_REL)
-        theme_xml = etree.parse(BytesIO(theme_part.blob)).getroot()
+        theme_xml = etree.parse(BytesIO(theme_xml_bytes)).getroot()
         elements = theme_xml.find(f"{{{_NS_A}}}themeElements")
         if elements is not None:
             clr_scheme = elements.find(f"{{{_NS_A}}}clrScheme")
@@ -395,9 +398,25 @@ def _raw_theme_colors_and_fonts(prs: Presentation) -> Tuple[Dict[str, str], Dict
                         latin = font_elem.find(f"{{{_NS_A}}}latin")
                         if latin is not None and latin.get("typeface"):
                             fonts[key] = latin.get("typeface")
+    except Exception:  # pragma: no cover - defensive
+        pass
+    return colors, fonts
+
+
+def _raw_theme_colors_and_fonts(prs: Presentation) -> Tuple[Dict[str, str], Dict[str, str]]:
+    """Extract raw clrScheme roles + major/minor Latin fonts from theme1.xml.
+
+    Returns (colors_by_role, fonts_by_role). Best-effort: returns empty dicts on
+    failure (logged at warning level). Delegates to the pure
+    :func:`parse_theme_xml` for the actual XML walking (US-4.8 / CRIT-2).
+    """
+    try:
+        master = prs.slide_masters[0]
+        theme_part = master.part.part_related_by(_THEME_REL)
+        return parse_theme_xml(theme_part.blob)
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Theme extraction failed (%s); emitting empty theme", exc)
-    return colors, fonts
+        return {}, {}
 
 
 def _build_theme(prs: Presentation) -> Dict[str, Any]:
@@ -478,7 +497,6 @@ def _build_metadata(prs: Presentation, path: str) -> Dict[str, Any]:
         "slide_dimensions": _build_slide_dimensions(prs),
         "missing_fonts": [],  # initially empty; populated below in extract_schema
         "header_footer": _detect_header_footer(prs),  # US-2.1 AC1
-        "common_practices": {},  # populated in US-2.2
     }
 
 
@@ -875,20 +893,29 @@ def extract_schema(pptx_path: str) -> Dict[str, Any]:
 
     # Slide master (AC#2): parse explicitly. A master may legally have zero
     # shapes (e.g., a synthetic minimal deck).
+    # US-4.8 (MAJOR-4): tolerate missing master — emit a placeholder entry
+    # instead of raising. This makes extract_schema safe to call on a
+    # masterless file (Scenario A). The normal pipeline repairs the file
+    # BEFORE extraction, but defensive tolerance prevents crashes if the
+    # call order ever changes.
     try:
         masters = list(prs.slide_masters)
     except Exception:
         masters = []
     if not masters:
-        raise TemplateExtractionError("presentation has no slide master")
-    master = masters[0]
-    master_components = _extract_components(
-        master.shapes, slide_w_emu, slide_h_emu, counter, default_body
-    )
-    slide_master = {
-        "name": getattr(master, "name", "Slide Master") or "Slide Master",
-        "components": master_components,
-    }
+        slide_master = {
+            "name": "(no master)",
+            "components": [],
+        }
+    else:
+        master = masters[0]
+        master_components = _extract_components(
+            master.shapes, slide_w_emu, slide_h_emu, counter, default_body
+        )
+        slide_master = {
+            "name": getattr(master, "name", "Slide Master") or "Slide Master",
+            "components": master_components,
+        }
 
     # Layouts (AC#2): enumerate every layout under the master.
     slide_layouts: List[Dict[str, Any]] = []

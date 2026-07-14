@@ -36,10 +36,10 @@ output/*.pptx
 .opencode/skills/generate-slide-skill/scripts/assets/icons/
 
 # Template introspection contract cache (derived; mtime-managed, #43)
-.opencode/skills/generate-slide-skill/scripts/templates/*.contract.json
+template/*.contract.json
 
 # Template backup artifacts (local only, not source)
-.opencode/skills/generate-slide-skill/scripts/templates/*.original.pptx
+template/*.original.pptx
 
 # Local-only Chinese translations (not tracked by git)
 docs/user-stories/GAP-ANALYSIS.zh.md

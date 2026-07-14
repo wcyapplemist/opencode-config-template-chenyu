@@ -1,0 +1,18 @@
+%% PPTX Subagent System — Workflow Diagram (LINEAR / simplest view)
+%% Single vertical pipeline, no lanes — a new reader sees the flow in ~10 seconds.
+%% For responsibility lanes see workflow-diagram.mmd; for the full mechanism see
+%% workflow-diagram-detailed.mmd.
+%% Render at https://mermaid.live
+flowchart TD
+    A([User requests a deck + optional template]) --> B[Understand request + introspect template]
+    B --> C[Generate outline]
+    C --> D{Interactive?}
+    D -->|Primary agent| E[User confirms outline + density + sign-off]
+    D -->|Headless subagent| F[Auto self-critique + standard mode]
+    E --> G[Author JSON + webfetch chart data + validate]
+    F --> G
+    G --> H{Template serves every slide?}
+    H -->|Missing layout| I[Clone extended layout → template_new.pptx]
+    H -->|Yes| J[Fill template layouts → native .pptx]
+    I --> J
+    J --> K([Return .pptx path to user])

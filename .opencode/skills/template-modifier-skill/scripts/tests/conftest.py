@@ -21,4 +21,5 @@ for _p in (str(_MODIFIER_SCRIPTS), str(_COMMON_SCRIPTS), str(_FILLER_SCRIPTS)):
 
 @pytest.fixture
 def template_path():
-    return str(_FILLER_SCRIPTS / "templates" / "template.pptx")
+    # Template lives at the repo-root template/ (_SKILLS=.opencode/skills → repo root).
+    return str(_SKILLS.parent.parent / "template" / "default.pptx")

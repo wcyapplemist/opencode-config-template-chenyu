@@ -10,7 +10,7 @@ A system for generating and templating PowerPoint presentations, built on three 
 
 - A **content strategist** (the `pptx-subagent` agent) turns a plain-language request into
   structured slide content (a JSON array).
-- A **rendering engine** (`generate-slide-skill` / `ppt_builder.py`) fills a `template.pptx` Slide Master
+- A **rendering engine** (`generate-slide-skill` / `ppt_builder.py`) fills a Slide Master template (default `template/default.pptx`)
   with that content and writes a `.pptx` to `output/`.
 - A **template extractor** (`generate-template-skill` / `schema_extractor.py`) reads any `.pptx`,
   emits a normalized JSON schema, and returns a self-describing "templated" PPTX with that JSON embedded.
@@ -73,14 +73,14 @@ pptx-subagent-development/
 │       │       ├── density_mode.py            # Per-slide word-budget enforcement
 │       │       ├── text_fit.py                # US-4.2: reactive font auto-shrink estimator (pure)
 │       │       ├── outline_store.py           # Outline checkpoint artifact
-│       │       ├── templates/
-│       │       │   ├── template.pptx          # Slide Master with named layouts
-│       │       │   └── template.config.json   # Layout-name overrides
 │       │       ├── resolvers/                  # chart-data resolver
 │       │       ├── schemas/                    # Per-slide-type JSON schemas + template_schema.json (Epic 1 spec)
     │       │       └── tests/                      # pytest suite (408 tests; 112 for schema_extractor alone)
     │       ├── generate-template-skill/    # Template extraction + embed (US-3.1; wraps schema_extractor)
     │       └── template-modifier-skill/      # Template extension (Capability B)
+├── template/                              # Slide Master template (US-4.7: the bundled default)
+│   ├── default.pptx                       # Slide Master with named layouts
+│   └── default.config.json                # Layout-name overrides
 ├── docs/                                 # Activity diagrams, models, use-cases, workflows
 │   └── user-stories/                     # chenyu-user-stories.md + GAP-ANALYSIS.md (+ .zh.md)
 ├── PLANS/                                # Phased execution plans (PLAN-GIT-48/50/52/54/55/56/58/60/63/68.md)
@@ -177,7 +177,7 @@ PPTX" in natural language to invoke it.
 reads `ppt/template_schema.json` via a source-swap adapter (`contract_adapter`), preferring
 the embedded schema and falling back to the sidecar introspection contract for legacy
 templates. Generation keeps `add_slide(layout)` (chenyu's intent); the embedded JSON drives
-layout selection. The bundled `template.pptx` ships pre-templated.
+layout selection. The bundled `template/default.pptx` ships pre-templated.
 
 **US-4.6 — multi-aspect-ratio rendering.** `generate_ppt_from_data(..., target_size=...)`
 renders a deck at a different aspect ratio than the template's native size (presets `16:9`/
@@ -210,9 +210,9 @@ deck; the render report gains an additive `templating` field.
 
 **CLI:**
 ```bash
-python schema_extractor.py --input template.pptx --output schema.json        # extract only
-python schema_extractor.py --input template.pptx --output schema.json --embed # extract + embed into a .pptx copy
-python schema_extractor.py --input template.pptx --output schema.json --embed --summary # + print a human-readable summary
+python schema_extractor.py --input template/default.pptx --output schema.json        # extract only
+python schema_extractor.py --input template/default.pptx --output schema.json --embed # extract + embed into a .pptx copy
+python schema_extractor.py --input template/default.pptx --output schema.json --embed --summary # + print a human-readable summary
 ```
 
 The schema is validated by `validate_template_schema()` (hand-rolled, no

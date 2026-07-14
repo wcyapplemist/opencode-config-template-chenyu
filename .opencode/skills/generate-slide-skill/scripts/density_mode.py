@@ -3,10 +3,12 @@ density_mode.py
 ===============
 Deck-wide content density governance.
 
-Each density mode fixes a per-slide visible-text word budget. The agent picks
-a mode (with the user, at the outline-confirmation checkpoint) before authoring
-Stage 3 JSON; the schema validator then emits *warnings* on any slide whose
-visible text falls outside the budget.
+Each density mode fixes a per-slide visible-text word budget. The agent **defaults
+to ``standard`` for the first generation** (auto-downshifted to ``concise`` for
+small content areas; a user-stated density intent from the first message is
+honored) and may adjust the mode **post-generation** per the user's refinement
+choice (see ``pptx-subagent`` Stage 5); the schema validator then emits
+*warnings* on any slide whose visible text falls outside the budget.
 
 Severity model
 --------------

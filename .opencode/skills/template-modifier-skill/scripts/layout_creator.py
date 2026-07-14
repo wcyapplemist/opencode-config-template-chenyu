@@ -32,6 +32,7 @@ if str(_COMMON_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_COMMON_SCRIPTS))
 
 from pptx.parts.slide import SlideLayoutPart  # noqa: E402
+from errors import TemplateError  # noqa: E402 — US-4.8/MINOR-2: shared error from _common
 from layout_contract import _SLIDE_TYPE_FINGERPRINT, _resolve_layout_by_fingerprint  # noqa: E402
 from state_machine import (  # noqa: E402 (same package dir)
     ResolutionPlan,
@@ -117,7 +118,13 @@ def _clone_layout_into(
     Raises on any failure (caller rolls back by discarding the unsaved prs /
     deleting the output file). The base file is never written.
     """
-    master = prs.slide_masters[0]
+    masters = list(prs.slide_masters)
+    if not masters:
+        raise TemplateError(
+            "Cannot clone layout: presentation has no slide master. "
+            "A slide master is required to host cloned layouts."
+        )
+    master = masters[0]
     master_part = master.part
     master_element = master._element
     package = prs.part.package
@@ -168,7 +175,12 @@ def _verify_layouts(output_path: str, expected_names: List[str]) -> None:
     Raises ``RuntimeError`` if any expected layout is missing (triggers rollback).
     """
     reloaded = Presentation(output_path)
-    layouts = reloaded.slide_masters[0].slide_layouts
+    masters = list(reloaded.slide_masters)
+    if not masters:
+        raise TemplateError(
+            f"reload-verify failed: {output_path} has no slide master after save"
+        )
+    layouts = masters[0].slide_layouts
     for name in expected_names:
         found = layouts.get_by_name(name)
         if found is None:
