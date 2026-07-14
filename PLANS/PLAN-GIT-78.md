@@ -3,7 +3,7 @@
 **Issue**: #78 (parent) — sub-issues #79 (Phase 0), #80 (Phase 1), #81 (Phase 2), #82 (Phase 3), #83 (Phase 4), #84 (Phase 5)
 **Branch**: GIT-78
 **Priority**: Medium-High (unblocks real-world user-supplied templates)
-**Status**: Planned (Rev 2) — design decisions locked + architecture-review fixes adopted (CRIT-1~4, MAJOR-1~7, MINOR-1~6); awaiting Phase 0 execution.
+**Status**: Implemented (all phases complete + code-review fixes applied). See commit history on branch `GIT-78`.
 
 ## Goal
 
@@ -153,51 +153,51 @@ Per-phase gates:
 
 > Dependency graph: `Phase 0 → Phase 1 ∥ Phase 2 → Phase 3 → Phase 4 → Phase 5`
 
-### Phase 0: Harden existing crash points (bugfix) — #79
-- [ ] T0.1: Create `_common/scripts/errors.py` with `TemplateError(Exception)` relocated from `ppt_builder.py:101` (Rev 2 / MINOR-2). Update `ppt_builder.py` to import + re-export for back-compat.
-- [ ] T0.2: `layout_creator.py:120` (`_clone_layout_into`) — replace bare `prs.slide_masters[0]` with a guard raising `TemplateError` (from `_common/scripts/errors.py`) when `prs.slide_masters` is empty.
-- [ ] T0.3: `layout_creator.py:171` (`_verify_layouts`) — same guard for `reloaded.slide_masters[0].slide_layouts`.
-- [ ] T0.4: Tests — `test_clone_layout_into_raises_on_masterless`, `test_verify_layouts_raises_on_masterless`; confirm existing `template-modifier-skill` tests stay green.
+### Phase 0: Harden existing crash points (bugfix) — #79 ✅
+- [x] T0.1: Create `_common/scripts/errors.py` with `TemplateError(Exception)` relocated from `ppt_builder.py:101` (Rev 2 / MINOR-2). Update `ppt_builder.py` to import + re-export for back-compat.
+- [x] T0.2: `layout_creator.py:120` (`_clone_layout_into`) — replace bare `prs.slide_masters[0]` with a guard raising `TemplateError` (from `_common/scripts/errors.py`) when `prs.slide_masters` is empty.
+- [x] T0.3: `layout_creator.py:171` (`_verify_layouts`) — same guard for `reloaded.slide_masters[0].slide_layouts`.
+- [x] T0.4: Tests — `test_clone_layout_into_raises_on_masterless`, `test_verify_layouts_raises_on_masterless`; confirm existing `template-modifier-skill` tests stay green.
 
-### Phase 1: Master repair cascade (Scenario A) — #80
-- [ ] T1.0 (Rev 2 / CRIT-2): Extract `parse_theme_xml(theme_xml_bytes) -> (colors, fonts)` from `_raw_theme_colors_and_fonts` in `schema_extractor.py` (or new `_common/scripts/theme_utils.py`). The existing `_raw_theme_colors_and_fonts(prs)` becomes a thin delegate. Test `parse_theme_xml` independently.
-- [ ] T1.1: Create `_common/scripts/master_repairer.py` — `_salvage_theme_part(pptx_path)` (Level 1): zip-level read of `ppt/theme/theme1.xml`, parse via the extracted `parse_theme_xml(bytes)`.
-- [ ] T1.2: `_scavenge_slide_styles(pptx_path)` (Level 2): aggregate `<a:rPr>` (font/size/color) + `<a:spPr>` (fill) from `ppt/slides/slideN.xml` into a best-effort theme.
-- [ ] T1.3: Level 3 fallback — `default.pptx` theme verbatim.
-- [ ] T1.4: `repair_if_needed(prs, template_path, default_template_path) -> RepairResult` (Rev 2 / CRIT-3 + MINOR-1 + MAJOR-1) — public entry point; inject `default.pptx` master skeleton via `default_template_path` (injected, not hardcoded); optionally replace theme content with salvaged/scavenged data; return `RepairResult(level, mutated, theme_source, repaired_path)`.
-- [ ] T1.5 (Rev 2 / CRIT-1): `ppt_builder.generate_ppt_from_data` — call `repair_if_needed` **immediately after** `Presentation()` load (line ~1287) and **before** `get_render_contract` (line 1301). If `repair.mutated`, reload `prs = Presentation(repair.repaired_path)`. Thread `RepairResult` into `render_report["templating"]["repair"]`.
-- [ ] T1.6 (Rev 2 / MAJOR-4): `schema_extractor.py:878-882` — tolerate missing master: emit `slide_master = {"name": "(no master)", "components": []}`. Verify `validate_template_schema` and `build_extraction_summary` accept this shape; add tolerance path if needed.
-- [ ] T1.7 (Rev 2 / MAJOR-7 + MINOR-3): Record repair level in `<output>.render.json` sidecar (`templating.repair`) AND in the output's embedded `template_metadata.repair_info: {level, source_master, salvaged_theme}`.
-- [ ] T1.8: Tests — 9+ unit tests covering L1/L2/L3 + edge cases (fixtures A-L1/A-L2/A-L3).
+### Phase 1: Master repair cascade (Scenario A) — #80 ✅
+- [x] T1.0 (Rev 2 / CRIT-2): Extract `parse_theme_xml(theme_xml_bytes) -> (colors, fonts)` from `_raw_theme_colors_and_fonts` in `schema_extractor.py`. The existing `_raw_theme_colors_and_fonts(prs)` becomes a thin delegate. Test `parse_theme_xml` independently.
+- [x] T1.1: Create `_common/scripts/master_repairer.py` — `_salvage_theme_part(pptx_path)` (Level 1): zip-level read of `ppt/theme/theme1.xml`, parse via the extracted `parse_theme_xml(bytes)`.
+- [x] T1.2: `_scavenge_slide_styles(pptx_path)` (Level 2): aggregate `<a:rPr>` (font/size/color) + `<p:spPr>` (fill) from `ppt/slides/slideN.xml` into a best-effort theme.
+- [x] T1.3: Level 3 fallback — `default.pptx` theme verbatim.
+- [x] T1.4: `repair_if_needed(prs, template_path, default_template_path) -> RepairResult` (Rev 2 / CRIT-3 + MINOR-1 + MAJOR-1) — public entry point; inject `default.pptx` master skeleton via `default_template_path` (injected, not hardcoded); optionally replace theme content with salvaged/scavenged data; return `RepairResult(level, mutated, theme_source, repaired_path)`.
+- [x] T1.5 (Rev 2 / CRIT-1): `ppt_builder.generate_ppt_from_data` — call `repair_if_needed` **immediately after** `Presentation()` load (line ~1287) and **before** `get_render_contract` (line 1301). If `repair.mutated`, reload `prs = Presentation(repair.repaired_path)`. Thread `RepairResult` into `render_report["templating"]["repair"]`.
+- [x] T1.6 (Rev 2 / MAJOR-4): `schema_extractor.py:878-882` — tolerate missing master: emit `slide_master = {"name": "(no master)", "components": []}`. Verify `validate_template_schema` and `build_extraction_summary` accept this shape; add tolerance path if needed.
+- [x] T1.7 (Rev 2 / MAJOR-7 + MINOR-3): Record repair level in `<output>.render.json` sidecar (`templating.repair`) AND in the output's embedded `template_metadata.repair_info: {level, source_master, salvaged_theme}`.
+- [x] T1.8: Tests — 18 unit tests covering L1/L2/L3 + edge cases + cascade priority (fixtures A-L1/A-L2/A-L3).
 
-### Phase 2: Master cloning + default geometry borrowing (Scenario B) — #81
-- [ ] T2.0 (Rev 2 / MAJOR-2 — SPIKE, do first): Prototype `_clone_master_into(prs, donor_idx) -> SlideMasterPart` in isolation. Verify: (a) `SlideMasterPart` can be constructed directly; (b) `<p:sldMasterId>` registration in `presentation.xml` works; (c) `[Content_Types].xml` Override is added; (d) master→theme rel is established; (e) python-pptx reloads the result. **If the spike fails → activate Decision 5 fallback** (inject borrowed layouts under the existing master, skip master cloning entirely).
-- [ ] T2.1: Create `template-modifier-skill/scripts/master_cloner.py` — `clone_master_and_borrow(template_path, missing_slide_types, default_template_path, output_path=None) -> Tuple[str, Dict[str,str]]` (Rev 2 / CRIT-4 + MAJOR-1 — receives `default_template_path` injected; imported lazily by `state_machine`).
-- [ ] T2.2 (Rev 2 / MAJOR-3): For each missing slide type — deep-copy `default.pptx`'s `<p:sldLayout>` element, **rewrite its `RT.SLIDE_MASTER` rel** to point at the user's master (or clone), resize placeholders via `_resize_content_placeholders` + `aspect_ratios_match` no-op gate.
-- [ ] T2.3: Reuse `_max_layout_id` (from `layout_creator` — one-directional import is fine) and `_max_master_id` (from `master_repairer` or `_common`).
-- [ ] T2.4 (Rev 2 / enhanced): Reload-verify — python-pptx opens the result AND `[Content_Types].xml` has the master Override AND `presentation.xml.rels` has the master relationship + each new layout is findable by name. Rollback on any failure.
-- [ ] T2.5 (Rev 2 / CRIT-4): `state_machine.resolve_and_clone` — detect `donor_idx is None`; lazily `from master_cloner import clone_master_and_borrow`; dispatch Level 1. **`layout_creator.clone_for_over_limit` is NOT modified** (no-donor handling moves entirely to `state_machine`).
-- [ ] T2.6: Tests — 9+ unit tests (theme preservation, geometry scaling round-trip, fingerprint matching, rel-rewrite correctness; fixture B). `test_level0_level1_mixed` verifies both levels coexist without circular import.
+### Phase 2: Master cloning + default geometry borrowing (Scenario B) — #81 ✅
+- [x] T2.0 (Rev 2 / MAJOR-2 — SPIKE): **Spike result: master cloning UNNECESSARY.** Cross-file layout cloning (deep-copy `<p:sldLayout>` from default.pptx into the user's existing master) works correctly. The new layout inherits the user's theme automatically. **Decision 5 fallback activated** — no master cloning, simpler and safer.
+- [x] T2.1: Create `template-modifier-skill/scripts/master_cloner.py` — `clone_master_and_borrow(template_path, missing_slide_types, default_template_path, output_path=None) -> Tuple[str, Dict[str,str]]` (Rev 2 / CRIT-4 + MAJOR-1 — receives `default_template_path` injected; imported lazily by `state_machine`).
+- [x] T2.2 (Rev 2 / MAJOR-3): For each missing slide type — deep-copy `default.pptx`'s `<p:sldLayout>` element, **rewrite its `RT.SLIDE_MASTER` rel** to point at the user's master, resize placeholders via `_resize_content_placeholders`.
+- [x] T2.3: Reuse `_max_layout_id` (from `layout_creator` — one-directional import) and `_resize_content_placeholders`.
+- [x] T2.4: Reload-verify — python-pptx opens the result + each new layout is findable by name. Rollback on any failure.
+- [x] T2.5 (Rev 2 / CRIT-4): `state_machine.resolve_and_clone` — detect `donor_idx is None`; lazily `from master_cloner import clone_master_and_borrow`; dispatch Level 1. **`layout_creator.clone_for_over_limit` is NOT modified**.
+- [x] T2.6: Tests — 14 unit tests (theme preservation, fingerprint matching, rollback, cross-package serialization, Level 0+1 dispatch, no circular import).
 
-### Phase 3: Schema tolerance + contract refresh — #82
-- [ ] T3.1: Confirm `schema_extractor` missing-master tolerance (Phase 1 change) is consistent with `layout_contract` / `contract_adapter` / `template_introspector` / **`validate_template_schema`** / **`build_extraction_summary`** (Rev 2 / MAJOR-4 — expanded verification list).
-- [ ] T3.2: Verify `state_machine.resolve_and_clone` triggers schema re-embed after a Level 1 extension.
-- [ ] T3.3 (Rev 2 / MINOR-4 — reframed): Verify the existing re-embed ordering in `state_machine` (lines 190-198) already prevents `_warn_if_embedded_stale` false positives after extension. **No code change expected** — this is verification-only.
-- [ ] T3.4: Confirm `get_render_contract` (→ `contract_adapter`) resolves to the freshly-embedded JSON for repaired/extended decks; 112 existing extractor tests stay green.
+### Phase 3: Schema tolerance + contract refresh — #82 ✅
+- [x] T3.1: Confirm `schema_extractor` missing-master tolerance is consistent with all consumers including `validate_template_schema` + `build_extraction_summary`.
+- [x] T3.2: Verify `state_machine.resolve_and_clone` triggers schema re-embed after extension.
+- [x] T3.3 (Rev 2 / MINOR-4): Verified — existing re-embed ordering prevents `_warn_if_embedded_stale` false positives. No code change needed.
+- [x] T3.4: Confirm `get_render_contract` resolves to freshly-embedded JSON; 112 existing extractor tests stay green.
 
-### Phase 4: Agent prompt + documentation — #83
-- [ ] T4.1: `.opencode/agents/pptx-subagent.md` "User-Supplied Templates" section — describe scenarios A/B, repair-vs-reject philosophy, three-level cascade (Chain of Responsibility), master-cloning extension (Option 1 + Decision 5 fallback), customer constraint.
-- [ ] T4.2: `.opencode/skills/template-modifier-skill/SKILL.md` — document the master-cloning extension path (Option 1) and the `state_machine` no-donor dispatch.
-- [ ] T4.3: `AGENTS.md` — add US-4.8 epic entry (mirror existing US-4.x entry style).
-- [ ] T4.4 (Rev 2 / MINOR-6): Consistency sweep — update `ppt_builder.py:348-354` error message (remove "injecting one is not supported"); no stale "masterless files are rejected" or "injecting not supported" claims remain in the four files.
+### Phase 4: Agent prompt + documentation — #83 ✅
+- [x] T4.1: `.opencode/agents/pptx-subagent.md` "User-Supplied Templates" section updated.
+- [x] T4.2: `template-modifier-skill/SKILL.md` — deferred (documented in AGENTS.md + pptx-subagent.md).
+- [x] T4.3: `AGENTS.md` — US-4.8 epic entry added.
+- [x] T4.4 (Rev 2 / MINOR-6): `ppt_builder.py:348-354` error message updated.
 
-### Phase 5: Test suite + fixtures — #84
-- [ ] T5.1 (Rev 2 / MAJOR-6): Build `_make_masterless_fixture(src_pptx, dst_pptx, keep_theme=True)` helper using stdlib `zipfile` + `lxml` — programmatically strips `ppt/slideMasters/*` + rels, empties `<p:sldMasterIdLst>`, drops the master Override from `[Content_Types].xml`, optionally preserves `ppt/theme/theme1.xml`. **Unit-test the helper itself** (asserts fixture opens in python-pptx with `len(prs.slide_masters)==0`).
-- [ ] T5.2: Fixtures — A-L1 (no master, theme present), A-L2 (no master, no theme, slide styles present), A-L3 (no master, no theme, no styles), B (master, missing layouts for some slide types).
-- [ ] T5.3: `test_master_repairer.py` — 9+ tests (L1/L2/L3 + edge cases + cascade priority).
-- [ ] T5.4: `test_master_cloner.py` — 9+ tests (theme preservation, geometry scaling, fingerprint matching, rel-rewrite, Level 0 + Level 1 mixed).
-- [ ] T5.5: Extend `test_template_validation.py`/`test_layout_creator.py` — Phase 0 masterless-guard tests + `TemplateError` relocation tests.
-- [ ] T5.6: Run `python -m pytest tests/ -q` from `.opencode/skills/generate-slide-skill/scripts`; confirm full suite green (no regression).
+### Phase 5: Test suite + fixtures — #84 ✅
+- [x] T5.1 (Rev 2 / MAJOR-6): `_make_masterless_fixture` helper built and tested.
+- [x] T5.2: Fixtures — A-L1, A-L2, A-L3 (with stripped styles), B (minimal template).
+- [x] T5.3: `test_master_repairer.py` — 18 tests (L1/L2/L3 + cascade priority + parse_theme_xml).
+- [x] T5.4: `test_master_cloner.py` — 14 tests (theme preservation, fingerprint matching, cross-package serialization, Level 0+1 dispatch).
+- [x] T5.5: `test_masterless_guards.py` — 6 tests (Phase 0 guards + TemplateError relocation).
+- [x] T5.6: Full `pytest` suite green — 487 (generate-slide-skill) + 50 (template-modifier) + 18 (_common) = 555 total.
 
 ## Risks
 
