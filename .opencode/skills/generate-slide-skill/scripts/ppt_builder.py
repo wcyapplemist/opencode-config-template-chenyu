@@ -1285,7 +1285,7 @@ def generate_ppt_from_data(
             f"Could not open template as PPTX ({exc.__class__.__name__}: {exc}): "
             f"{template}"
         ) from exc
-    logger.info("Template: %d slides, %d layouts", len(prs.slides), len(prs.slide_layouts))
+    logger.info("Template: %d slides", len(prs.slides))
 
     # US-4.8 (CRIT-1): if the template has no slide master (Scenario A), repair
     # it BEFORE get_render_contract so the contract describes the repaired prs.
@@ -1316,6 +1316,8 @@ def generate_ppt_from_data(
                 "Template repair failed (%s); continuing with original template "
                 "(_validate_template will raise if the master is still absent)", exc
             )
+
+    logger.info("Template loaded: %d layouts", len(prs.slide_layouts))
 
     # #43 (P0): auto-introspect the template into a JSON contract before render.
     # US-4.1: prefer the embedded JSON (via the adapter); fall back to the
