@@ -205,17 +205,17 @@ def resolve_and_clone(
 
     # --- Level 1: borrow from default.pptx (US-4.8 NEW) ---
     if level1_slide_types and active:
-        # Determine default.pptx path (repo root / template / default.pptx).
-        # The repo root is 4 levels up from _common/scripts.
-        _repo_root = Path(template_path).resolve().parent
+        # Resolve default.pptx relative to THIS file's location (not the
+        # template's directory — that would be the user's dir, not the repo).
+        # state_machine.py → scripts → template-modifier-skill → skills → .opencode → repo root
+        _repo_root = Path(__file__).resolve().parents[4]
         default_path = str(_repo_root / "template" / "default.pptx")
         # If template_path IS the default, borrowing is meaningless.
         if os.path.normcase(os.path.abspath(template_path)) != os.path.normcase(os.path.abspath(default_path)):
             try:
                 from master_cloner import clone_master_and_borrow  # CRIT-4: lazy import
-                base_for_borrow = active if active != template_path else template_path
                 extended, l1_overrides = clone_master_and_borrow(
-                    base_for_borrow,
+                    active,
                     list(level1_slide_types),
                     default_path,
                 )

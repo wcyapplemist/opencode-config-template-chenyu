@@ -27,7 +27,7 @@ import shutil
 import tempfile
 import zipfile
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
@@ -111,7 +111,7 @@ def repair_if_needed(
 
     # Build the derived file: copy default.pptx, optionally replace theme.
     repaired_path = _build_repaired_file(
-        template_path, default_template_path, theme_bytes
+        template_path, default_template_path, theme_bytes, level
     )
 
     return RepairResult(
@@ -154,11 +154,7 @@ class _ScavengedTheme:
 
     major_font: Optional[str] = None  # title-tier typeface
     minor_font: Optional[str] = None  # body-tier typeface
-    colors: List[str] = None  # all srgbClr hex values (for frequency counting)
-
-    def __post_init__(self):
-        if self.colors is None:
-            self.colors = []
+    colors: List[str] = field(default_factory=list)  # all srgbClr hex values
 
 
 def _scavenge_slide_styles(
@@ -222,13 +218,15 @@ def _aggregate_slide_styles(pptx_path: str) -> _ScavengedTheme:
                         pass
                 if typeface:
                     typeface_by_tier[tier][typeface] += 1
-                # Collect srgbClr children.
+                # Collect srgbClr children (text-run colors).
                 for clr in rpr.iter(f"{{{_NS_A}}}srgbClr"):
                     val = clr.get("val", "").upper()
                     if val and len(val) == 6:
                         all_colors.append(val)
-            # Walk all <p:spPr> fill colors.
-            for spPr in root.iter(f"{{{_NS_A}}}solidFill"):
+            # Walk shape-level fill colors ONLY (avoid double-counting rPr colors).
+            # Use p:spPr namespace to target shape properties, not text runs.
+            _NS_P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+            for spPr in root.iter(f"{{{_NS_P}}}spPr"):
                 for clr in spPr.iter(f"{{{_NS_A}}}srgbClr"):
                     val = clr.get("val", "").upper()
                     if val and len(val) == 6:
@@ -251,6 +249,11 @@ def _build_synthetic_theme(
 
     Keeps the base theme's fmtScheme and other elements intact (structural
     validity), only replacing the color palette and font names.
+
+    **Fidelity ceiling (m-7):** only accent1–accent6 are overridden from
+    scavenged colors. The background/text roles (dk1/lt1/dk2/lt2) keep
+    default.pptx's values — a distinctive user background is NOT recovered.
+    This is the accepted best-effort limit of Level 2.
     """
     root = etree.parse(BytesIO(base_theme_bytes)).getroot()
     elements = root.find(f"{{{_NS_A}}}themeElements")
@@ -301,6 +304,7 @@ def _build_repaired_file(
     template_path: str,
     default_template_path: str,
     theme_bytes: Optional[bytes],
+    level: str = "L3",
 ) -> str:
     """Copy ``default.pptx`` to a derived file; optionally replace the theme.
 
@@ -338,5 +342,5 @@ def _build_repaired_file(
             os.remove(tmp_name)
         raise
 
-    logger.info("Repaired template: %s (level=%s)", repaired_path, "L1/L2" if theme_bytes else "L3")
+    logger.info("Repaired template: %s (level=%s)", repaired_path, level)
     return str(repaired_path)

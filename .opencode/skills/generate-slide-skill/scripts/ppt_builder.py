@@ -1297,18 +1297,24 @@ def generate_ppt_from_data(
     except Exception:
         masters_check = []
     if not masters_check:
-        from master_repairer import repair_if_needed
-        repair = repair_if_needed(prs, str(template), str(_TEMPLATE_FILE))
-        if repair.mutated and repair.repaired_path:
-            template = Path(repair.repaired_path)
-            prs = Presentation(str(template))
-            repair_report = {
-                "level": repair.level,
-                "theme_source": repair.theme_source,
-            }
-            logger.info(
-                "Template repaired (level=%s, theme=%s): %s",
-                repair.level, repair.theme_source, template,
+        try:
+            from master_repairer import repair_if_needed
+            repair = repair_if_needed(prs, str(template), str(_TEMPLATE_FILE))
+            if repair.mutated and repair.repaired_path:
+                template = Path(repair.repaired_path)
+                prs = Presentation(str(template))
+                repair_report = {
+                    "level": repair.level,
+                    "theme_source": repair.theme_source,
+                }
+                logger.info(
+                    "Template repaired (level=%s, theme=%s): %s",
+                    repair.level, repair.theme_source, template,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Template repair failed (%s); continuing with original template "
+                "(_validate_template will raise if the master is still absent)", exc
             )
 
     # #43 (P0): auto-introspect the template into a JSON contract before render.

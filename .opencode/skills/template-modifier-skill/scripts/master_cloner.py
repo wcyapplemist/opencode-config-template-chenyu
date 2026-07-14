@@ -31,11 +31,11 @@ if str(_COMMON_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_COMMON_SCRIPTS))
 
 from pptx.parts.slide import SlideLayoutPart  # noqa: E402
+from pptx.oxml.ns import qn  # noqa: E402
 from layout_contract import (  # noqa: E402
     _resolve_layout_by_fingerprint,
     get_render_contract,
 )
-from geometry import aspect_ratios_match  # noqa: E402
 from state_machine import template_new_path_for  # noqa: E402 (same package dir)
 from layout_creator import _max_layout_id, _resize_content_placeholders  # noqa: E402
 
@@ -49,6 +49,11 @@ def clone_master_and_borrow(
     output_path: Optional[str] = None,
 ) -> Tuple[str, Dict[str, str]]:
     """Borrow layouts from ``default.pptx`` for each missing slide_type.
+
+    .. deprecated-in-name::
+        The function name retains "clone_master" for historical continuity with
+        the plan, but NO master is cloned (the T2.0 spike found it unnecessary).
+        Only layouts are borrowed and injected under the user's existing master.
 
     For each slide_type that has no donor in the user's template, deep-copy the
     matching layout from ``default_template_path`` into the user's existing
@@ -81,12 +86,9 @@ def clone_master_and_borrow(
     default_prs = Presentation(default_template_path)
     default_contract = get_render_contract(default_template_path)
 
-    # User slide dimensions for placeholder scaling.
+    # User slide dimensions for placeholder resize.
     user_w_emu = int(prs.slide_width)
     user_h_emu = int(prs.slide_height)
-    default_w_emu = int(default_prs.slide_width)
-    default_h_emu = int(default_prs.slide_height)
-    same_ratio = aspect_ratios_match(default_w_emu, default_h_emu, user_w_emu, user_h_emu)
 
     overrides: Dict[str, str] = {}
 
@@ -114,22 +116,13 @@ def clone_master_and_borrow(
             new_element = copy.deepcopy(donor_part._element)
 
             # Rename the cloned layout.
-            cSld = new_element.find("{http://schemas.openxmlformats.org/presentationml/2006/main}cSld")
+            cSld = new_element.find(qn("p:cSld"))
             if cSld is not None:
                 cSld.set("name", new_name)
 
             # Resize content placeholders to fill the user's slide dimensions.
-            if same_ratio:
-                n = _resize_content_placeholders(new_element, user_w_emu, user_h_emu)
-                logger.info("Resized %d placeholder(s) for '%s'", n, new_name)
-            else:
-                # Different aspect ratio — resize anyway (grows toward edges).
-                n = _resize_content_placeholders(new_element, user_w_emu, user_h_emu)
-                logger.info(
-                    "Aspect ratio mismatch (default %dx%d vs user %dx%d); "
-                    "resized %d placeholder(s) without proportional scaling",
-                    default_w_emu, default_h_emu, user_w_emu, user_h_emu, n,
-                )
+            n = _resize_content_placeholders(new_element, user_w_emu, user_h_emu)
+            logger.info("Resized %d placeholder(s) for '%s'", n, new_name)
 
             # Create the new SlideLayoutPart in the user's package.
             new_partname = package.next_partname("/ppt/slideLayouts/slideLayout%d.xml")

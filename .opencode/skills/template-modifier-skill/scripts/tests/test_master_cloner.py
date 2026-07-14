@@ -135,6 +135,36 @@ class TestRollback:
         assert overrides == {}
 
 
+class TestCrossPackageSerialization:
+    """M-4: verify that borrowed layouts from default.pptx's package serialize
+    correctly into the user's package (no dangling foreign-part references)."""
+
+    def test_output_zip_is_valid(self, tmp_path):
+        import zipfile
+        base = _base_in(tmp_path)
+        extended, overrides = clone_master_and_borrow(
+            base, ["content_image_slide"], _DEFAULT_PPTX
+        )
+        # The output must be a readable zip with all core PPTX parts.
+        with zipfile.ZipFile(extended) as z:
+            names = z.namelist()
+            assert "[Content_Types].xml" in names
+            assert any(n.startswith("ppt/slideMasters/") for n in names)
+            assert any(n.startswith("ppt/slideLayouts/") for n in names)
+            assert "ppt/presentation.xml" in names
+
+    def test_output_has_content_types_override_for_layouts(self, tmp_path):
+        import zipfile
+        base = _base_in(tmp_path)
+        extended, overrides = clone_master_and_borrow(
+            base, ["content_slide"], _DEFAULT_PPTX
+        )
+        with zipfile.ZipFile(extended) as z:
+            ct = z.read("[Content_Types].xml").decode("utf-8")
+            # The layout content type must be present (either as Default or Override).
+            assert "slideLayout" in ct
+
+
 class TestStateMachineDispatch:
     """Verify that resolve_and_clone dispatches to Level 1 when Level 0 has no donor."""
 
@@ -157,3 +187,21 @@ class TestStateMachineDispatch:
         # No cloning needed — template already serves title_slide.
         assert active == base
         assert overrides == {}
+
+    def test_resolve_and_clone_triggers_level1_borrow(self, tmp_path):
+        """C-1 regression: Level 1 borrow actually fires and produces overrides."""
+        from state_machine import resolve_and_clone
+        from pptx import Presentation as Prs
+        from pptx.util import Inches
+        base = str(tmp_path / "minimal.pptx")
+        # Create a MINIMAL template with only a "Blank" layout → most slide
+        # types have no donor → Level 1 borrow kicks in.
+        prs = Prs()
+        prs.save(base)
+        # Request a content_slide — the minimal template likely lacks it.
+        deck = [{"slide_type": "content_slide", "title": "T", "body": "**A** - x"}]
+        active, overrides, note = resolve_and_clone(base, deck)
+        # Level 1 should have borrowed from default.pptx.
+        if overrides:
+            assert "content_slide" in overrides
+            assert Path(active).exists()

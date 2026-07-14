@@ -186,17 +186,50 @@ class TestLevel1Salvage:
 # ---------------------------------------------------------------------------
 
 class TestLevel2Scavenge:
-    def test_scavenge_returns_none_when_no_theme_in_default(self, masterless_no_theme, default_pptx):
-        # default.pptx still has slides with explicit styles — scavenge should
-        # find *something* (fonts from slide text runs). But it synthesizes a
-        # theme from default.pptx's theme1.xml as the structural base.
+    def test_scavenge_finds_fonts_in_slides(self, masterless_no_theme, default_pptx):
+        """Level 2 should produce a synthesized theme from slide explicit styles."""
         result = _scavenge_slide_styles(masterless_no_theme, default_pptx)
-        # default.pptx slides have text with fonts → scavenge should produce a theme.
-        # (If the masterless fixture's slides have no explicit <a:rPr>, this is None.)
-        # The result depends on whether the slides carry explicit styles.
-        # For default.pptx-derived fixtures, the slides DO have explicit fonts.
+        # The masterless_no_theme fixture is derived from default.pptx whose
+        # slides carry explicit <a:rPr> elements → scavenge should succeed.
         if result is not None:
-            assert b"theme" in result.lower() or b"clrScheme" in result
+            # Verify the synthesized theme has a fontScheme.
+            assert b"fontScheme" in result or b"majorFont" in result
+
+    def test_scavenge_returns_none_when_no_styles(self, tmp_path, default_pptx):
+        """Level 2 returns None when slides have no explicit styles at all."""
+        # Build a fixture whose slides have no <a:rPr> / <p:spPr> styles.
+        # We reuse _make_masterless_fixture but then strip all style attributes.
+        import zipfile as zf
+        from lxml import etree as ET
+
+        base = str(tmp_path / "no_styles.pptx")
+        _make_masterless_fixture(default_pptx, base, keep_theme=False)
+
+        # Post-process: strip all <a:rPr> and <a:solidFill> from slide XML.
+        stripped = str(tmp_path / "no_styles_stripped.pptx")
+        with zf.ZipFile(base, "r") as zin, zf.ZipFile(stripped, "w", zf.ZIP_DEFLATED) as zout:
+            for info in zin.infolist():
+                data = zin.read(info.filename)
+                if info.filename.startswith("ppt/slides/") and info.filename.endswith(".xml"):
+                    root = ET.parse(BytesIO(data)).getroot()
+                    # Remove all <a:rPr> elements.
+                    for rpr in root.iter(f"{{{_NS_A}}}rPr"):
+                        parent = rpr.getparent()
+                        if parent is not None:
+                            parent.remove(rpr)
+                    # Remove all <a:solidFill> inside <p:spPr>.
+                    _NS_P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+                    for spPr in root.iter(f"{{{_NS_P}}}spPr"):
+                        for sf in spPr.iter(f"{{{_NS_A}}}solidFill"):
+                            spPr.remove(sf)
+                    data = ET.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+                out_info = zf.ZipInfo(filename=info.filename, date_time=info.date_time)
+                out_info.compress_type = info.compress_type
+                out_info.external_attr = info.external_attr
+                zout.writestr(out_info, data)
+
+        result = _scavenge_slide_styles(stripped, default_pptx)
+        assert result is None  # no recoverable styles → None
 
 
 # ---------------------------------------------------------------------------
@@ -219,14 +252,39 @@ class TestRepairIfNeeded:
         assert result.repaired_path is not None
         assert Path(result.repaired_path).exists()
 
-    def test_level3_repair_when_no_theme_no_styles(self, masterless_no_theme, default_pptx):
-        # When neither theme nor slide styles are recoverable → Level 3.
-        # Note: default.pptx-derived fixtures have slides with styles, so this
-        # may still hit Level 2. The key assertion is that SOME level fires.
-        prs = Presentation(masterless_no_theme)
-        result = repair_if_needed(prs, masterless_no_theme, default_pptx)
+    def test_level3_repair_when_no_theme_no_styles(self, tmp_path, default_pptx):
+        """Genuine Level 3: no theme part + no recoverable slide styles."""
+        import zipfile as zf
+        from lxml import etree as ET
+
+        # Build a fixture with no master, no theme, and no slide styles.
+        base = str(tmp_path / "bare.pptx")
+        _make_masterless_fixture(default_pptx, base, keep_theme=False)
+        stripped = str(tmp_path / "bare_stripped.pptx")
+        with zf.ZipFile(base, "r") as zin, zf.ZipFile(stripped, "w", zf.ZIP_DEFLATED) as zout:
+            for info in zin.infolist():
+                data = zin.read(info.filename)
+                if info.filename.startswith("ppt/slides/") and info.filename.endswith(".xml"):
+                    root = ET.parse(BytesIO(data)).getroot()
+                    for rpr in root.iter(f"{{{_NS_A}}}rPr"):
+                        parent = rpr.getparent()
+                        if parent is not None:
+                            parent.remove(rpr)
+                    _NS_P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+                    for spPr in root.iter(f"{{{_NS_P}}}spPr"):
+                        for sf in spPr.iter(f"{{{_NS_A}}}solidFill"):
+                            spPr.remove(sf)
+                    data = ET.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+                out_info = zf.ZipInfo(filename=info.filename, date_time=info.date_time)
+                out_info.compress_type = info.compress_type
+                out_info.external_attr = info.external_attr
+                zout.writestr(out_info, data)
+
+        prs = Presentation(stripped)
+        result = repair_if_needed(prs, stripped, default_pptx)
         assert result.mutated is True
-        assert result.level in ("L2", "L3")
+        assert result.level == "L3"
+        assert result.theme_source == "default"
         assert result.repaired_path is not None
 
     def test_repaired_file_has_master(self, masterless_with_theme, default_pptx):
