@@ -49,6 +49,7 @@ from resolvers import resolve_slide_data_list
 from schema_extractor import (
     embed_schema,
     extract_schema,
+    parse_theme_xml,
     read_embedded_schema,
 )
 # PLAN-GIT-72 (Phase 2): the pure contract / layout-matching layer now lives in
@@ -210,6 +211,47 @@ def _chart_bbox(slide: Any) -> Tuple[int, int, int, int]:
     cx = sw - 2 * margin_x
     cy = sh - y - bottom_margin
     return margin_x, y, cx, cy
+
+
+def _hex_to_rgb(hex_str: str) -> RGBColor:
+    """Convert a '#RRGGBB' or 'RRGGBB' string to RGBColor."""
+    h = hex_str.lstrip("#")
+    return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def _extract_chart_theme(slide: Any) -> Optional[Dict[str, Any]]:
+    """Extract accent/dk/lt colors + minor font from the live prs theme.
+
+    Returns a dict with keys ``series`` (list of RGBColor), ``gridline``,
+    ``axis_text``, ``font`` — or ``None`` on any failure (caller falls back
+    to the hardcoded ``_CHART_*`` constants).
+    """
+    try:
+        from pptx.opc.constants import RELATIONSHIP_TYPE as RT
+        prs = slide.part.package.presentation_part.presentation
+        master = prs.slide_masters[0]
+        theme_part = master.part.part_related_by(RT.THEME)
+        colors, fonts = parse_theme_xml(theme_part.blob)
+
+        accent_roles = ("accent1", "accent2", "accent3", "accent4", "accent5", "accent6")
+        series = []
+        for role in accent_roles:
+            hex_val = colors.get(role, "")
+            if hex_val:
+                series.append(_hex_to_rgb(hex_val))
+        # Pad with dk2 if fewer than 3 accents were found.
+        if len(series) < 3:
+            dk2 = colors.get("dk2", "44546A")
+            series.append(_hex_to_rgb(dk2))
+
+        return {
+            "series": series,
+            "gridline": _hex_to_rgb(colors.get("lt2", "E7E6E6")),
+            "axis_text": _hex_to_rgb(colors.get("dk2", "44546A")),
+            "font": fonts.get("minor_latin") or "Calibri",
+        }
+    except Exception:
+        return None
 
 
 # --- Image placement (#18) -------------------------------------------------
@@ -685,18 +727,19 @@ def _set_body_text(
         return None
 
 
-def _apply_series_colors(chart: Any, chart_type_key: str) -> None:
+def _apply_series_colors(chart: Any, chart_type_key: str, colors: Optional[List[RGBColor]] = None) -> None:
+    palette = colors if colors else _CHART_COLORS
     is_pie = chart_type_key in _PIE_CHART_TYPES
     try:
         plot = chart.plots[0]
         if is_pie:
             for idx, point in enumerate(plot.series[0].points):
-                color = _CHART_COLORS[idx % len(_CHART_COLORS)]
+                color = palette[idx % len(palette)]
                 point.format.fill.solid()
                 point.format.fill.fore_color.rgb = color
         else:
             for idx, series in enumerate(plot.series):
-                color = _CHART_COLORS[idx % len(_CHART_COLORS)]
+                color = palette[idx % len(palette)]
                 series.format.fill.solid()
                 series.format.fill.fore_color.rgb = color
                 if chart_type_key.startswith("line"):
@@ -746,8 +789,16 @@ def _add_chart_to_slide(slide: Any, slide_data: Dict[str, Any]) -> bool:
     chart = graphic_frame.chart
     options = slide_data.get("chart_options", {})
 
+    # Extract theme-derived chart styling (falls back to constants on failure).
+    theme = _extract_chart_theme(slide)
+    font_name = theme["font"] if theme else _CHART_FONT_NAME
+    text_color = theme["axis_text"] if theme else _CHART_TEXT_COLOR
+    gridline_color = theme["gridline"] if theme else _CHART_GRIDLINE_COLOR
+    axis_color = theme["axis_text"] if theme else _CHART_AXIS_COLOR
+    series_palette = theme["series"] if theme else None
+
     chart.has_title = False
-    chart.font.name = _CHART_FONT_NAME
+    chart.font.name = font_name
     chart.font.size = Pt(11)
 
     legend_pos_key = options.get("legend_position", "bottom")
@@ -760,8 +811,8 @@ def _add_chart_to_slide(slide: Any, slide_data: Dict[str, Any]) -> bool:
         )
         chart.legend.include_in_layout = False
         chart.legend.font.size = Pt(11)
-        chart.legend.font.name = _CHART_FONT_NAME
-        chart.legend.font.color.rgb = _CHART_TEXT_COLOR
+        chart.legend.font.name = font_name
+        chart.legend.font.color.rgb = text_color
 
     is_pie = chart_type_key in _PIE_CHART_TYPES
     is_bar = chart_type_key in _BAR_CHART_TYPES
@@ -773,8 +824,8 @@ def _add_chart_to_slide(slide: Any, slide_data: Dict[str, Any]) -> bool:
         if show_labels:
             labels = plot.data_labels
             labels.font.size = Pt(10)
-            labels.font.name = _CHART_FONT_NAME
-            labels.font.color.rgb = _CHART_TEXT_COLOR
+            labels.font.name = font_name
+            labels.font.color.rgb = text_color
             if is_pie:
                 labels.show_percentage = True
                 labels.show_value = False
@@ -793,12 +844,12 @@ def _add_chart_to_slide(slide: Any, slide_data: Dict[str, Any]) -> bool:
         try:
             val_axis = chart.value_axis
             val_axis.has_major_gridlines = True
-            val_axis.major_gridlines.format.line.color.rgb = _CHART_GRIDLINE_COLOR
+            val_axis.major_gridlines.format.line.color.rgb = gridline_color
             val_axis.major_gridlines.format.line.width = Pt(0.75)
             val_axis.tick_labels.font.size = Pt(10)
-            val_axis.tick_labels.font.name = _CHART_FONT_NAME
-            val_axis.tick_labels.font.color.rgb = _CHART_AXIS_COLOR
-            val_axis.format.line.color.rgb = _CHART_AXIS_COLOR
+            val_axis.tick_labels.font.name = font_name
+            val_axis.tick_labels.font.color.rgb = axis_color
+            val_axis.format.line.color.rgb = axis_color
             val_axis.tick_labels.number_format = options.get("y_axis_format", "#,##0.0")
             if options.get("y_axis_min") is not None:
                 val_axis.minimum_scale = options["y_axis_min"]
@@ -810,24 +861,24 @@ def _add_chart_to_slide(slide: Any, slide_data: Dict[str, Any]) -> bool:
                 val_axis.has_title = True
                 val_axis.axis_title.text_frame.text = options["y_axis_title"]
                 val_axis.axis_title.text_frame.paragraphs[0].font.size = Pt(10)
-                val_axis.axis_title.text_frame.paragraphs[0].font.name = _CHART_FONT_NAME
-                val_axis.axis_title.text_frame.paragraphs[0].font.color.rgb = _CHART_AXIS_COLOR
+                val_axis.axis_title.text_frame.paragraphs[0].font.name = font_name
+                val_axis.axis_title.text_frame.paragraphs[0].font.color.rgb = axis_color
 
             cat_axis = chart.category_axis
             cat_axis.tick_labels.font.size = Pt(10)
-            cat_axis.tick_labels.font.name = _CHART_FONT_NAME
-            cat_axis.tick_labels.font.color.rgb = _CHART_AXIS_COLOR
-            cat_axis.format.line.color.rgb = _CHART_AXIS_COLOR
+            cat_axis.tick_labels.font.name = font_name
+            cat_axis.tick_labels.font.color.rgb = axis_color
+            cat_axis.format.line.color.rgb = axis_color
             if options.get("x_axis_title"):
                 cat_axis.has_title = True
                 cat_axis.axis_title.text_frame.text = options["x_axis_title"]
                 cat_axis.axis_title.text_frame.paragraphs[0].font.size = Pt(10)
-                cat_axis.axis_title.text_frame.paragraphs[0].font.name = _CHART_FONT_NAME
-                cat_axis.axis_title.text_frame.paragraphs[0].font.color.rgb = _CHART_AXIS_COLOR
+                cat_axis.axis_title.text_frame.paragraphs[0].font.name = font_name
+                cat_axis.axis_title.text_frame.paragraphs[0].font.color.rgb = axis_color
         except Exception as exc:
             logger.warning("Failed to set axis options: %s", exc)
 
-    _apply_series_colors(chart, chart_type_key)
+    _apply_series_colors(chart, chart_type_key, colors=series_palette)
 
     logger.info(
         "  Chart: type=%s, categories=%d, series=%d",
