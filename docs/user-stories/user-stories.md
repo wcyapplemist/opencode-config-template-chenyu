@@ -2,7 +2,7 @@
 
 > **Project:** opencode.ai / pptx-subagent
 > **Date:** June 2025
-> **Scope:** 4 Epics, 20 Stories
+> **Scope:** 4 Epics, 21 Stories
 > **Author:** Founder (OpenCode User)
 > **Source:** `chenyu-user requirement.html` (`.md` export) — pure requirements, stripped of HTML/CSS/JS boilerplate.
 
@@ -346,6 +346,33 @@ When the target slide dimensions differ from the template's native size, the sli
 - [x] Minor issues (missing fonts, no header/footer, small content area, no embedded schema) remain non-fatal warnings; generation proceeds.
 
 **Tags:** template, validation, error-handling
+
+---
+
+### US-4.8 [Epic 2] — Invalid / Incomplete Template Repair & Extension `[Must Have]`
+
+**As a** OpenCode user,
+**I want** the engine to repair user-supplied templates that lack a slide master (Scenario A) or lack layouts for needed slide types (Scenario B), preserving the user's existing styling wherever possible,
+**so that** I can generate slides from real-world templates (Keynote export, Google Slides export, damaged files) instead of getting a fatal error.
+
+**Details:**
+- **Scenario A (no slide master):** a three-level cascade repairs the file: Level 1 salvages `ppt/theme/theme1.xml` from the zip (exact color/font fidelity); Level 2 scavenges explicit styles from slide XML (best-effort); Level 3 falls back to `default.pptx`'s theme (last resort).
+- **Scenario B (master present but layouts missing):** the engine borrows matching layouts from `default.pptx` and injects them under the user's existing master — the borrowed layout inherits the user's theme automatically (no master cloning needed).
+- The repair runs **before** contract introspection so the entire downstream pipeline operates on the repaired file.
+- The repair level used is recorded in `<output>.render.json` sidecar (`templating.repair`) and in the output's embedded `template_metadata.repair_info`.
+- `TemplateError` was relocated to `_common/scripts/errors.py` (shared by both skills, zero cross-skill coupling).
+- Chart colors now dynamically read from the live theme (`_extract_chart_theme`) instead of hardcoded constants, so salvaged/scavenged themes correctly affect chart series colors.
+
+**Acceptance Criteria:**
+- [x] A masterless `.pptx` (Scenario A) is repaired (not rejected) and produces a valid `.pptx` whose embedded schema reports a non-empty `slide_master` tagged with `repair_info`.
+- [x] The three-level cascade is tried in order (L1 → L2 → L3); the level used is recorded in the render sidecar and `template_metadata.repair_info`.
+- [x] A deck missing a layout for a needed slide type (Scenario B) gets a borrowed layout from `default.pptx` injected under the user's existing master; the user's original theme/fonts survive.
+- [x] `layout_creator` raises `TemplateError` (not `IndexError`) on a masterless input.
+- [x] `schema_extractor` tolerates a missing master; `validate_template_schema` accepts the empty-master shape.
+- [x] Normal templates (no repair needed) are unaffected — the repair cascade and layout borrowing do not fire.
+- [x] Chart series colors dynamically reflect the live theme (not hardcoded).
+
+**Tags:** template, repair, cascade, layout-borrowing, theme, chart-colors
 
 ---
 

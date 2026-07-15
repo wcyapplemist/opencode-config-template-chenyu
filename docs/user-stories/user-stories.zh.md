@@ -2,7 +2,7 @@
 
 > **项目：** opencode.ai / pptx-subagent
 > **日期：** 2025 年 6 月
-> **范围：** 4 个 Epic，20 个 Story
+> **范围：** 4 个 Epic，21 个 Story
 > **作者：** 创始人（OpenCode 用户）
 > **来源：** `chenyu-user requirement.html`（导出为 `.md`）—— 纯需求文档，已剥离 HTML/CSS/JS 模板代码。
 
@@ -346,6 +346,33 @@ LLM 先规划幻灯片顺序和内容大纲（作为结构化数组），然后�
 - [x] 次要问题（缺字体、无页眉/页脚、内容区过小、无内嵌 schema）保持非致命警告；生成照常进行。
 
 **标签：** template, validation, error-handling
+
+---
+
+### US-4.8 [Epic 2] —— 无效/不完整模板的修复与扩展 `[Must Have]`
+
+**作为**一名 OpenCode 用户，
+**我希望**引擎能修复缺少 slide master（场景 A）或缺少所需 slide type 的 layout（场景 B）的用户模板，并尽可能保留用户已有的样式，
+**以便**我可以从真实世界的模板（Keynote 导出、Google Slides 导出、损坏文件）生成幻灯片，而不是得到一个致命错误。
+
+**细节：**
+- **场景 A（无 slide master）：** 通过三级级联修复文件：Level 1 从 zip 抢救 `ppt/theme/theme1.xml`（精确保真色板+字体）；Level 2 从 slide XML 搜刮显式样式（尽力而为）；Level 3 回退到 `default.pptx` 的 theme（最后兜底）。
+- **场景 B（有 master 但缺 layout）：** 引擎从 `default.pptx` 借用匹配的 layout 并注入用户既有 master 下——借用的 layout 自动继承用户的 theme（无需克隆 master）。
+- 修复在契约自省**之前**运行，确保整个下游管线基于修复后的文件。
+- 使用的修复级别记录在 `<output>.render.json` sidecar（`templating.repair`）和输出的内嵌 `template_metadata.repair_info` 中。
+- `TemplateError` 迁移至 `_common/scripts/errors.py`（两个 skill 共享，零跨 skill 耦合）。
+- 图表颜色现在从实时 theme 动态读取（`_extract_chart_theme`），不再使用硬编码常量，使抢救/搜刮的 theme 正确影响图表系列颜色。
+
+**验收标准：**
+- [x] 无 master 的 `.pptx`（场景 A）被修复（而非拒绝），产出的有效 `.pptx` 的内嵌 schema 报告非空 `slide_master`，并标注 `repair_info`。
+- [x] 三级级联按顺序尝试（L1 → L2 → L3）；使用的级别记录在渲染 sidecar 和 `template_metadata.repair_info` 中。
+- [x] 缺少所需 slide type layout 的模板（场景 B）从 `default.pptx` 借用 layout 注入用户既有 master 下；用户原始 theme/字体得以保留。
+- [x] `layout_creator` 在无 master 输入时抛出 `TemplateError`（而非 `IndexError`）。
+- [x] `schema_extractor` 容忍缺失的 master；`validate_template_schema` 接受空 master 形状。
+- [x] 正常模板（无需修复）不受影响——修复级联和 layout 借用均不触发。
+- [x] 图表系列颜色动态反映实时 theme（非硬编码）。
+
+**标签：** template, repair, cascade, layout-borrowing, theme, chart-colors
 
 ---
 

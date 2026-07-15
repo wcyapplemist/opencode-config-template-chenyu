@@ -1,11 +1,11 @@
 # Gap Analysis — chenyyu-user-stories vs Current Implementation
 
 > **Document type:** Requirements-vs-implementation gap analysis (analysis only — no code changes)
-> **Requirements source:** `docs/user-stories/user-stories.md` (4 Epics, 21 Stories)
+> **Requirements source:** `docs/user-stories/user-stories.md` (4 Epics, 22 Stories)
 >
-> *Note: counts reflect the current source document — 21 stories across 4 Epics (after the US-4.4 descope, the US-4.7 addition, and the Epic reorganization from 6→4). Historical per-revision counts in the log below are preserved as-is.*
+> *Note: counts reflect the current source document — 22 stories across 4 Epics (after the US-4.4 descope, the US-4.7 addition, the US-4.8 addition, and the Epic reorganization from 6→4). Historical per-revision counts in the log below are preserved as-is.*
 > **Implementation audited:** `.opencode/skills/generate-slide-skill/`, `.opencode/skills/template-modifier-skill/`, `.opencode/agents/pptx-subagent.md`
-> **Date:** July 2026 (latest: Revision 20 — US-2.2 descoped & removed)
+> **Date:** July 2026 (latest: Revision 21 — US-4.8 added)
 
 ## Revision Log (compact)
 
@@ -30,6 +30,7 @@
 | 18 | US-4.7 added | template selection + `TemplateError` pre-flight — 21 stories | 16 / 4 / 1 / 0 |
 | 19 | US-4.2 AC1 attempt (#74) | normAutofit **falsified & reverted** — US-4.2 stays Partial | 16 / 4 / 1 / 0 |
 | 20 | US-2.2 descoped | common-practice suggestions **removed** from backlog + `common_practices` schema field dropped — 20 stories | 16 / 4 / 0 / 0 |
+| 21 | US-4.8 added | invalid/incomplete template repair (3-level cascade) + layout borrowing + chart theme-color fix — 21 stories | 17 / 4 / 0 / 0 |
 
 *Full per-revision narrative preserved in Appendix A.*
 
@@ -46,7 +47,7 @@ This report compares `user-stories.md` (the requirements document) against the c
 
 Both achieve "fill any template", but they differ on **data model, skill decomposition, and artifact form**.
 
-**Story-by-story summary** (20 stories, 4 Epics): Met 16 / Partial 4 / Not met 0.
+**Story-by-story summary** (21 stories, 4 Epics): Met 17 / Partial 4 / Not met 0.
 
 The delivered-stories detail and the remaining-gaps breakdown live in **§3** (statistics + priority matrix) and **§4** (Open Work). **No fully-unmet Must-Have remains** — the open items are four Partials. *(US-2.2 was descoped — Rev 20.)*
 
@@ -146,6 +147,10 @@ Delivered via the coordinate path. `generate_ppt_from_data(..., target_size=...)
 
 New story. The default template is now **`template/default.pptx`** at the repo root (used when `template_path` is omitted), moved out of the deep `scripts/templates/` path for easy discovery/editing (the `template.config.json` pin file became `default.config.json` in lockstep). A user-supplied `.pptx` path is passed through `template_path`/`--template` instead of copy-overwriting the default (the earlier `cp`-overwrite workflow is retired in both `pptx-subagent.md` and `generate-slide-skill/SKILL.md`). A new `TemplateError` + `_validate_template()` pre-flight runs on every load (default or user-supplied): corrupt/non-PPTX (the `Presentation(...)` open is wrapped), no slide master, zero layouts, or serving none of the 8 slide types → clear error + abort before the render loop; minor issues (missing fonts, no header/footer, small content area, no embedded schema) stay non-fatal warnings (unchanged). The CLI maps `TemplateError` to exit 1 (input error, not a runtime crash). All 3 ACs Met (+12 tests in `test_template_validation.py`).
 
+#### US-4.8 — Invalid / Incomplete Template Repair & Extension `[Must Have]` — ✅ Met (Rev 21)
+
+New story. A user-supplied `.pptx` with **no slide master** (Scenario A) is now **repaired** (not rejected) via a three-level cascade in `_common/scripts/master_repairer.py`: Level 1 salvages `ppt/theme/theme1.xml` from the zip (exact color/font fidelity); Level 2 scavenge explicit styles from slide XML `<a:rPr>`/`<p:spPr>` (best-effort); Level 3 falls back to `default.pptx`'s theme (last resort). The repair runs **before** `get_render_contract` so the contract describes the repaired deck; the repair level is recorded in `render_report["templating"]["repair"]` + `template_metadata.repair_info`. A template **missing layouts** for some slide types (Scenario B) is **extended** — `template-modifier-skill/scripts/master_cloner.py` borrows layouts from `default.pptx` and injects them under the user's existing master (T2.0 spike found master cloning unnecessary — cross-file layout clone suffices; theme inherited automatically). `state_machine.resolve_and_clone` dispatches Level 0 (same-file donor) → Level 1 (borrow from default) via lazy import (no circular dependency). `TemplateError` relocated to `_common/scripts/errors.py` (zero cross-skill coupling). `schema_extractor.extract_schema` tolerates missing master. Chart colors now dynamically read from the live theme via `_extract_chart_theme(slide)` (was hardcoded — found during human testing). Architecture-review (CRIT-1~4, MAJOR-1~7, MINOR-1~6) all adopted before implementation. All 7 ACs Met (+38 tests). Human-tested across 4 scenarios (A-L1 green-theme salvage, A-L3 default fallback, B layout borrow, regression). **Known limitation**: `two_content_slide` borrowed layout occasionally not selected by fingerprint matcher (content preserved, visual layout merges to single column — deferred as low-priority issue).
+
 ### Epic 3 — Template Extension
 
 #### US-6.1 — Extend Template When a Layout Is Missing `[Should Have]` — ✅ Met (Rev 15)
@@ -174,7 +179,7 @@ Python's `logging` module is used across the modules. `schema_extractor.py` **do
 
 | Status | Count | Stories |
 |---|---|---|
-| ✅ Met | 16 | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-3.4, US-4.1, US-4.3, US-4.5, US-4.6, US-4.7, US-6.1 |
+| ✅ Met | 17 | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-3.4, US-4.1, US-4.3, US-4.5, US-4.6, US-4.7, US-4.8, US-6.1 |
 | 🟡 Partial | 4 | US-4.2, US-5.1, US-5.2, US-5.3 |
 | ❌ Not met | 0 | — |
 | ⚪ Architecture differs | 0 | — |
@@ -183,7 +188,7 @@ Python's `logging` module is used across the modules. `schema_extractor.py` **do
 
 | | Must Have | Should Have | Could Have |
 |---|---|---|---|
-| ✅ Met | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-4.1, US-4.3, US-4.7 | US-3.4, US-4.6, US-6.1 | US-4.5 |
+| ✅ Met | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-4.1, US-4.3, US-4.7, US-4.8 | US-3.4, US-4.6, US-6.1 | US-4.5 |
 | 🟡 Partial | US-4.2, US-5.1, US-5.2 | US-5.3 | — |
 | ❌ Not met | — | — | — |
 | ⚪ Differs | — | — | — |
@@ -260,6 +265,8 @@ The original option-by-option prose for Decisions 1–3 is preserved in Appendix
 > **Revision 19 (US-4.2 AC1 attempt — #74 normAutofit — FALSIFIED & REVERTED):** an attempt to close US-4.2 AC1 via PowerPoint-native `normAutofit` (`<a:normAutofit/>`, no `fontScale`) was **empirically falsified**. The premise (that PowerPoint recomputes the shrink on file open — "behaviour A") was disproven by opening a verification deck in PowerPoint: text visibly overflowed the placeholder boxes on **all** content slides, **including the control slides** whose text the `text_fit` heuristic had deemed "fitting" (`fits=True`). Conclusion: `<a:normAutofit/>` without a pre-computed `fontScale` is **inert on file open** — PowerPoint only recomputes the shrink when the user edits the text frame. The #74 code changes were **fully reverted** (helper, tuple return, render-report field, 6 call sites, 5 tests); US-4.2 returns to 🟡 Partial (AC1 deferred). Counts unchanged from Rev 18: Met 16 / Partial 4 / Not met 1. **Side-finding:** the control-slide overflow reveals `text_fit.py` *systematically underestimates* rendered height (suspect: text-frame internal margins ~0.1in/side and line-spacing not modelled) — tracked as a follow-up research issue (independent of the AC1 oracle decision). Lesson: the architecture-review's MAJOR-1 linchpin concern was the correct one; the accepted 85%-confidence bet landed in the 15% failure tail.
 >
 > **Revision 20 (US-2.2 descoped — common-practice suggestions removed):** **US-2.2 — Common Practice Suggestions `[Should Have]` — descoped & removed from the backlog.** The story (suggest common PowerPoint practices — slide numbers, company logo, consistent margins, section dividers, closing slide) will not be implemented. Rationale: the requirements cross-check (this session) confirmed US-2.2 is requirement-grounded (req 2: *"what other common practices suitable for powerpoint slide"*), but the user chose to abandon it — the detection heuristics (especially "consistent margins" and "company logo") are weak/subjective for a Should-Have, and the value is low relative to the remaining Must-Have Partials. The placeholder `common_practices` schema field (added in US-1.1 in anticipation of US-2.2) and the `_build_metadata` emit were **removed** as dead code; the `chenyu-user requirement.html` source is left untouched (historical contract). The story entry was **fully removed** from `user-stories.md`/`.zh.md` (no marker kept — the backlog stays clean); this GAP-ANALYSIS Rev 20 entry is the only historical trace (the US-4.4 Rev 17 precedent kept a marker, but the user chose a clean removal here). Requirement point 2c ("other common practices") is now intentionally not addressed. Counts: **Met 16 / Partial 4 / Not met 0** (20 stories, 4 Epics).
+>
+> **Revision 21 (US-4.8 added — invalid/incomplete template repair & extension):** new story **US-4.8 — Invalid / Incomplete Template Repair & Extension `[Must Have]` — ✅ Met**, retroactively entering the story set. The engine now **repairs** (not rejects) user-supplied `.pptx` files that lack a slide master (Scenario A) via a three-level cascade (`master_repairer.py`): Level 1 salvages `ppt/theme/theme1.xml` from the zip (exact color/font fidelity); Level 2 scavenges explicit styles from slide XML (best-effort); Level 3 falls back to `default.pptx`'s theme (last resort). A template missing layouts for some slide types (Scenario B) is **extended** — `master_cloner.py` borrows layouts from `default.pptx` and injects them under the user's existing master (T2.0 spike found master cloning unnecessary — cross-file layout clone suffices, theme inherited automatically). `state_machine.resolve_and_clone` dispatches Level 0 (same-file donor) → Level 1 (borrow from default) via lazy import (no circular dependency). `TemplateError` relocated to `_common/scripts/errors.py`. `schema_extractor` tolerates missing master. Chart colors now dynamically read from the live theme (`_extract_chart_theme`) — was hardcoded; found during human testing. Architecture-review (CRIT-1~4, MAJOR-1~7, MINOR-1~6) all adopted pre-implementation. All 7 ACs Met (+38 tests). Human-tested across 4 scenarios. **Known limitation**: `two_content_slide` borrowed layout occasionally not selected by fingerprint matcher (deferred). PLAN: `PLANS/PLAN-GIT-78.md` (Rev 2). Header count corrected 20 → 21. Counts: **Met 17 / Partial 4 / Not met 0** (21 stories, 4 Epics).
 
 ---
 
