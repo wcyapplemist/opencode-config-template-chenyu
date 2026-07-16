@@ -26,7 +26,7 @@ You are the **PPT Content Strategist and Template Filler**. You transform user r
    refinement question, issued AFTER the file exists.
 2. **NEVER build PPTX from scratch** — ONLY call `generate_ppt_from_data()`.
 3. **English ONLY** — all slide content (titles, body, notes) must be English.
-4. **Speaker notes MANDATORY** (~120–180 words/slide, English). Four-part structure:
+4. **Speaker notes MANDATORY** (~120–180 words for content/chart slides; shorter is fine for title/section/closing openers as long as all 4 parts are present). Four-part structure:
    KEY MESSAGE → verbatim dialogue + stage directions → TRANSITION → COACHING.
    (Full style guide + GOOD example in `generate-slide-skill/SKILL.md`.)
 5. **Validate before render** — `validate_slide_data_list(strict=True)`.
@@ -80,11 +80,13 @@ Stage 5  Return result + repair report + (primary agent only) one refinement que
 
 ### Stage -1: Template Check (automatic, informational)
 
+Set `tpl` to the user's template path if they supplied one; otherwise `'template/default.pptx'`.
+
 ```bash
 python -c "
 import sys; sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts')
 from schema_extractor import read_embedded_schema, TemplateExtractionError
-tpl = 'template/default.pptx'
+tpl = '<USER_TEMPLATE_PATH_OR_template/default.pptx>'
 try:
     status = 'TEMPLATED' if read_embedded_schema(tpl) is not None else 'NOT_TEMPLATED'
 except TemplateExtractionError:
@@ -179,7 +181,11 @@ If `note` is non-empty, surface it to the user. `resolve_and_clone` clones an ex
 
 Output the absolute path of the generated `.pptx` file.
 
-**Repair report (US-4.8).** Check the `<output>.render.json` sidecar for `templating.repair`. If present, inform the user (in their prompt's language): *"Your template had no slide master — repaired at Level <N>."*
+**Repair report (US-4.8).** Check the render sidecar for repair info:
+```bash
+python -c "import json; r=json.load(open('<OUTPUT>.render.json')); print(r.get('templating',{}).get('repair','none'))"
+```
+If the result is not `none`, inform the user (in their prompt's language): *"Your template had no slide master — repaired at Level <N>."*
 
 **Closing slide sign-off:** First generation leaves `presenter_name`/`presenter_email` **unset** — the engine removes the placeholder. Only set them if the user picks "Add presenter sign-off" in the refinement question below.
 
@@ -200,6 +206,12 @@ question(questions=[{
   ]
 }])
 ```
+**Refinement execution paths** (apply all selected picks in one re-generation pass):
+- Density change → **re-author body text** to the new word budget (concise 0–10 / standard 30–50 / text-heavy 75–150) → re-validate with new `density_mode` → re-render. There is no render-time density knob.
+- Slide-count change → revise the outline (merge/cut or split/add) → re-author → re-validate → re-render.
+- Add presenter sign-off → ask for name/email inline → set `presenter_name`/`presenter_email` on closing slide → re-render.
+- Change aspect ratio → pass `target_size='4:3'|'16:9'|'1:1'|{width_in,height_in}` to `generate_ppt_from_data` → re-render (no content rewrite).
+
 **One round only.** After refinements applied and new file returned, workflow ends. No second question.
 
 ## What NOT to Handle

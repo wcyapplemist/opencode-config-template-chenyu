@@ -119,6 +119,8 @@ Among composition-compatible layouts, ranking is: name affinity → fewest surpl
 | `data_query` | No | `chart_slide` | Resource placeholder — asks for real chart statistics; the resolver fills `categories`/`series` with sourced numbers. |
 | `data_hint` | No | `chart_slide` | Optional expected shape for `data_query` (e.g. category/series names). |
 | `notes` | Yes | All | Full English presenter script (**~120–180 words**). Written to the slide's Notes pane (Presenter View only). `\n` = new paragraph. Must be **spoken dialogue** (quoted, speakable sentences tied to the slide's content), **interspersed stage directions**, a `TRANSITION` line, and `COACHING` with delivery + an anticipated Q&A — NOT bullet summaries. Cover/closing use `[Name]` / `[morning/afternoon]` placeholders. |
+| `presenter_name` | No | `closing_slide` | Sign-off name. Omit on first generation — engine removes the placeholder. Set only when user picks "Add presenter sign-off" in Stage 5 refinement. |
+| `presenter_email` | No | `closing_slide` | Sign-off email. Same lifecycle as `presenter_name`. |
 
 ### Body Text Parsing
 
@@ -547,9 +549,22 @@ print(json.dumps(servable_slide_types(contract), indent=2, ensure_ascii=False))
 "
 ```
 
-**Read 2–3 template notes to internalize house style:**
+**Read 2–3 notes from a generated output deck to internalize house style**
+(the bundled `template/default.pptx` has 0 slides — read from a previously
+generated `output/*.pptx` instead; if none exists yet, use the GOOD example
+in the Speaker Notes Style Guide above):
 ```bash
-python -c "import sys; sys.stdout.reconfigure(encoding='utf-8'); sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts'); from pptx import Presentation; prs=Presentation('template/default.pptx'); slides=list(prs.slides); [print('===== TEMPLATE S%d ====='%i, slides[i].notes_slide.notes_text_frame.text) for i in [0,1,4]]"
+python -c "
+import sys, glob, os; sys.stdout.reconfigure(encoding='utf-8')
+sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts')
+from pptx import Presentation
+fs = sorted(glob.glob('output/*.pptx'), key=os.path.getmtime, reverse=True)
+if not fs: print('No output deck yet - see GOOD example in Speaker Notes Style Guide')
+else:
+    prs = Presentation(fs[0]); slides = list(prs.slides)
+    for i in range(min(3, len(slides))):
+        print('===== S%d =====' % i, slides[i].notes_slide.notes_text_frame.text)
+"
 ```
 
 ## Self-Critique Rubric
