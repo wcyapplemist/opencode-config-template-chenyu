@@ -3,127 +3,128 @@
 **Issue**: #86 (parent) — sub-issues #88 (Phase 1), #87 (Phase 2), #90 (Phase 3), #89 (Phase 4)
 **Branch**: GIT-79 (base: dev)
 **Priority**: Medium
-**Status**: Planned (prompt/docs-only change — 2 files, no Python code, no tests).
+**Status**: Planned (Rev 2 — architecture-review fixes adopted: CRIT-1/2, MAJ-1~7, MIN-1~5).
 
 ## Goal
 
-Harden the `pptx-subagent` prompt so the agent **never** asks a `question()` before producing the first `.pptx`, unify all three skills under explicit frontmatter permissions + a detection-based routing table, and slim the prompt from 450 → ~180 lines by relocating ~125 lines of reference material to `generate-slide-skill/SKILL.md`.
+Harden the `pptx-subagent` prompt so the agent **never** asks a `question()` before producing the first `.pptx`, unify all three skills under explicit frontmatter permissions + a detection-based routing table, and slim the prompt from 450 → ~200 lines by relocating reference material to `generate-slide-skill/SKILL.md`.
 
-This is a **prompt/docs-only change** (2 files). No engine code, no tests, no subagent autonomous-path behavioral change. The primitives it relies on already exist: `read_embedded_schema` (US-4.3 detection), `repair_if_needed` (US-4.8, PLAN-GIT-78), `_infer_title` (US-3.2 zero-prompt title), the generate-first defaults + post-generation refinement `question` (GIT-76), and `servable_slide_types` layout detection.
+This is a **prompt/docs-only change** (2 files). No engine code, no tests. The primitives it relies on already exist: `read_embedded_schema` (US-4.3 detection), `repair_if_needed` (US-4.8), the engine's `auto_template` (US-4.3 inline extraction), generate-first defaults + post-generation refinement `question` (GIT-76), and `servable_slide_types` layout detection.
 
 ## Strategic Context
 
 The agent prompt (`pptx-subagent.md`, 450 lines) has three structural weaknesses this plan resolves:
 
-1. **Premature-questioning risk.** GIT-76 made the *first* generation zero-prompt, but the prompt still carries ~4 paraphrased "generate-first" statements scattered across Stage 0/1/2 (e.g. L97, L118, L198, L233). These restatements are soft — a model can misread any one of them as "sometimes OK to ask". There is **no single, top-of-prompt hard rule** that bans `question()` outright before the first output. A model that asks once invalidates the entire generate-first contract.
-2. **Three-skill fragmentation.** The frontmatter `permission.task` allows only `generate-slide-skill` (`pptx-subagent.md:10-12`). `generate-template-skill` and `template-modifier-skill` are reachable only implicitly, and non-templated `.pptx` files are routed by **user-intent interpretation** (the agent guesses whether the user wants extraction vs. rendering) rather than by **code detection** (`read_embedded_schema` return value). This is brittle. There is no Skill Routing table and no Stage -1 detection gate.
-3. **Bloat.** ~125 lines of reference content — Speaker Notes Style Guide (L380–404), Example Interaction (L406–435), Template Introspection Commands (the Stage 0 bash snippets), Self-Critique Rubric (Stage 2) — plus duplicated tables (resource placeholders, image presets, slide-type table, density table) live in the agent prompt but already (mostly) exist in `generate-slide-skill/SKILL.md`. Every line in the agent prompt is re-read on every turn; reference material that the agent consults *on demand* belongs in the skill, not the system prompt. Target: **~180 lines** (60% reduction).
+1. **Premature-questioning risk.** GIT-76 made the first generation zero-prompt, but the prompt still carries ~4 paraphrased "generate-first" statements scattered across Stage 0/1/2. These restatements are soft — a model can misread any one of them as "sometimes OK to ask". There is **no single, top-of-prompt hard rule** that bans `question()` outright before the first output.
+2. **Three-skill fragmentation.** The frontmatter `permission.task` allows only `generate-slide-skill`. There is no Skill Routing table and no explicit detection gate.
+3. **Bloat.** ~125 lines of reference content plus duplicated tables live in the agent prompt but already (mostly) exist in `generate-slide-skill/SKILL.md`.
 
-**Risk profile is low** because no behavioral primitive is new — this is a prompt restructure (permissions + routing + relocation) layered on already-shipped engine behavior.
+**Risk profile is low** because no behavioral primitive is new — this is a prompt restructure layered on already-shipped engine behavior.
 
-## Architecture Decisions (locked — 10 decisions)
+## Architecture Decisions (locked — Rev 2: 10 decisions)
 
-1. **First-generation questions are BANNED (D1).** Rule #1 of the new ABSOLUTE RULES block: NEVER call `question()` between the user's initial prompt and the first `.pptx` output. Honor user-stated preferences; auto-determine unstated parameters. This subsumes and hardens GIT-76's "generate-first" philosophy into one top-of-prompt absolute rule; the ~4 scattered paraphrases are deleted.
-2. **All three skills are permitted (D2).** `permission.task` opens `generate-slide-skill`, `generate-template-skill`, and `template-modifier-skill` as `allow`. The `"*": deny` catch-all stays.
-3. **`template-modifier-skill` is invoked via bash import, not direct task dispatch (D3).** Permission is *opened* (so the agent is authorized), but the actual invocation path stays the existing bash `import` pattern (consistent with how the engine already calls into it). Opening the permission removes a latent denial; it does not change the call mechanism.
-4. **Non-templated `.pptx` routing = Path B (D4).** When Stage -1 detects the input is not templated (`read_embedded_schema` returns None), the agent invokes `generate-template-skill` to extract → embed first, *then* renders via `generate-slide-skill`. This replaces the current intent-interpretation routing with deterministic code detection.
-5. **Extraction is zero-prompt (D5).** `generate-template-skill`'s `_infer_title` auto-determines the title (US-3.2); the subagent has no user channel, so no title-confirmation prompt is issued. The templated file is produced silently and the pipeline continues.
-6. **Prompt length target = ~180 lines (D6).** Down from 450. Achieved by relocating ~125 lines of reference content to `SKILL.md` (Phase 4) + removing duplicated tables + condensing each stage in-place.
-7. **Missing master/theme is NOT in the routing table (D7).** A corrupt/masterless template is **engine-internal** — `repair_if_needed` (US-4.8, PLAN-GIT-78) runs automatically inside `generate_ppt_from_data` before `get_render_contract`. The agent prompt does not route on it; it is not a Skill Routing row.
-8. **Repair result is surfaced in Stage 5 (D8).** After render, Stage 5 reads the `<output>.render.json` sidecar; if `templating.repair` is present (level L1/L2/L3), the agent informs the user that the template was auto-repaired. This is a *notification*, not a routing decision.
-9. **Routing basis is code detection, not intent interpretation (D9).** The Skill Routing table keys off `read_embedded_schema`'s return value and `servable_slide_types`'s layout availability — never on guessing what the user "wants". Detection is deterministic; intent is not.
-10. **Language strategy is split (D10).** Slide content = English ONLY (unchanged, Rule #3). Agent↔user interaction = match the user's prompt language (Chinese prompt → Chinese conversation; the slides are still English). This is added as an explicit instruction (Stage 0 + Stage 5 question template).
+1. **First-generation questions are BANNED (D1).** Rule #1 of the new ABSOLUTE RULES block: NEVER call `question()` between the user's initial prompt and the first `.pptx` output. Honor user-stated preferences; auto-determine unstated parameters. This subsumes and hardens GIT-76's "generate-first" philosophy into one top-of-prompt absolute rule; the ~4 scattered paraphrases are deleted. *(MAJ-1: this is prompt-level enforcement, best-effort; human test T5 (≥3 runs) is the regression gate.)*
+2. **All three skills are permitted (D2).** `permission.task` opens `generate-slide-skill`, `generate-template-skill`, and `template-modifier-skill` as `allow`. The `"*": deny` catch-all stays. *(MAJ-5: `template-modifier-skill` permission is opened per user intent, but the routing table explicitly prohibits direct task dispatch — bash import only.)*
+3. **`template-modifier-skill` is invoked via bash import, not direct task dispatch (D3).** The routing table row says explicitly: *"do NOT dispatch template-modifier-skill as a task; use `resolve_and_clone` via bash import."* *(MAJ-5 mitigation.)*
+4. **Non-templated `.pptx` → informational detection only (D4, Rev 2).** *(CRIT-1 fix: Path B DROPPED.)* When Stage -1 detects the input is not templated (`read_embedded_schema` returns None), the agent emits a one-line status message (*"No template found — extracting first, then generating slides..."*) and proceeds normally. The engine's `auto_template` (US-4.3, `generate_ppt_from_data(auto_template=True)`) handles extraction + embedding into the **output** inline during render — no separate `generate-template-skill` invocation. This preserves the locked US-4.3 "engine-inline" decision (GAP-ANALYSIS:136, PLAN-GIT-63 Q1).
+5. ~~**Extraction is zero-prompt (D5).**~~ **DROPPED (Rev 2).** No longer needed — Path B is dropped; extraction is engine-inline, not a separate skill invocation.
+6. **Prompt length target = ~200 lines (D6, Rev 2).** Down from 450. *(MAJ-2: decision-time content — Speaker Notes Style Guide structure + Self-Critique Rubric dimensions — stays condensed in the prompt; only full examples and reference tables move to SKILL.md.)*
+7. **Missing master/theme is NOT in the routing table (D7).** A corrupt/masterless template is **engine-internal** — `repair_if_needed` runs automatically inside `generate_ppt_from_data`. The agent prompt does not route on it.
+8. **Repair result is surfaced in Stage 5 (D8).** After render, Stage 5 reads the `<output>.render.json` sidecar; if `templating.repair` is present, the agent informs the user.
+9. **Routing basis is code detection (D9, Rev 2).** The Skill Routing table has **2 rows** (Rev 2 — Path B row dropped): missing layouts → template-modifier-skill (bash import); all pass → generate-slide-skill. Non-templated detection is informational only (one-line status message; engine handles inline).
+10. **Language strategy is split (D10).** Slide content = English ONLY (Rule #3). Agent↔user interaction = match the user's prompt language. *(MAJ-7: includes a concrete example — "Chinese prompt → Chinese status/outline/refinement text; slide titles+bodies stay English." For Stage 5 question: translate `header` + `question` text, keep option `label`s English (they map to engine params) with translated `description`.)*
 
 ## Deliverables
 
 **Change** `.opencode/agents/pptx-subagent.md` (Phases 1–3):
-- **Frontmatter** (`permission.task`) — add `generate-template-skill: allow` and `template-modifier-skill: allow` (keep `"*": deny`).
-- **ABSOLUTE RULES block** (new, top of prompt body) — replaces `## Absolute Constraints` (L82). Five rules (D1): (1) no `question()` before first output; (2) no building from scratch; (3) English-only slide content; (4) speaker notes mandatory; (5) validate before render.
-- **Interaction-language instruction** (D10) — communicate with the user in their prompt's language; slides always English. Wired into Stage 0 and the Stage 5 question template.
-- **Skill Routing table** (D9, 3 rows) — not-templated → generate-template-skill; missing layouts → template-modifier-skill (bash import); all pass → generate-slide-skill.
-- **Stage -1: Template Check** (new, D4/D5) — `read_embedded_schema` detection; Path B if not templated (zero-prompt extract).
-- **Stage 5 repair-report check** (D7/D8) — read `templating.repair` from render.json sidecar; notify user.
-- **"What NOT to Handle" edit** — remove the template-extraction routing bullet (now internal to the agent).
-- **Delete** the 4 redundant "generate-first" paraphrases in Stage 0/1/2 (~25 lines) — consolidated into Rule #1.
-- **Remove** ~125 lines of reference content (Speaker Notes Style Guide, Example Interaction, Template Introspection Commands, Self-Critique Rubric) + duplicated tables (resource placeholders, image presets, slide-type, density) — relocated to `SKILL.md` (Phase 4).
-- **Condense** each stage in-place (Stage 0: 35→15, Stage 1: 35→8, Stage 2: 39→12, Stage 3: 42→15, Stage 4: 50→20, Stage 5: 36→20).
-- Final line count ~180 (±15).
+- **Frontmatter** — add `generate-template-skill: allow` and `template-modifier-skill: allow`.
+- **ABSOLUTE RULES block** (new, top of prompt body) — 5 rules + interaction-language note with example.
+- **Skill Routing table** (2 rows, Rev 2) — missing layouts → template-modifier-skill (bash import, do NOT dispatch as task); all pass → generate-slide-skill. Note: non-templated detection is informational; engine handles inline.
+- **Stage -1: Template Check** (new) — `read_embedded_schema` detection **wrapped in try/except** (CRIT-2); if not templated → one-line status message → proceed normally (engine auto_template handles embedding).
+- **Stage 5 repair-report check** — read `templating.repair` from render.json sidecar; notify user.
+- **Decision-time content stays condensed in prompt** (MAJ-2): Speaker Notes 4-part structure + word budget (~5 lines); Self-Critique 6 dimensions (~3 lines). Full examples move to SKILL.md.
+- **Preserved one-liners** (MAJ-3): sign-off default ("first-gen: unset → engine removes placeholder") in Stage 5; density-soft ("warnings never block") in Stage 2; fingerprint ("layouts matched by composition, not name") in Stage 0.
+- **"What NOT to Handle" edit** (MAJ-4): keep pure-extraction bullet (*"Pure extraction/fingerprint, no slides wanted → generate-template-skill"*); remove only the "rendering from non-templated is not my job" clause (it IS this agent's job, handled inline).
+- **Delete** the 4 redundant "generate-first" paraphrases (~25 lines).
+- **Remove** ~100 lines of reference content (full Speaker Notes example, full Example Interaction, Template Introspection bash snippets, duplicated tables) — relocated to SKILL.md.
+- **Condense** each stage in-place.
+- Final line count ~200 (±20).
 
 **Change** `.opencode/skills/generate-slide-skill/SKILL.md` (Phase 4):
-- Append **4 new sections** receiving the relocated content: `## Speaker Notes Style Guide`, `## Example Interaction`, `## Template Introspection Commands`, `## Self-Critique Rubric`.
+- Append **4 new sections**: `## Speaker Notes Style Guide` (full 4-part structure + GOOD example), `## Example Interaction`, `## Template Introspection Commands`, `## Self-Critique Rubric` (full 6-dimension detail).
 
 ## Acceptance Criteria
 
-- [ ] AC1 — No `question()` is ever issued between the user's initial prompt and the first `.pptx` output (ABSOLUTE RULE #1, enforced).
-- [ ] AC2 — All three skills are permitted in frontmatter; routing is detection-based (`read_embedded_schema`) via the Skill Routing table + Stage -1 gate.
-- [ ] AC3 — A non-templated `.pptx` triggers Path B (extract via `generate-template-skill`, then render); extraction is zero-prompt (D5).
-- [ ] AC4 — The prompt is ~180 lines (±15); reference content relocated to `SKILL.md` and not duplicated.
-- [ ] AC5 — Agent-user interaction language matches the user's prompt language; slide content is always English (D10).
-- [ ] AC6 — Stage 5 surfaces a repair notice when the render.json sidecar reports `templating.repair` (D8).
-- [ ] AC7 — The 4 redundant "generate-first" paraphrases are removed; one ABSOLUTE RULE (#1) governs (D1).
+- [ ] AC1 — No `question()` is issued between the user's initial prompt and the first `.pptx` output (ABSOLUTE RULE #1, instructed + verified by multi-run human test T5). *(MAJ-1: "instructed + verified", not "enforced" — prompt-level is best-effort.)*
+- [ ] AC2 — All three skills are permitted in frontmatter; routing is detection-based via the Skill Routing table (2 rows). `template-modifier-skill` is never dispatched as a `task` (explicit prohibition in routing table).
+- [ ] AC3 (Rev 2) — A non-templated `.pptx` emits a one-line status message and renders normally; the engine's `auto_template` handles extraction inline. No separate `generate-template-skill` invocation for rendering.
+- [ ] AC4 — The prompt is ~200 lines (±20); reference content relocated to `SKILL.md` and not duplicated. Decision-time content (notes structure, rubric dimensions) retained in condensed form.
+- [ ] AC5 — Agent-user interaction language matches the user's prompt language; slide content is always English. Stage 5 question: `header`/`question` translated, option `label`s English.
+- [ ] AC6 — Stage 5 surfaces a repair notice when the render.json sidecar reports `templating.repair`.
+- [ ] AC7 — The 4 redundant "generate-first" paraphrases are removed; one ABSOLUTE RULE (#1) governs.
+- [ ] AC8 (Rev 2, MAJ-3) — No behavioral rule from the old Absolute Constraints is lost: sign-off default, density-soft, and fingerprint resolution each survive as a one-liner in the appropriate stage.
+- [ ] AC9 (Rev 2, CRIT-2) — Stage -1 wraps `read_embedded_schema` in try/except; corrupt/missing/non-PPTX paths never crash.
 
 ## Implementation Phases
 
 > Dependency graph: `Phase 1 → Phase 2 → Phase 3 → Phase 4`
 
 ### Phase 1: Permissions + ABSOLUTE RULES + interaction language — #88
-- [ ] T1.1: Frontmatter — add `generate-template-skill: allow` and `template-modifier-skill: allow` to `permission.task` (D2/D3 — `template-modifier-skill` invoked via bash import, not direct task dispatch).
-- [ ] T1.2: Add **ABSOLUTE RULES** block (5 rules) at the top of the prompt body, replacing `## Absolute Constraints`: Rule #1 (no `question()` before first output — D1), Rule #2 (no building from scratch), Rule #3 (English-only slide content), Rule #4 (speaker notes mandatory ~120–180 words), Rule #5 (validate before render).
-- [ ] T1.3: Add **interaction-language instruction** (D10) — communicate with the user in their prompt's language; slides always English. Wire into Stage 0 + Stage 5.
-- [ ] T1.4: Delete the 4 redundant "generate-first" paraphrases in Stage 0 / Stage 1 / Stage 2 (~25 lines). Consolidated into Rule #1; no information lost.
+- [ ] T1.1: Frontmatter — add `generate-template-skill: allow` and `template-modifier-skill: allow`.
+- [ ] T1.2: Add **ABSOLUTE RULES** block (5 rules) at the top of the prompt body, replacing `## Absolute Constraints`: Rule #1 (no `question()` before first output), Rule #2 (no building from scratch), Rule #3 (English-only slide content), Rule #4 (speaker notes mandatory), Rule #5 (validate before render). Add interaction-language note with concrete example (MAJ-7).
+- [ ] T1.3: Delete the 4 redundant "generate-first" paraphrases in Stage 0 / Stage 1 / Stage 2 (~25 lines).
+- [ ] T1.4 (MAJ-3): Verify each old Constraint (#3 fingerprint, #6 density-soft, #7 sign-off) has a surviving one-liner in the appropriate condensed stage.
 
-### Phase 2: Skill routing + Stage -1 + repair report — #87
-- [ ] T2.1: Add **Skill Routing table** (3 rows, detection-based — D9): not-templated → `generate-template-skill`; missing layouts → `template-modifier-skill` (bash import, D3); all pass → `generate-slide-skill`.
-- [ ] T2.2: Add **Stage -1: Template Check** (D4/D5) — `read_embedded_schema` detection; Path B (extract via `generate-template-skill`, zero-prompt via `_infer_title`) if not templated.
-- [ ] T2.3: Add **Stage 5 repair-report check** (D7/D8) — read `templating.repair` from the render.json sidecar; notify the user. Missing master/theme is engine-internal (`repair_if_needed`), NOT a routing row (D7).
-- [ ] T2.4: Add **interaction-language note to the Stage 5 question template** (D10) — refinement `question` rendered in the user's prompt language.
-- [ ] T2.5: Update **"What NOT to Handle"** — remove the template-extraction routing bullet (now handled internally by Stage -1 / the routing table); keep non-PPT deferrals (docx, PDF, spreadsheets).
+### Phase 2: Skill routing + Stage -1 (informational) + repair report — #87
+- [ ] T2.1: Add **Skill Routing table** (2 rows, Rev 2): missing layouts → template-modifier-skill via bash import (**do NOT dispatch as task** — MAJ-5); all pass → generate-slide-skill. Note: non-templated detection is informational (engine handles inline); missing master/theme is engine-internal.
+- [ ] T2.2 (CRIT-2): Add **Stage -1: Template Check** — run `read_embedded_schema(template_path)` **wrapped in try/except TemplateExtractionError** (treat exception as NOT_TEMPLATED); if not templated → emit one-line status message → proceed normally. The engine's `auto_template` handles extraction + embedding in the output during render. *(Path B dropped — CRIT-1.)*
+- [ ] T2.3: Add **Stage 5 repair-report check** (D8) — read `templating.repair` from the render.json sidecar; notify the user (in their prompt's language).
+- [ ] T2.4: Add **interaction-language note to the Stage 5 question template** — translate `header` + `question` text; keep option `label`s English with translated `description` (MAJ-7).
+- [ ] T2.5 (MAJ-4): Update **"What NOT to Handle"** — keep pure-extraction bullet (*"Pure extraction/fingerprint, no slides wanted → generate-template-skill"*); remove only the "rendering from non-templated is not my job" clause. Keep non-PPT deferrals (docx, PDF, spreadsheets).
 
-### Phase 3: Simplify prompt (450 → ~180 lines) — #90
-- [ ] T3.1: Remove ~125 lines of reference content from `pptx-subagent.md` (destination append is Phase 4): Speaker Notes Style Guide (~24 lines, L380–404), Example Interaction (~29 lines, L406–435), Template Introspection Commands (~23 lines, Stage 0 bash snippets), Self-Critique Rubric (~11 lines, Stage 2).
-- [ ] T3.2: Remove duplicated tables already in `SKILL.md` (resource placeholders, image presets, slide-type table, density table).
-- [ ] T3.3: Condense each stage in-place — Stage 0: 35→15, Stage 1: 35→8, Stage 2: 39→12, Stage 3: 42→15, Stage 4: 50→20, Stage 5: 36→20.
-- [ ] T3.4: Verify final line count ~180 (±15); prompt keeps frontmatter, ABSOLUTE RULES, Skill Routing table, condensed Stages -1–5, "What NOT to Handle", Error Handling.
+### Phase 3: Simplify prompt (450 → ~200 lines) — #90
+- [ ] T3.1: Remove ~100 lines of reference content from `pptx-subagent.md` (destination: Phase 4): full Speaker Notes Style Guide example (~20 lines), full Example Interaction (~29 lines), Template Introspection bash snippets (~23 lines), full Self-Critique Rubric detail (~8 lines), duplicated tables (~20 lines).
+- [ ] T3.2 (MAJ-2): Keep **condensed decision-time content** in the prompt: Speaker Notes 4-part structure + word budget (~5 lines, no full example); Self-Critique 6 dimensions as one-liner list (~3 lines, no detail).
+- [ ] T3.3: Condense each stage in-place — Stage 0: 35→15, Stage 1: 35→8, Stage 2: 39→12, Stage 3: 42→15, Stage 4: 50→25 (MIN-5: slightly relaxed), Stage 5: 36→20.
+- [ ] T3.4: Verify final line count ~200 (±20); no behavioral rule lost (AC8); Stage -1 exception-safe (AC9).
 
 ### Phase 4: SKILL.md receives moved content — #89
-- [ ] T4.1: Append `## Speaker Notes Style Guide` to `SKILL.md` (four-part KEY MESSAGE / dialogue / TRANSITION / COACHING structure + GOOD example, verbatim from the agent prompt).
-- [ ] T4.2: Append `## Example Interaction` to `SKILL.md` (AI-accounting worked example: autonomous standard + self-critique + post-generation refinement).
-- [ ] T4.3: Append `## Template Introspection Commands` to `SKILL.md` (Stage 0 bash snippets: `servable_slide_types`, `get_render_contract`, `read_embedded_schema`).
-- [ ] T4.4: Append `## Self-Critique Rubric` to `SKILL.md` (6 dimensions: consistency / flow / coverage gaps / redundancy / length / template fit).
-- [ ] T4.5: Verify the agent prompt cross-references `SKILL.md` where these were removed — no dangling pointer.
+- [ ] T4.1: Append `## Speaker Notes Style Guide` to `SKILL.md` (full four-part structure + GOOD example).
+- [ ] T4.2: Append `## Example Interaction` to `SKILL.md`.
+- [ ] T4.3: Append `## Template Introspection Commands` to `SKILL.md`.
+- [ ] T4.4: Append `## Self-Critique Rubric` to `SKILL.md` (full 6-dimension detail).
+- [ ] T4.5: Verify the agent prompt cross-references SKILL.md where content was moved — no dangling pointer.
 
 ## Risks
 
-- **Over-condensation loses behavior (R1).** Aggressively shrinking stages (e.g. Stage 4 50→20 lines) risks dropping an instruction the model relied on. **Mitigation:** reference content is *relocated* to `SKILL.md` (Phase 4), not deleted; the agent prompt keeps a one-line cross-reference per moved section. Each stage's acceptance is "no behavioral information lost — recoverable from SKILL.md".
-- **Premature-question regression (R2).** If the ABSOLUTE RULES block is placed too low or Rule #1 is diluted, the model may still ask before the first output. **Mitigation:** Rule #1 is the *first* item in the *first* block of the prompt body; the 4 redundant paraphrases are deleted so there is exactly one statement of the rule (single source of truth). Human test T5 (multiple runs) is the regression gate.
-- **Routing-table miskey (R3).** A detection predicate that fires wrongly (e.g. treating a corrupt-but-templated file as "not templated") could loop extract→render unnecessarily. **Mitigation:** routing keys off `read_embedded_schema` (exception-safe, US-4.3) and `servable_slide_types` (proven in PLAN-GIT-78) — both deterministic and already battle-tested.
-- **Permission-opened-but-unused-skill drift (R4).** Opening `template-modifier-skill` permission could invite the model to dispatch it as a task when bash import is the intended path (D3). **Mitigation:** the routing table explicitly says "via bash import" for that row; the skill's own SKILL.md documents Capability B. No code coupling changes.
-- **Interaction-language confusion (R5).** A model could over-apply D10 and produce Chinese *slide* content. **Mitigation:** Rule #3 (English-only slide content) is an ABSOLUTE RULE that sits above the interaction-language note; the note explicitly scopes itself to agent↔user conversation, not slide content.
+- **Over-condensation loses behavior (R1).** **Mitigation:** reference content is relocated, not deleted; decision-time content stays condensed in prompt (MAJ-2); each old rule has a surviving one-liner (MAJ-3/AC8).
+- **Premature-question regression (R2).** **Mitigation:** Rule #1 is the first item in the first block; 4 paraphrases deleted (single source of truth). Human test T5 (≥3 runs) is the gate. *(MAJ-1: prompt-level enforcement is best-effort.)*
+- ~~**Routing-table miskey (R3).**~~ **Simplified (Rev 2):** routing table is 2 rows (Path B dropped); `read_embedded_schema` is wrapped in try/except (CRIT-2); engine handles non-templated files inline.
+- **Permission-opened-but-unused-skill drift (R4).** **Mitigation (MAJ-5):** routing table explicitly says "do NOT dispatch template-modifier-skill as a task; use bash import."
+- **Interaction-language confusion (R5).** **Mitigation (MAJ-7):** Rule #3 (English-only slides) sits above the interaction-language note; concrete example provided; Stage 5 question labels kept English (engine params).
 
 ## Out of scope (explicit)
 
-- **Engine code / tests** — `ppt_builder.py`, `schema_extractor.py`, `repair_if_needed`, `_infer_title`, `servable_slide_types`, `get_render_contract` are all untouched. This plan only restructures how the agent *drives* already-shipped behavior.
-- **New skill creation** — no skills are added or split; the three existing skills are unified under the agent's permissions/routing.
-- **Headless-subagent autonomous path** — unchanged (still zero-prompt first generation; per GIT-76 it skips the Stage 5 refinement question entirely).
-- **`render.json` schema changes** — Stage 5 only *reads* `templating.repair` (added in PLAN-GIT-78); no new sidecar field is introduced.
-- **Historical/analysis doc wording** (README, GAP-ANALYSIS, DESIGN-*) — not updated this issue.
+- **Engine code / tests** — untouched.
+- **Path B (extract-then-render via generate-template-skill)** — *(CRIT-1: DROPPED.)* The engine's `auto_template` handles non-templated files inline. A separate extraction-then-render flow is not introduced.
+- **`generate-template-skill` SKILL.md updates** — the stale no-master handling (MAJ-6) is noted but out of scope for this issue; tracked separately.
+- **New skill creation** — no skills added or split.
+- **`render.json` schema changes** — Stage 5 only reads existing fields.
 
 ## Testing strategy (human testing only — no Python changes)
 
 | ID | Scenario | Expected | AC |
 |----|----------|----------|----|
-| T1 | Chinese prompt, no template | zero-prompt, Chinese interaction, English slides | AC1, AC3, AC5 |
-| T2 | English prompt, templated template | skip Stage -1, direct render | AC2 |
-| T3 | English prompt, non-templated template | Path B (extract then render), zero-prompt | AC2, AC3 |
-| T4 | English prompt, masterless template | auto-repair + repair report in Stage 5 | AC6 |
-| T5 | Multiple runs of T1 | ABSOLUTE RULES prevents premature questions | AC1, AC7 |
-
-No `pytest` regression is applicable (zero Python changes). Verification is by running the primary-agent conversation flow on each scenario above and confirming the expected interaction shape.
+| T1 | Chinese prompt, no template | zero-prompt, Chinese interaction, English slides | AC1, AC5 |
+| T2 | English prompt, templated template | skip Stage -1 silently, direct render | AC2 |
+| T3 | English prompt, non-templated template | one-line status message, engine auto-extracts inline, normal render | AC3 |
+| T4 | English prompt, masterless template | auto-repair + repair report in Stage 5 | AC6, AC9 |
+| T5 | Multiple runs of T1 (≥3) | ABSOLUTE RULES prevents premature questions | AC1, AC7 |
 
 ## References
 
-- Requirements source: issue #86 (parent) — 10 locked design decisions + 4-phase dependency graph.
+- Requirements source: issue #86 (parent) — 10 locked design decisions (Rev 2).
+- Architecture review: Rev 2 incorporates CRIT-1 (Path B dropped), CRIT-2 (exception safety), MAJ-1~7, MIN-1~5.
 - Sub-issues: #88 (Phase 1), #87 (Phase 2), #90 (Phase 3), #89 (Phase 4).
-- Reused primitives (no change): `read_embedded_schema` (US-4.3 detection); `repair_if_needed` (US-4.8, PLAN-GIT-78); `_infer_title` (US-3.2 zero-prompt title); generate-first defaults + post-generation refinement `question` (GIT-76, PLAN-GIT-76); `servable_slide_types` layout detection; `get_render_contract`.
-- Current prompt structure (verified): `pptx-subagent.md` (450 lines) — frontmatter `permission.task` (L6–12, only `generate-slide-skill` allowed), `## Absolute Constraints` (L82–100), Stage 0–5 (L124–376), Speaker Notes Style Guide (L380–404), Example Interaction (L406–435), What NOT to Handle (L437–444).
+- Reused primitives (no change): `read_embedded_schema` (US-4.3); `auto_template` (US-4.3 inline extraction); `repair_if_needed` (US-4.8); generate-first defaults (GIT-76); `servable_slide_types`; `resolve_and_clone` (template-modifier-skill).
 - PLAN format template: `PLANS/PLAN-GIT-76.md`, `PLANS/PLAN-GIT-78.md`.
