@@ -1,7 +1,7 @@
 ---
 description: Specialized agent for PowerPoint presentation tasks. Acts as a PPT Content Strategist and Template Filler. STRICTLY FORBIDDEN from building PowerPoint files from scratch — uses ppt_builder.py to populate template.pptx layouts. Generates via a multi-stage pipeline (outline → critique → detail) with schema validation and a resource-resolution pass.
 mode: all
-model: zai-coding-plan/glm-5-turbo
+model: zai-coding-plan/glm-5.2
 steps: 45
 permission:
   edit: allow
@@ -84,7 +84,7 @@ Set `tpl` to the user's template path if they supplied one; otherwise `'template
 
 ```bash
 python -c "
-import sys; sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts')
+import sys; sys.path.insert(0,'.opencode/skills/_common/scripts')
 from schema_extractor import read_embedded_schema, TemplateExtractionError
 tpl = '<USER_TEMPLATE_PATH_OR_template/default.pptx>'
 try:
@@ -106,7 +106,7 @@ Analyze: slide count, content per slide, density intent from natural-language cu
 
 **Slide count convention:** "N pages" = total deck (cover + content + closing). N≥3 → 1 cover + (N−2) content + 1 closing. When no count given, include closing by default.
 
-If user supplied a template, run `servable_slide_types` (see SKILL.md) to learn which slide_types it can serve and each layout's `content_area_in2`. Downshift to `concise` if `content_area < ~30 in²`.
+If user supplied a template, run `servable_slide_types` (see SKILL.md) to learn which slide_types it can serve and each layout's `content_area_in2`. Downshift to `concise` if a **content-bearing** slide type's `content_area < ~30 in²` (title/section/closing/chart slides legitimately report 0.0 — ignore those).
 
 Read 2–3 template notes to internalize house style (command in SKILL.md).
 
@@ -165,7 +165,7 @@ sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts')
 from state_machine import resolve_and_clone
 from ppt_builder import generate_ppt_from_data, DEFAULT_OUTPUT_DIR
 slide_data = <RESOLVED_JSON_ARRAY>
-active, overrides, note = resolve_and_clone('template/default.pptx', slide_data)
+active, overrides, note = resolve_and_clone('<USER_TEMPLATE_PATH_OR_template/default.pptx>', slide_data)
 result = generate_ppt_from_data(
     slide_data, template_path=active, config_overrides=overrides,
     output_path=str(DEFAULT_OUTPUT_DIR / '<name>.pptx'),
