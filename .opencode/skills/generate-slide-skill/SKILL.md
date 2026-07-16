@@ -119,6 +119,8 @@ Among composition-compatible layouts, ranking is: name affinity → fewest surpl
 | `data_query` | No | `chart_slide` | Resource placeholder — asks for real chart statistics; the resolver fills `categories`/`series` with sourced numbers. |
 | `data_hint` | No | `chart_slide` | Optional expected shape for `data_query` (e.g. category/series names). |
 | `notes` | Yes | All | Full English presenter script (**~120–180 words**). Written to the slide's Notes pane (Presenter View only). `\n` = new paragraph. Must be **spoken dialogue** (quoted, speakable sentences tied to the slide's content), **interspersed stage directions**, a `TRANSITION` line, and `COACHING` with delivery + an anticipated Q&A — NOT bullet summaries. Cover/closing use `[Name]` / `[morning/afternoon]` placeholders. |
+| `presenter_name` | No | `closing_slide` | Sign-off name. Omit on first generation — engine removes the placeholder. Set only when user picks "Add presenter sign-off" in Stage 5 refinement. |
+| `presenter_email` | No | `closing_slide` | Sign-off email. Same lifecycle as `presenter_name`. |
 
 ### Body Text Parsing
 
@@ -477,3 +479,101 @@ print(result)
 ## Output
 
 Returns the **absolute path** of the generated `.pptx` file.
+
+## Speaker Notes Style Guide
+
+Every `notes` field must be a **full English presenter script (~120–180 words)** — what the presenter literally SAYS. Four-part structure:
+
+1. **KEY MESSAGE** — one line: the single takeaway (a crisp declarative).
+2. **Verbatim dialogue + stage directions** (the body — this is the part that must be rich):
+   - **Quoted blocks** (`"..."`) of complete, natural, speakable sentences — one thought per block. NEVER abstract bullets.
+   - **Tie directly to this slide's content** — weave in the real numbers/names/visuals (e.g. "$1M+", "the three cards").
+   - **Intersperse stage directions** as imperative prose: `Pause. Let the number land.` / `Walk through the three points left to right.`
+   - Cover/closing only: open with `[morning/afternoon]` and `[Name]`.
+   - Where natural, include one audience-engagement rhetorical question.
+   - Provide 2–4 flowing quote blocks, not a single sentence.
+3. **TRANSITION** — one quoted line bridging to the next slide.
+4. **COACHING** — concrete delivery guidance, MUST include BOTH: (a) a tone/pacing note AND (b) at least one anticipated question or "be ready for" Q&A.
+
+**Example — GOOD (match this):**
+```
+KEY MESSAGE: BIM catches clashes on screen — not on site.
+"Hold the slide for a second — let them take in the model."
+"BIM gives every discipline one shared digital model, so clashes are caught on screen, weeks before anyone pours concrete."
+Pause. Let the number land.
+"In our pilots, automated clash detection cut rework by up to thirty percent."
+TRANSITION: "Now let's take this same data out onto the construction site."
+COACHING: Matter-of-fact tone, don't over-sell. Be ready for: "Does BIM work with non-IFC models?" — we ingest seven formats.
+```
+
+## Example Interaction
+
+**User**: "Create a 3-page PPT about how AI empowers accounting"
+**Action**: English only → outline (3 slides = 1 cover + 1 content + 1 closing; **shown as info, not confirmed**) → autonomous `standard` density + self-critique (**no pre-gen question**) → JSON → validate → resolve → render → return path → **one multi-select refinement question**.
+
+1. Outline (3 total per the slide-count convention: N=3 → 1 cover + 1 content + 1 closing). Display it with *"Here's the outline I'll generate — proceeding with defaults; you can adjust in the next step"* and continue (no wait):
+   ```
+   1. [title_slide]   "AI Empowering Accounting" — subtitle: 2026
+   2. [content_slide] "Use Cases" — reporting, reconciliation, fraud detection
+   3. [closing_slide] "Thank You"
+   ```
+2. **Density + self-critique (autonomous, no question).** The user said no density word and the default template's content area is normal → effective density = `standard` (30–50 words/slide). Self-critique the outline (consistency/flow/coverage/redundancy/length/template-fit) and proceed. Outline artifact re-saved with `mode='standard'` header. Closing sign-off defaults to none (`presenter_name`/`presenter_email` unset → engine removes the placeholder).
+3. JSON (after self-critique + validation with `density_mode='standard'`):
+   ```json
+   [
+     {"slide_type": "title_slide", "title": "AI Empowering Accounting", "subtitle": "2026",
+      "notes": "KEY MESSAGE: ...\n\"Good [morning/afternoon], I'm [Name]...\"\nTRANSITION: ...\nCOACHING: ..."},
+     {"slide_type": "content_slide", "title": "AI Use Cases",
+      "body": "**Automated Reporting** — RPA auto-generates reports\n**Smart Reconciliation** — 99.5%\n**Fraud Detection** — real-time alerts",
+      "notes": "KEY MESSAGE: ...\nTRANSITION: ...\nCOACHING: ..."},
+     {"slide_type": "closing_slide", "title": "Thank You",
+      "notes": "KEY MESSAGE: ...\nTRANSITION: Open for questions.\nCOACHING: ..."}
+   ]
+   ```
+   (The content-slide body lands at ~40 words — within the standard 30–50 budget. The title and closing slides underflow standard, which is expected and ignored. The closing slide has NO `subtitle`/`presenter_name`/`presenter_email` fields — **the engine removes the sign-off placeholder** since `presenter_name` is unset, so no `"Prepared by: Lecturer Name"` bleeds.)
+4. Validate → resolve → render → return output path.
+5. **Post-generation refinement question (primary agent, one multi-select):** offer the 7 options (Lower/Increase density, Reduce/Add slides, Add sign-off, Change ratio, No adjustment). Example outcome — user picks "No adjustment (Recommended)": workflow ends, file kept as-is. (Or: user picks "Add presenter sign-off" + provides "Jane Doe / jane@x.com" → set the closing fields → one re-render → return new path → workflow ends. **No second refinement prompt.**)
+
+**User**: "帮我制作一份关于数字化转型的PPT"
+**Action**: User wrote in Chinese → **generate English content** ("Digital Transformation"). Communicate the outline/status/refinement in Chinese; slides are English.
+
+## Template Introspection Commands
+
+**Check which slide types the template can serve:**
+```bash
+python -c "
+import sys, json; sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts')
+from ppt_builder import servable_slide_types, get_render_contract
+contract = get_render_contract('template/default.pptx')
+print(json.dumps(servable_slide_types(contract), indent=2, ensure_ascii=False))
+"
+```
+
+**Read 2–3 notes from a generated output deck to internalize house style**
+(the bundled `template/default.pptx` has 0 slides — read from a previously
+generated `output/*.pptx` instead; if none exists yet, use the GOOD example
+in the Speaker Notes Style Guide above):
+```bash
+python -c "
+import sys, glob, os; sys.stdout.reconfigure(encoding='utf-8')
+sys.path.insert(0,'.opencode/skills/generate-slide-skill/scripts')
+from pptx import Presentation
+fs = sorted(glob.glob('output/*.pptx'), key=os.path.getmtime, reverse=True)
+if not fs: print('No output deck yet - see GOOD example in Speaker Notes Style Guide')
+else:
+    prs = Presentation(fs[0]); slides = list(prs.slides)
+    for i in range(min(3, len(slides))):
+        print('===== S%d =====' % i, slides[i].notes_slide.notes_text_frame.text)
+"
+```
+
+## Self-Critique Rubric
+
+Re-read the outline against these 6 dimensions and **revise it yourself** before writing JSON:
+
+- *Consistency* — do titles tell one coherent story?
+- *Flow* — does each slide set up the next?
+- *Coverage gaps* — obvious missing context.
+- *Redundancy* — slides that repeat each other.
+- *Length* — right slide count for the ask.
+- *Template fit* — if a small content area was reported, density has been downshifted to `concise`; is the planned body still within the concise budget? Are all planned `slide_type`s ones the template can serve?
