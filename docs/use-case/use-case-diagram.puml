@@ -1,0 +1,50 @@
+@startuml use-case-diagram-pure
+title PPTX Subagent System — Use Case Diagram (pure user-centric)
+
+left to right direction
+skinparam packageStyle rectangle
+skinparam linetype polyline
+skinparam shadowing false
+
+actor "User" as User
+
+rectangle "PPTX Subagent System" as SYS {
+  usecase "Generate a presentation" as UC1
+  usecase "Extract a template" as UC2
+
+  together {
+    usecase "Supply a custom template" as UC3
+    usecase "Answer the refinement question" as UC4
+  }
+
+  together {
+    usecase "Generate outline" as UC5
+    usecase "Self-critique outline" as UC6
+    usecase "Author and validate slide JSON" as UC7
+    usecase "Render the deck" as UC8
+  }
+
+  usecase "Repair a masterless template" as UC9
+  usecase "Extend template for a missing layout" as UC10
+  usecase "Embed schema into the template" as UC11
+}
+
+User --> UC1
+User --> UC2
+User --> UC3
+User --> UC4
+
+UC3 ..> UC1 : <<extend>>
+UC4 ..> UC1 : <<extend>>
+
+UC1 ..> UC5 : <<include>>
+UC1 ..> UC6 : <<include>>
+UC1 ..> UC7 : <<include>>
+UC1 ..> UC8 : <<include>>
+
+UC9 ..> UC8 : <<extend>>
+UC10 ..> UC8 : <<extend>>
+
+UC2 ..> UC11 : <<include>>
+
+@enduml
