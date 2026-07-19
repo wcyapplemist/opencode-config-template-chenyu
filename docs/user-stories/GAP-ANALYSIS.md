@@ -1,11 +1,11 @@
 # Gap Analysis — chenyyu-user-stories vs Current Implementation
 
 > **Document type:** Requirements-vs-implementation gap analysis (analysis only — no code changes)
-> **Requirements source:** `docs/user-stories/user-stories.md` (4 Epics, 22 Stories)
+> **Requirements source:** `docs/user-stories/user-stories.md` (4 Epics, 24 Stories)
 >
-> *Note: counts reflect the current source document — 22 stories across 4 Epics (after the US-4.4 descope, the US-4.7 addition, the US-4.8 addition, and the Epic reorganization from 6→4). Historical per-revision counts in the log below are preserved as-is.*
+> *Note: counts reflect the current source document — 24 stories across 4 Epics (after the US-4.4 descope, the US-4.7/4.8/4.9/4.10 additions, and the Epic reorganization from 6→4). Historical per-revision counts in the log below are preserved as-is.*
 > **Implementation audited:** `.opencode/skills/generate-slide-skill/`, `.opencode/skills/template-modifier-skill/`, `.opencode/agents/pptx-subagent.md`
-> **Date:** July 2026 (latest: Revision 21 — US-4.8 added)
+> **Date:** July 2026 (latest: Revision 22 — US-4.9/4.10 added + GIT-79 prompt hardening)
 
 ## Revision Log (compact)
 
@@ -31,6 +31,7 @@
 | 19 | US-4.2 AC1 attempt (#74) | normAutofit **falsified & reverted** — US-4.2 stays Partial | 16 / 4 / 1 / 0 |
 | 20 | US-2.2 descoped | common-practice suggestions **removed** from backlog + `common_practices` schema field dropped — 20 stories | 16 / 4 / 0 / 0 |
 | 21 | US-4.8 added | invalid/incomplete template repair (3-level cascade) + layout borrowing + chart theme-color fix — 21 stories | 17 / 4 / 0 / 0 |
+| 22 | US-4.9/4.10 added + GIT-79 | generate-first zero-prompt (ABSOLUTE RULES) + post-generation refinement + three-skill unification + prompt simplification (450→228) + interaction language — 23 stories | 19 / 4 / 0 / 0 |
 
 *Full per-revision narrative preserved in Appendix A.*
 
@@ -47,7 +48,7 @@ This report compares `user-stories.md` (the requirements document) against the c
 
 Both achieve "fill any template", but they differ on **data model, skill decomposition, and artifact form**.
 
-**Story-by-story summary** (21 stories, 4 Epics): Met 17 / Partial 4 / Not met 0.
+**Story-by-story summary** (23 stories, 4 Epics): Met 19 / Partial 4 / Not met 0.
 
 The delivered-stories detail and the remaining-gaps breakdown live in **§3** (statistics + priority matrix) and **§4** (Open Work). **No fully-unmet Must-Have remains** — the open items are four Partials. *(US-2.2 was descoped — Rev 20.)*
 
@@ -151,6 +152,14 @@ New story. The default template is now **`template/default.pptx`** at the repo r
 
 New story. A user-supplied `.pptx` with **no slide master** (Scenario A) is now **repaired** (not rejected) via a three-level cascade in `_common/scripts/master_repairer.py`: Level 1 salvages `ppt/theme/theme1.xml` from the zip (exact color/font fidelity); Level 2 scavenge explicit styles from slide XML `<a:rPr>`/`<p:spPr>` (best-effort); Level 3 falls back to `default.pptx`'s theme (last resort). The repair runs **before** `get_render_contract` so the contract describes the repaired deck; the repair level is recorded in `render_report["templating"]["repair"]` + `template_metadata.repair_info`. A template **missing layouts** for some slide types (Scenario B) is **extended** — `template-modifier-skill/scripts/master_cloner.py` borrows layouts from `default.pptx` and injects them under the user's existing master (T2.0 spike found master cloning unnecessary — cross-file layout clone suffices; theme inherited automatically). `state_machine.resolve_and_clone` dispatches Level 0 (same-file donor) → Level 1 (borrow from default) via lazy import (no circular dependency). `TemplateError` relocated to `_common/scripts/errors.py` (zero cross-skill coupling). `schema_extractor.extract_schema` tolerates missing master. Chart colors now dynamically read from the live theme via `_extract_chart_theme(slide)` (was hardcoded — found during human testing). Architecture-review (CRIT-1~4, MAJOR-1~7, MINOR-1~6) all adopted before implementation. All 7 ACs Met (+38 tests). Human-tested across 4 scenarios (A-L1 green-theme salvage, A-L3 default fallback, B layout borrow, regression). **Known limitation**: `two_content_slide` borrowed layout occasionally not selected by fingerprint matcher (content preserved, visual layout merges to single column — deferred as low-priority issue).
 
+#### US-4.9 — Generate-First Workflow (Zero-Prompt First Generation) `[Must Have]` — ✅ Met (Rev 22)
+
+New story. GIT-76 introduced the generate-first philosophy; GIT-79 hardened it into a single top-of-prompt **ABSOLUTE RULES** block (Rule #1: "NEVER call `question()` between the user's initial prompt and the first `.pptx` output"). The 4 scattered "generate-first" paraphrases in Stage 0/1/2 were consolidated into one rule (single source of truth). User-stated preferences in the initial prompt are honored; unstated parameters are auto-determined with safe defaults. Both primary-agent and headless-subagent modes comply. The rule is prompt-level enforcement (best-effort); human testing across multiple runs (Chinese + English prompts) verified compliance. All 4 ACs Met. PLAN: `PLANS/PLAN-GIT-79.md`.
+
+#### US-4.10 — Post-Generation Refinement Options `[Should Have]` — ✅ Met (Rev 22)
+
+New story. GIT-76 introduced the post-generation refinement flow; GIT-79 added explicit execution paths (density → re-author body text; aspect ratio → `target_size`; sign-off → `presenter_name`/`presenter_email`; slide count → revise outline) and interaction-language support (translate `header`/`question`; keep `label`s English). After the first `.pptx` is returned, the primary agent issues exactly one multi-select `question`; at most one re-generation round; headless subagent skips entirely. All 5 ACs Met. Human-tested: density + ratio refinement verified. PLAN: `PLANS/PLAN-GIT-79.md`.
+
 ### Epic 3 — Template Extension
 
 #### US-6.1 — Extend Template When a Layout Is Missing `[Should Have]` — ✅ Met (Rev 15)
@@ -179,7 +188,7 @@ Python's `logging` module is used across the modules. `schema_extractor.py` **do
 
 | Status | Count | Stories |
 |---|---|---|
-| ✅ Met | 17 | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-3.4, US-4.1, US-4.3, US-4.5, US-4.6, US-4.7, US-4.8, US-6.1 |
+| ✅ Met | 19 | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-3.4, US-4.1, US-4.3, US-4.5, US-4.6, US-4.7, US-4.8, US-4.9, US-4.10, US-6.1 |
 | 🟡 Partial | 4 | US-4.2, US-5.1, US-5.2, US-5.3 |
 | ❌ Not met | 0 | — |
 | ⚪ Architecture differs | 0 | — |
@@ -188,7 +197,7 @@ Python's `logging` module is used across the modules. `schema_extractor.py` **do
 
 | | Must Have | Should Have | Could Have |
 |---|---|---|---|
-| ✅ Met | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-4.1, US-4.3, US-4.7, US-4.8 | US-3.4, US-4.6, US-6.1 | US-4.5 |
+| ✅ Met | US-1.1, US-1.2, US-1.3, US-1.4, US-1.5, US-2.1, US-3.1, US-3.2, US-3.3, US-4.1, US-4.3, US-4.7, US-4.8, US-4.9 | US-3.4, US-4.6, US-4.10, US-6.1 | US-4.5 |
 | 🟡 Partial | US-4.2, US-5.1, US-5.2 | US-5.3 | — |
 | ❌ Not met | — | — | — |
 | ⚪ Differs | — | — | — |
@@ -267,6 +276,8 @@ The original option-by-option prose for Decisions 1–3 is preserved in Appendix
 > **Revision 20 (US-2.2 descoped — common-practice suggestions removed):** **US-2.2 — Common Practice Suggestions `[Should Have]` — descoped & removed from the backlog.** The story (suggest common PowerPoint practices — slide numbers, company logo, consistent margins, section dividers, closing slide) will not be implemented. Rationale: the requirements cross-check (this session) confirmed US-2.2 is requirement-grounded (req 2: *"what other common practices suitable for powerpoint slide"*), but the user chose to abandon it — the detection heuristics (especially "consistent margins" and "company logo") are weak/subjective for a Should-Have, and the value is low relative to the remaining Must-Have Partials. The placeholder `common_practices` schema field (added in US-1.1 in anticipation of US-2.2) and the `_build_metadata` emit were **removed** as dead code; the `chenyu-user requirement.html` source is left untouched (historical contract). The story entry was **fully removed** from `user-stories.md`/`.zh.md` (no marker kept — the backlog stays clean); this GAP-ANALYSIS Rev 20 entry is the only historical trace (the US-4.4 Rev 17 precedent kept a marker, but the user chose a clean removal here). Requirement point 2c ("other common practices") is now intentionally not addressed. Counts: **Met 16 / Partial 4 / Not met 0** (20 stories, 4 Epics).
 >
 > **Revision 21 (US-4.8 added — invalid/incomplete template repair & extension):** new story **US-4.8 — Invalid / Incomplete Template Repair & Extension `[Must Have]` — ✅ Met**, retroactively entering the story set. The engine now **repairs** (not rejects) user-supplied `.pptx` files that lack a slide master (Scenario A) via a three-level cascade (`master_repairer.py`): Level 1 salvages `ppt/theme/theme1.xml` from the zip (exact color/font fidelity); Level 2 scavenges explicit styles from slide XML (best-effort); Level 3 falls back to `default.pptx`'s theme (last resort). A template missing layouts for some slide types (Scenario B) is **extended** — `master_cloner.py` borrows layouts from `default.pptx` and injects them under the user's existing master (T2.0 spike found master cloning unnecessary — cross-file layout clone suffices, theme inherited automatically). `state_machine.resolve_and_clone` dispatches Level 0 (same-file donor) → Level 1 (borrow from default) via lazy import (no circular dependency). `TemplateError` relocated to `_common/scripts/errors.py`. `schema_extractor` tolerates missing master. Chart colors now dynamically read from the live theme (`_extract_chart_theme`) — was hardcoded; found during human testing. Architecture-review (CRIT-1~4, MAJOR-1~7, MINOR-1~6) all adopted pre-implementation. All 7 ACs Met (+38 tests). Human-tested across 4 scenarios. **Known limitation**: `two_content_slide` borrowed layout occasionally not selected by fingerprint matcher (deferred). PLAN: `PLANS/PLAN-GIT-78.md` (Rev 2). Header count corrected 20 → 21. Counts: **Met 17 / Partial 4 / Not met 0** (21 stories, 4 Epics).
+>
+> **Revision 22 (US-4.9/4.10 added + GIT-79 prompt hardening):** two new stories formalize capabilities originally delivered in GIT-76 and hardened in GIT-79. **US-4.9 — Generate-First Workflow `[Must Have]` — ✅ Met**: ABSOLUTE RULES Rule #1 bans `question()` between the user's initial prompt and the first `.pptx` output; 4 scattered "generate-first" paraphrases consolidated into one top-of-prompt rule; both primary-agent and headless-subagent modes comply; human-tested across multiple runs. **US-4.10 — Post-Generation Refinement Options `[Should Have]` — ✅ Met**: after the first file, primary agent issues exactly one multi-select question (density / slide count / sign-off / aspect ratio); each option has a documented execution path; at most one re-generation round; headless subagent skips; question rendered in user's prompt language. GIT-79 also delivered: three-skill unification (all permitted in frontmatter), Skill Routing table (2 rows, detection-based), Stage -1 informational template check, interaction language (match user's prompt language; slides always English), prompt simplification (450→228 lines, ~125 lines relocated to `generate-slide-skill/SKILL.md`). Architecture-review (CRIT-1 Path B dropped, CRIT-2 exception safety, MAJ-1~7) all adopted. Code-review fixes (C-1 import path, M-1~M-4 execution paths) applied. Human-tested (5 scenarios, all passed). PLAN: `PLANS/PLAN-GIT-79.md` (Rev 2). Header count corrected 21 → 23. Counts: **Met 19 / Partial 4 / Not met 0** (23 stories, 4 Epics).
 
 ---
 

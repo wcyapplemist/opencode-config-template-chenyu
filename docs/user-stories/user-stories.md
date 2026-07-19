@@ -2,7 +2,7 @@
 
 > **Project:** opencode.ai / pptx-subagent
 > **Date:** June 2025
-> **Scope:** 4 Epics, 21 Stories
+> **Scope:** 4 Epics, 23 Stories
 > **Author:** Founder (OpenCode User)
 > **Source:** `chenyu-user requirement.html` (`.md` export) — pure requirements, stripped of HTML/CSS/JS boilerplate.
 
@@ -373,6 +373,54 @@ When the target slide dimensions differ from the template's native size, the sli
 - [x] Chart series colors dynamically reflect the live theme (not hardcoded).
 
 **Tags:** template, repair, cascade, layout-borrowing, theme, chart-colors
+
+---
+
+### US-4.9 [Epic 2] — Generate-First Workflow (Zero-Prompt First Generation) `[Must Have]`
+
+**As a** OpenCode user,
+**I want** the subagent to generate my first `.pptx` immediately from my initial prompt without asking any intermediate questions,
+**so that** I receive a usable file as fast as possible and can refine afterward rather than answering prompts upfront.
+
+**Details:**
+- The agent honors everything the user stated in their initial message (page count, title, theme, density intent, template path, aspect ratio). Unstated parameters are auto-determined using safe defaults.
+- An **ABSOLUTE RULES** block at the top of the agent prompt enforces this: Rule #1 states "NEVER call `question()` between the user's initial prompt and the first `.pptx` output."
+- This rule applies to both the primary conversation agent and headless subagent modes.
+- The rule is prompt-level enforcement (best-effort); human testing across multiple runs verifies compliance.
+- GIT-76 introduced the generate-first philosophy; GIT-79 hardened it into a single top-of-prompt absolute rule (consolidating 4 scattered paraphrases into one).
+
+**Acceptance Criteria:**
+- [x] From the user's initial prompt to the first `.pptx` output path, the agent never calls `question()`.
+- [x] User-stated preferences in the initial prompt are honored; only unstated parameters are auto-determined.
+- [x] Both primary-agent and headless-subagent modes comply.
+- [x] The ABSOLUTE RULES block is the first section after the role description in the agent prompt.
+
+**Tags:** generate-first, zero-prompt, abs-rules, ux
+
+---
+
+### US-4.10 [Epic 2] — Post-Generation Refinement Options `[Should Have]`
+
+**As a** OpenCode user,
+**I want** the subagent to offer me optional adjustments after the first `.pptx` is generated,
+**so that** I can refine the deck (density, slide count, sign-off, aspect ratio) in a single interaction rather than starting over.
+
+**Details:**
+- After returning the output path, the primary conversation agent issues exactly **one** multi-select `question` offering refinements: lower/increase density, reduce/add slides, add presenter sign-off, change aspect ratio, or no adjustment.
+- Each refinement option has a documented execution path (e.g., density change → re-author body text → re-validate → re-render; aspect ratio → pass `target_size` → re-render).
+- At most **one re-generation round** runs; after that the workflow ends. Picking "No adjustment" also ends.
+- A headless subagent **skips** this question entirely — it returns the path and ends.
+- The question `header` and `question` text are translated to the user's prompt language; option `label`s stay English (they map to engine parameters) with translated `description`s.
+- GIT-76 introduced the post-generation refinement flow; GIT-79 added explicit execution paths and interaction-language support.
+
+**Acceptance Criteria:**
+- [x] After the first `.pptx` is returned, the primary agent issues exactly one multi-select `question` with refinement options.
+- [x] Each refinement option has a clear execution path documented in the agent prompt.
+- [x] At most one re-generation round; the workflow ends after refinements are applied.
+- [x] A headless subagent skips the question and returns the path directly.
+- [x] The question is rendered in the user's prompt language (header + question text translated; option labels English).
+
+**Tags:** refinement, post-generation, question, interaction-language, ux
 
 ---
 

@@ -1,40 +1,60 @@
 %% PPTX Subagent System — Workflow Diagram (KEY steps · swimlane / responsibility view)
-%% Replaces the previous version. For the simplest linear view see workflow-diagram-linear.mmd;
-%% for the full mechanism see workflow-diagram-detailed.mmd.
+%% 3 skills each in their own block; generate-slide-skill (the core) shown as a
+%% 6-node pipeline. Intent router splits extract-only vs generation use cases.
+%% Linear view: workflow-diagram-linear.mmd · full mechanism: workflow-diagram-detailed.mmd
 %% Render at https://mermaid.live
 flowchart LR
-    subgraph User["👤 User"]
-        U0([Request a deck<br/>+ optional template])
-        U1[Confirm outline<br/>+ density mode]
-        Uend([Receive .pptx])
+    subgraph User["User"]
+        U0(["Request a deck<br/>(optionally with a template)"])
+        U1["Ask the optional refinement question<br/>(one round only)"]
+        Uend(["Receive the final .pptx"])
     end
 
-    subgraph Agent["pptx-subagent"]
+    subgraph Agent["pptx-subagent - generate-first pipeline"]
         direction TB
-        S0["Understand<br/>+ introspect template"]
-        S1["Generate outline"]
-        S2{"Context?"}
-        S3["Author JSON<br/>+ validate (retry on error)"]
-        S4["Resolve + render"]
-        S5["Return result"]
-        S0 --> S1 --> S2
-        S3 --> S4 --> S5
+        R{"Intent?"}
+        SM1["Check whether the template is already templated"]
+        S0a["Extract the user's explicit requirements"]
+        S0b["Auto-decide every unstated option"]
+        S1["Show outline plans (no approval gate)"]
+        S2["Self-critique the outline"]
+        S3["Author the slide JSON and validate it"]
+        S4["Resolve placeholders and render the deck"]
+        S5{"Offer refinements?"}
+        SM1 --> S0a --> S0b --> S1 --> S2 --> S3 --> S4
     end
 
-    subgraph Ext["template-modifier-skill"]
-        X0{"Layout missing?"}
-        X1[Clone extended layout<br/>→ template_new.pptx]
+    subgraph GT["generate-template-skill"]
+        GT0["Extract the schema and embed it into the template"]
+        GT1(["Templated PPTX"])
+        GT0 --> GT1
     end
 
-    subgraph Engine["⚙️ generate-slide-skill"]
-        E0[Fill template layouts<br/>→ native .pptx]
+    subgraph TM["template-modifier-skill"]
+        TM0{"Layout missing?"}
+        TM1["Clone an extended layout"]
+        TM0 -->|"yes"| TM1
     end
 
-    U0 --> S0
-    S2 -->|"primary agent"| U1
-    S2 -->|"headless subagent<br/>(auto = standard)"| S3
-    U1 --> S3
-    S4 --> X0
-    X0 -->|"no"| E0
-    X0 -->|"yes"| X1 --> E0
-    E0 --> S5 --> Uend
+    subgraph GS["generate-slide-skill - the rendering engine"]
+        direction TB
+        GS1["Load and repair the template"]
+        GS2["Introspect it into a fingerprint contract"]
+        GS3["Render slides<br/>(resolve layout, fill placeholders,<br/>apply reactive text-fit...)"]
+        GS4["Save the deck"]
+        GS5["Re-embed the schema into the rendered deck"]
+        GS6["Write the render.json sidecar (record changes)"]
+        GS1 --> GS2 --> GS3 --> GS4 --> GS5 --> GS6
+    end
+
+    U0 --> R
+    R -->|"extract template only"| GT0
+    R -->|"generate slides"| SM1
+    S4 --> TM0
+    TM1 --> GS1
+    TM0 -->|"no"| GS1
+    GS6 --> S5
+    S5 -->|"Use as primary agent"| U1
+    U1 -->|"Re-render"| S4
+    U1 -->|"no adjustment"| Uend
+    S5 -->|"Use as headless subagent"| Uend

@@ -2,7 +2,7 @@
 
 > **项目：** opencode.ai / pptx-subagent
 > **日期：** 2025 年 6 月
-> **范围：** 4 个 Epic，21 个 Story
+> **范围：** 4 个 Epic，23 个 Story
 > **作者：** 创始人（OpenCode 用户）
 > **来源：** `chenyu-user requirement.html`（导出为 `.md`）—— 纯需求文档，已剥离 HTML/CSS/JS 模板代码。
 
@@ -373,6 +373,54 @@ LLM 先规划幻灯片顺序和内容大纲（作为结构化数组），然后�
 - [x] 图表系列颜色动态反映实时 theme（非硬编码）。
 
 **标签：** template, repair, cascade, layout-borrowing, theme, chart-colors
+
+---
+
+### US-4.9 [Epic 2] —— 先生成后精修工作流（零提示首次生成） `[Must Have]`
+
+**作为**一名 OpenCode 用户，
+**我希望**子代理根据我的初始 prompt 立即生成第一份 `.pptx`，不在中间询问任何问题，
+**以便**我尽快拿到可用的文件，事后再精修而非事前回答提问。
+
+**细节：**
+- agent 满足用户在初始消息中声明的一切偏好（页数、标题、主题、密度意图、模板路径、宽高比）。未声明的参数使用安全默认值自主决定。
+- agent prompt 顶部的 **ABSOLUTE RULES** 块强制执行此规则：Rule #1 规定"在用户初始 prompt 到首次 `.pptx` 输出之间绝不调用 `question()`。"
+- 此规则同时适用于主对话 agent 和无头子代理模式。
+- 该强制是 prompt 层面的（尽力而为）；通过多次运行的人工测试验证合规性。
+- GIT-76 引入了 generate-first 理念；GIT-79 将其硬化为 prompt 顶部的单一绝对规则（将分散在 4 处的重复说明合并为一处）。
+
+**验收标准：**
+- [x] 从用户初始 prompt 到首个 `.pptx` 输出路径，agent 绝不调用 `question()`。
+- [x] 初始 prompt 中用户声明的偏好全部满足；仅未声明的参数自主决定。
+- [x] 主对话 agent 和无头子代理模式均遵守此规则。
+- [x] ABSOLUTE RULES 块是 agent prompt 中角色描述之后的第一节。
+
+**标签：** generate-first, zero-prompt, abs-rules, ux
+
+---
+
+### US-4.10 [Epic 2] —— 生成后精修选项 `[Should Have]`
+
+**作为**一名 OpenCode 用户，
+**我希望**子代理在第一份 `.pptx` 生成后提供可选的调整选项，
+**以便**我在一次交互中精修幻灯片组（密度、页数、署名、宽高比），而不是从头重来。
+
+**细节：**
+- 返回输出路径后，主对话 agent 发出**恰好一次**多选 `question`，提供精修选项：降低/提高密度、减少/增加页数、添加演讲者署名、更改宽高比、或不做调整。
+- 每个精修选项有明确的执行路径（如密度变更 → 重新创作 body text → 重新校验 → 重新渲染；宽高比 → 传 `target_size` → 重新渲染）。
+- 最多执行**一轮** re-generation；完成后工作流结束。选择"不做调整"同样结束。
+- 无头子代理**跳过**此问题——直接返回路径并结束。
+- question 的 `header` 和 `question` 文本翻译为用户 prompt 的语言；option `label` 保持英文（映射到引擎参数），`description` 翻译。
+- GIT-76 引入了生成后精修流程；GIT-79 增加了显式执行路径和交互语言支持。
+
+**验收标准：**
+- [x] 首份 `.pptx` 返回后，主 agent 发出恰好一次多选 `question`，包含精修选项。
+- [x] 每个精修选项在 agent prompt 中有清晰的执行路径文档。
+- [x] 最多一轮 re-generation；精修应用后工作流结束。
+- [x] 无头子代理跳过此问题，直接返回路径。
+- [x] question 以用户 prompt 的语言呈现（header + question 翻译；option label 英文）。
+
+**标签：** refinement, post-generation, question, interaction-language, ux
 
 ---
 
