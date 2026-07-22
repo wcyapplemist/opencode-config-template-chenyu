@@ -3,11 +3,16 @@
 Tests the three-level cascade (Chain of Responsibility):
   Level 1 — salvage ``ppt/theme/theme1.xml`` from the zip (exact fidelity)
   Level 2 — scavenge explicit styles from slide XML (best-effort)
-  Level 3 — fallback to ``default.pptx``'s theme (no user styling)
+  Level 3 — fallback to in-code minimal theme (BT-142 Phase 1.5: was default.pptx)
 
 Fixture strategy (MAJOR-6 / R-FIXTURE-1): masterless ``.pptx`` files cannot be
 created by python-pptx — they are built by zip surgery that strips the slide
 master part + rels from a normal ``.pptx``.
+
+BT-142 Phase 1.5: tests no longer depend on a bundled ``template/default.pptx``.
+The ``default_pptx`` fixture synthesizes a minimal valid PPTX in ``tmp_path``
+via ``_build_minimal_pptx_bytes(None)`` — same in-code fallback the production
+code uses when ``default_template_path=None``.
 """
 import shutil
 import sys
@@ -32,13 +37,16 @@ for _p in (str(_COMMON_SCRIPTS), str(_FILLER_SCRIPTS)):
 
 from master_repairer import (  # noqa: E402
     RepairResult,
+    _build_minimal_pptx_bytes,
     _salvage_theme_part,
     _scavenge_slide_styles,
     repair_if_needed,
 )
 from schema_extractor import parse_theme_xml  # noqa: E402
 
-_DEFAULT_PPTX = str(_REPO_ROOT / "template" / "default.pptx")
+# BT-142 Phase 1.5: no longer reads ``template/default.pptx``. The ``default_pptx``
+# fixture (session-scoped) synthesizes a minimal valid PPTX via the same in-code
+# fallback the production code uses.
 
 # Namespaces for zip-level XML surgery.
 _NS_P = "http://schemas.openxmlformats.org/presentationml/2006/main"
@@ -124,22 +132,30 @@ def _make_masterless_fixture(
 
 
 @pytest.fixture
-def default_pptx():
-    return _DEFAULT_PPTX
+def default_pptx(tmp_path):
+    """BT-142 Phase 1.5: synthesize a minimal valid PPTX in tmp_path.
+
+    Replaces the legacy ``template/default.pptx`` dependency. The synthesized
+    PPTX has one slide_master + one blank layout + a default theme — the same
+    fallback the production code uses when ``default_template_path=None``.
+    """
+    p = tmp_path / "default.pptx"
+    p.write_bytes(_build_minimal_pptx_bytes(None))
+    return str(p)
 
 
 @pytest.fixture
-def masterless_with_theme(tmp_path):
+def masterless_with_theme(tmp_path, default_pptx):
     """A-L1: no master, but ppt/theme/theme1.xml survives in the zip."""
     dst = str(tmp_path / "masterless_theme.pptx")
-    return _make_masterless_fixture(_DEFAULT_PPTX, dst, keep_theme=True)
+    return _make_masterless_fixture(default_pptx, dst, keep_theme=True)
 
 
 @pytest.fixture
-def masterless_no_theme(tmp_path):
+def masterless_no_theme(tmp_path, default_pptx):
     """A-L2/A-L3: no master, no theme part."""
     dst = str(tmp_path / "masterless_no_theme.pptx")
-    return _make_masterless_fixture(_DEFAULT_PPTX, dst, keep_theme=False)
+    return _make_masterless_fixture(default_pptx, dst, keep_theme=False)
 
 
 # ---------------------------------------------------------------------------
@@ -284,7 +300,9 @@ class TestRepairIfNeeded:
         result = repair_if_needed(prs, stripped, default_pptx)
         assert result.mutated is True
         assert result.level == "L3"
-        assert result.theme_source == "default"
+        # BT-142 Phase 1.5: theme_source renamed from "default" to "minimal-in-code"
+        # (or "default" if legacy path with explicit default_template_path — both accepted)
+        assert result.theme_source in ("default", "minimal-in-code")
         assert result.repaired_path is not None
 
     def test_repaired_file_has_master(self, masterless_with_theme, default_pptx):

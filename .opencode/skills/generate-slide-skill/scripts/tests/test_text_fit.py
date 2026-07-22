@@ -65,23 +65,25 @@ class TestEstimateLines:
 # ============================================================
 class TestEstimateHeightIn:
     def test_single_line_single_paragraph(self):
-        # 1 line * 18 * 1.2 / 72 = 0.3in, no inter-para gap
-        assert estimate_height_in(1, 18, 1.2, 1) == pytest.approx(0.3)
+        # BT-142 Phase 2.4a: LINE_SPACING_DEFAULT raised 1.2 → 1.3
+        # 1 line * 18 * 1.3 / 72 = 0.325in, no inter-para gap
+        assert estimate_height_in(1, 18, 1.3, 1) == pytest.approx(0.325)
 
     def test_scales_with_lines(self):
-        assert estimate_height_in(2, 18, 1.2, 1) == pytest.approx(0.6)
+        assert estimate_height_in(2, 18, 1.3, 1) == pytest.approx(0.65)
 
     def test_paragraph_spacing_reserve_added(self):
         # M2: multiple paragraphs add inter-para gaps
-        single = estimate_height_in(5, 18, 1.2, 1)
-        multi = estimate_height_in(5, 18, 1.2, 5)
+        # BT-142 Phase 2.4a: DEFAULT_PARA_SPACING_FACTOR raised 0.4 → 0.7
+        single = estimate_height_in(5, 18, 1.3, 1)
+        multi = estimate_height_in(5, 18, 1.3, 5)
         assert multi > single
-        # 4 gaps * 0.4 * 18 / 72 = 0.4in of reserve
-        assert multi - single == pytest.approx(0.4)
+        # 4 gaps * 0.7 * 18 / 72 = 0.7in of reserve
+        assert multi - single == pytest.approx(0.7)
 
     def test_zero_paragraph_gap_when_single_paragraph(self):
-        assert estimate_height_in(3, 14, 1.2, 1) == pytest.approx(
-            3 * 14 * 1.2 / 72
+        assert estimate_height_in(3, 14, 1.3, 1) == pytest.approx(
+            3 * 14 * 1.3 / 72
         )
 
 

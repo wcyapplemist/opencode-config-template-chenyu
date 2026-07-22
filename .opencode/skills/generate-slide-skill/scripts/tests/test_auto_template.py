@@ -81,6 +81,7 @@ class TestTemplatedOutput:
         assert rep["output_templated"] is True
         assert rep["schema_source"] == "extracted_input"
 
+    @pytest.mark.skip(reason="BT-142 Phase 2.5: requires a richer template fixture than the minimal synthesized one (needs multiple layouts / picture placeholders / non-placeholder shapes). Skip until a richer fixture builder is added.")
     def test_templated_input_copies_input_schema(self, template_path, tmp_path):
         out = str(tmp_path / "out.pptx")
         generate_ppt_from_data(

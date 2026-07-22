@@ -31,13 +31,13 @@ _MIN_DECK = [
 
 
 # ---------------------------------------------------------------------------
-# Default-constant sanity (AC1 setup)
+# Default-constant sanity (BT-142 Phase 2.3: _TEMPLATE_FILE is now None)
 # ---------------------------------------------------------------------------
 class TestDefaultConstant:
-    def test_default_points_to_repo_root_default(self):
-        assert _TEMPLATE_FILE.parent.name == "template"
-        assert _TEMPLATE_FILE.name == "default.pptx"
-        assert _TEMPLATE_FILE.exists()
+    def test_default_constant_is_none(self):
+        # BT-142 Phase 2.3: there is no bundled default. _TEMPLATE_FILE is
+        # intentionally None — callers MUST supply a user template path.
+        assert _TEMPLATE_FILE is None
 
 
 # ---------------------------------------------------------------------------
@@ -81,17 +81,18 @@ class TestValidateTemplateUnit:
 # Integration via generate_ppt_from_data (AC1 / AC2 / AC3 / AC7)
 # ---------------------------------------------------------------------------
 class TestGenerateTemplateValidation:
-    def test_default_used_when_path_omitted(self, tmp_path):
-        # AC1: no template_path -> renders against template/default.pptx.
+    def test_no_template_path_raises(self, tmp_path):
+        # BT-142 Phase 2.3: omitting template_path now raises TemplateError
+        # (was: silently fell back to template/default.pptx).
         out = str(tmp_path / "out.pptx")
-        result = generate_ppt_from_data(_MIN_DECK, output_path=out)
-        assert Path(result).exists()
+        with pytest.raises(TemplateError, match="template_path is required"):
+            generate_ppt_from_data(_MIN_DECK, output_path=out)
 
-    def test_default_used_when_path_is_auto(self, tmp_path):
-        # AC1 variant: the "auto" sentinel also falls back to the default.
+    def test_auto_sentinel_raises(self, tmp_path):
+        # BT-142 Phase 2.3: the "auto" sentinel also raises (no implicit fallback).
         out = str(tmp_path / "out.pptx")
-        result = generate_ppt_from_data(_MIN_DECK, template_path="auto", output_path=out)
-        assert Path(result).exists()
+        with pytest.raises(TemplateError, match="template_path is required"):
+            generate_ppt_from_data(_MIN_DECK, template_path="auto", output_path=out)
 
     def test_user_path_renders_and_default_untouched(self, template_path, tmp_path):
         # AC2: a user template path is used; the default file is never modified.

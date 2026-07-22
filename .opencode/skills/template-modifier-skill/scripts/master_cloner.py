@@ -82,7 +82,20 @@ def clone_master_and_borrow(
     master_element = master._element
     package = prs.part.package
 
-    # Open default.pptx to source donor layouts.
+    # BT-142 Phase 3.2: ``default_template_path`` is now REQUIRED and must be
+    # a user-supplied donor PPTX (or a synthesized minimal PPTX via
+    # ``_build_minimal_pptx_bytes(None)`` written to disk by the caller).
+    # Per the user's "no bundled default.pptx" invariant, there is no implicit
+    # fallback — fail loudly with an actionable error when no donor is supplied.
+    if not default_template_path:
+        raise TemplateError(
+            "No donor slide master available — provide a template with a slide "
+            "master, or generate one first via generate-template-skill. The "
+            "template-modifier-skill cannot extend a masterless template "
+            "without a donor to borrow layouts from."
+        )
+
+    # Open the donor PPTX to source layouts.
     default_prs = Presentation(default_template_path)
     default_contract = get_render_contract(default_template_path)
 
