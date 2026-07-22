@@ -18,13 +18,13 @@ def _content(title: str) -> dict:
 
 # --- #40: auto-appended default closing slide -------------------------------
 
-def test_auto_closing_appended_when_missing(output_path):
+def test_auto_closing_appended_when_missing(template_path, output_path):
     data = [
         {"slide_type": "title_slide", "title": "Cover", "notes": "n"},
         _content("P1"),
         _content("P2"),
     ]
-    generate_ppt_from_data(data, output_path=output_path)
+    generate_ppt_from_data(data, template_path=template_path, output_path=output_path)
     prs = Presentation(output_path)
     assert len(prs.slides) == 4  # 3 input + 1 auto-closing
     # The auto-appended closing carries the default "Thank You" title
@@ -32,41 +32,41 @@ def test_auto_closing_appended_when_missing(output_path):
     assert prs.slides[-1].shapes.title.text == "Thank You"
 
 
-def test_auto_closing_skipped_when_already_closing(output_path):
+def test_auto_closing_skipped_when_already_closing(template_path, output_path):
     data = [
         {"slide_type": "title_slide", "title": "Cover", "notes": "n"},
         _content("P1"),
         {"slide_type": "closing_slide", "title": "Thanks", "notes": "n"},
     ]
-    generate_ppt_from_data(data, output_path=output_path)
+    generate_ppt_from_data(data, template_path=template_path, output_path=output_path)
     prs = Presentation(output_path)
     assert len(prs.slides) == 3  # already closed — no duplicate appended
 
 
-def test_auto_closing_skipped_for_short_deck(output_path):
+def test_auto_closing_skipped_for_short_deck(template_path, output_path):
     data = [
         {"slide_type": "title_slide", "title": "Cover", "notes": "n"},
         _content("P1"),
     ]
-    generate_ppt_from_data(data, output_path=output_path)
+    generate_ppt_from_data(data, template_path=template_path, output_path=output_path)
     prs = Presentation(output_path)
     assert len(prs.slides) == 2  # N < 3 threshold respected
 
 
-def test_auto_closing_disabled(output_path):
+def test_auto_closing_disabled(template_path, output_path):
     data = [
         {"slide_type": "title_slide", "title": "Cover", "notes": "n"},
         _content("P1"),
         _content("P2"),
     ]
-    generate_ppt_from_data(data, output_path=output_path, default_closing=False)
+    generate_ppt_from_data(data, template_path=template_path, output_path=output_path, default_closing=False)
     prs = Presentation(output_path)
     assert len(prs.slides) == 3  # opt-out: nothing appended
 
 
 # --- #37: resolve_placeholders wiring ---------------------------------------
 
-def test_resolve_placeholders_default_renders(output_path):
+def test_resolve_placeholders_default_renders(template_path, output_path):
     data = [
         {"slide_type": "title_slide", "title": "X", "notes": "n"},
         _content("P1"),
@@ -75,21 +75,21 @@ def test_resolve_placeholders_default_renders(output_path):
             "body": "**x** - y", "notes": "n",
         },
     ]
-    generate_ppt_from_data(data, output_path=output_path)
+    generate_ppt_from_data(data, template_path=template_path, output_path=output_path)
     prs = Presentation(output_path)
     # default resolve_placeholders=True no-ops without config; deck still renders
     # (3 input + 1 auto-closing).
     assert len(prs.slides) == 4
 
 
-def test_resolve_placeholders_disabled_renders(output_path):
+def test_resolve_placeholders_disabled_renders(template_path, output_path):
     data = [
         {"slide_type": "title_slide", "title": "X", "notes": "n"},
         _content("P1"),
         _content("P2"),
     ]
     generate_ppt_from_data(
-        data, output_path=output_path, resolve_placeholders=False,
+        data, template_path=template_path, output_path=output_path, resolve_placeholders=False,
     )
     prs = Presentation(output_path)
     assert len(prs.slides) == 4  # opt-out: placeholders ignored, closing still appended

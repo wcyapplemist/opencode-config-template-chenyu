@@ -191,30 +191,30 @@ class TestParseAndValidate:
 # Engine defensive validation
 # ============================================================
 class TestEngineDefensiveValidation:
-    def test_non_list_raises_validation_error(self, output_path):
+    def test_non_list_raises_validation_error(self, template_path, output_path):
         with pytest.raises(ValidationError):
-            generate_ppt_from_data({"slide_type": "title_slide"}, output_path=output_path)
+            generate_ppt_from_data({"slide_type": "title_slide"}, template_path=template_path, output_path=output_path)
 
-    def test_strict_raises_on_bad_chart_type(self, output_path):
+    def test_strict_raises_on_bad_chart_type(self, template_path, output_path):
         data = [{"slide_type": "chart_slide", "title": "T", "notes": "n",
                  "chart_type": "banana", "categories": ["a"],
                  "series": [{"name": "S", "values": [1]}]}]
         with pytest.raises(ValidationError):
-            generate_ppt_from_data(data, output_path=output_path, strict=True)
+            generate_ppt_from_data(data, template_path=template_path, output_path=output_path, strict=True)
 
-    def test_non_strict_degrades_on_bad_chart_type(self, output_path):
+    def test_non_strict_degrades_on_bad_chart_type(self, template_path, output_path):
         # Non-strict: engine degrades gracefully (defaults chart) instead of aborting.
         data = [{"slide_type": "chart_slide", "title": "T", "notes": "n",
                  "chart_type": "banana", "categories": ["a"],
                  "series": [{"name": "S", "values": [1]}]}]
         # Should NOT raise.
-        generate_ppt_from_data(data, output_path=output_path)
+        generate_ppt_from_data(data, template_path=template_path, output_path=output_path)
 
-    def test_validate_false_skips_validation(self, output_path):
+    def test_validate_false_skips_validation(self, template_path, output_path):
         # With validation disabled, valid data renders without any ValidationError.
         from pptx import Presentation
         data = [{"slide_type": "title_slide", "title": "T", "subtitle": "S"}]
-        generate_ppt_from_data(data, output_path=output_path, validate=False)
+        generate_ppt_from_data(data, template_path=template_path, output_path=output_path, validate=False)
         prs = Presentation(output_path)
         assert len(prs.slides) == 1
 

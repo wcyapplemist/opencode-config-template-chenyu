@@ -20,6 +20,16 @@ for _p in (str(_MODIFIER_SCRIPTS), str(_COMMON_SCRIPTS), str(_FILLER_SCRIPTS)):
 
 
 @pytest.fixture
-def template_path():
-    # Template lives at the repo-root template/ (_SKILLS=.opencode/skills → repo root).
-    return str(_SKILLS.parent.parent / "template" / "default.pptx")
+def template_path(tmp_path):
+    """BT-142 Phase 2.3: synthesize a minimal valid template in tmp_path.
+
+    Previously read ``template/default.pptx`` at the repo root — that bundled
+    default is removed per the user's "no bundled default" invariant. The
+    fixture now uses ``master_repairer._build_minimal_pptx_bytes(None)`` to
+    produce a minimal valid PPTX (one master + one blank layout + minimal
+    theme) — the same in-code fallback the production engine uses.
+    """
+    from master_repairer import _build_minimal_pptx_bytes
+    p = tmp_path / "default.pptx"
+    p.write_bytes(_build_minimal_pptx_bytes(None))
+    return str(p)

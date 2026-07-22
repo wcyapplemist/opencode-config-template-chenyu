@@ -51,7 +51,10 @@ from typing import Tuple
 
 MIN_FONT_SIZE_PT: float = 8.0
 FONT_STEP_PT: float = 2.0
-LINE_SPACING_DEFAULT: float = 1.2
+# BT-142 Phase 2.4a: raised from 1.2 → 1.3. PowerPoint body text typically
+# renders at 1.25-1.45× em (ascent/descent leading); 1.2 systematically
+# underestimated real rendered height (~70-85% per the review §3.3 root cause).
+LINE_SPACING_DEFAULT: float = 1.3
 TEXT_PADDING_IN: float = 0.1  # inner padding reserved on every side of a box
 
 # Character advance ratios, in units of "em" (1 em = font_size_pt).
@@ -62,7 +65,10 @@ CJK_RATIO: float = 1.0
 # Inter-paragraph spacing reserve, as a fraction of 1 em per gap (arch-review
 # M2). Replaced by the real value if/when ``schema_extractor`` captures
 # space_before/space_after (currently out of scope).
-DEFAULT_PARA_SPACING_FACTOR: float = 0.4
+# BT-142 Phase 2.4a: raised from 0.4 → 0.7. Real PowerPoint default
+# ``spcBef``/``spcAft`` is typically 0.5-1.0 line (~0.5-1.0 em); 0.4 em
+# systematically underestimated inter-paragraph gaps.
+DEFAULT_PARA_SPACING_FACTOR: float = 0.7
 
 # Conservative role ceilings (arch-review M1). Calibrated to the engine's
 # historical shipping behaviour (the previous hardcode was Pt(14)/Pt(12)) so
@@ -137,23 +143,55 @@ def _capacity_pt(width_in: float) -> float:
 # Public estimate primitives
 # ---------------------------------------------------------------------------
 
-def estimate_lines(text: str, font_pt: float, width_in: float) -> int:
+def estimate_lines(
+    text: str,
+    font_pt: float,
+    width_in: float,
+    *,
+    is_body_role: bool = False,
+    bullet_indent_in: float = 0.3,
+) -> int:
     """Estimate the wrapped line count of ``text`` at ``font_pt`` in ``width_in``.
 
     Each ``\\n``-delimited segment wraps independently (a segment always takes
     ≥1 line); a blank line counts as one line. Returns ≥1 for any non-empty
     text and 0 for empty text.
+
+    BT-142 Phase 2.4a additions:
+      - ``is_body_role`` (default ``False``): when ``True``, subtracts a
+        ``bullet_indent_in`` allowance (default 0.3in) from the available
+        width — bulleted body text has effective width reduced by the bullet
+        char + indent (~0.25-0.5in). Without this, the estimator used the
+        full placeholder width and underestimated wrap.
+      - Longest-word overflow: a single long word (> available capacity)
+        forces an extra break in reality. The previous model divided total
+        string width by capacity, rounding up only by aggregate; now we also
+        round per-segment up by the longest word's width when it exceeds cap.
     """
     if not text:
         return 0
-    cap = _capacity_pt(width_in)
+    # Effective width after bullet indent (body role only).
+    eff_width_in = max(0.5, width_in - (bullet_indent_in if is_body_role else 0.0))
+    cap = _capacity_pt(eff_width_in)
     total = 0
     for seg in text.split("\n"):
         if seg == "":
             total += 1
             continue
         width_pt = _char_width_em(seg) * font_pt
-        total += max(1, math.ceil(width_pt / cap))
+        lines_for_seg = max(1, math.ceil(width_pt / cap))
+        # Longest-word overflow: if the longest whitespace-delimited token
+        # alone exceeds the line capacity, force at least one extra break.
+        # (Conservative: real word-wrap may break mid-token, but PowerPoint
+        # default is to keep tokens whole where possible.)
+        tokens = seg.split()
+        if tokens:
+            longest_pt = max(_char_width_em(t) for t in tokens) * font_pt
+            if longest_pt > cap:
+                # The token forces at least ceil(longest/cap) lines on its own,
+                # which the aggregate ceil may have undercounted.
+                lines_for_seg = max(lines_for_seg, math.ceil(longest_pt / cap))
+        total += lines_for_seg
     return max(total, 1)
 
 

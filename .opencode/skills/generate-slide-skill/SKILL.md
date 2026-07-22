@@ -18,7 +18,7 @@ I fill the PowerPoint template (`template.pptx`) with structured content using `
 - Embed **native charts** (editable, not images) and **native pictures**
 - Resolve resource placeholders (`data_query`) into real assets before rendering
 - **Validate** every deck against a JSON schema (with two-layer retry) before it reaches the engine
-- Write English speaker notes to each slide's Notes pane (Presenter View only)
+- Write speaker notes (in the user's prompt language) to each slide's Notes pane (Presenter View only)
 - Handle missing placeholders gracefully with warnings (never crash)
 
 ## When to use me
@@ -81,7 +81,7 @@ Among composition-compatible layouts, ranking is: name affinity → fewest surpl
 
 ## Input Data Format
 
-**Language: English only.** All slide content AND speaker notes MUST be in English. Do not translate into any other language, even if the request is in Chinese or explicitly asks for a non-English deck.
+**Language: Multilingual (RELAXED).** Slide content (titles, body) and speaker notes MAY be in any language — match the user's prompt language. The orchestrator (`pptx-subagent`) enforces this relaxed policy: multilingual content is acceptable; do NOT force-translate non-English requests into English. Speaker notes MUST preserve the original user message verbatim and append a suggested transition.
 
 ```json
 [
@@ -104,7 +104,8 @@ Among composition-compatible layouts, ranking is: name affinity → fewest surpl
 
 | Field | Required | Slide Type | Description |
 |-------|----------|------------|-------------|
-| `slide_type` | Yes | All | One of: `title_slide`, `content_slide`, `section_header_slide`, `two_content_slide`, `comparison_slide`, `content_image_slide`, `chart_slide`, `closing_slide` |
+| `slide_type` | Yes | All | One of the 8 standard semantic types (`title_slide`, `content_slide`, `section_header_slide`, `two_content_slide`, `comparison_slide`, `content_image_slide`, `chart_slide`, `closing_slide`) **OR** a free-form label when `layout_name` is also provided (GIT-93). The 8 standard types auto-resolve the best-matching layout by fingerprint; a free-form label targets a specific layout via `layout_name`. |
+| `layout_name` | No | All (when `slide_type` is free-form) | Explicit template layout name to target (GIT-93). Highest precedence — overrides fingerprint/config-pin matching. Lets the agent use ANY layout the template provides (beyond the 8 standard types, e.g. `Agenda`, `Timeline`, `Team`, `Quote`). Discover available names via `available_layouts(contract)`. When omitted, the engine auto-matches by `slide_type` fingerprint (backward compatible). |
 | `title` | Yes | All | Main heading text |
 | `subtitle` | No | `title_slide`, `closing_slide` | Subheading text. On `closing_slide`, omit this field — the `End` layout's built-in sign-off block shows by default. |
 | `body` | No | `content_slide`, `content_image_slide` | Body content. `\n` = new paragraph. Format: `**Title** — Description` |
@@ -118,7 +119,7 @@ Among composition-compatible layouts, ranking is: name affinity → fewest surpl
 | `image_size` | No | any slide with `image_path` | `{"width": inches, "height": inches}` override of the preset box. |
 | `data_query` | No | `chart_slide` | Resource placeholder — asks for real chart statistics; the resolver fills `categories`/`series` with sourced numbers. |
 | `data_hint` | No | `chart_slide` | Optional expected shape for `data_query` (e.g. category/series names). |
-| `notes` | Yes | All | Full English presenter script (**~120–180 words**). Written to the slide's Notes pane (Presenter View only). `\n` = new paragraph. Must be **spoken dialogue** (quoted, speakable sentences tied to the slide's content), **interspersed stage directions**, a `TRANSITION` line, and `COACHING` with delivery + an anticipated Q&A — NOT bullet summaries. Cover/closing use `[Name]` / `[morning/afternoon]` placeholders. |
+| `notes` | Yes | All | Full presenter script (**~120–180 words**). Written to the slide's Notes pane (Presenter View only). `\n` = new paragraph. Must be **spoken dialogue** (quoted, speakable sentences tied to the slide's content), **interspersed stage directions**, a `TRANSITION` line, and `COACHING` with delivery + an anticipated Q&A — NOT bullet summaries. Cover/closing use `[Name]` / `[morning/afternoon]` placeholders. |
 | `presenter_name` | No | `closing_slide` | Sign-off name. Omit on first generation — engine removes the placeholder. Set only when user picks "Add presenter sign-off" in Stage 5 refinement. |
 | `presenter_email` | No | `closing_slide` | Sign-off email. Same lifecycle as `presenter_name`. |
 
@@ -128,6 +129,27 @@ Each line is parsed into a bold title run + description run:
 - Split at first ` — `, ` - `, or `: `
 - `**` markers stripped automatically
 - No card slot limit — body is a single multi-paragraph block
+
+### Targeting Template Layouts by Name (GIT-93)
+
+A template may have many layouts the 8 standard `slide_type` values don't cover (e.g. `Agenda`, `Timeline`, `Team`, `Quote`). To use any of them, set a **free-form** `slide_type` (a semantic label for your own use) **plus** `layout_name` pointing at the exact template layout:
+
+```json
+[
+  {"slide_type": "agenda", "layout_name": "Agenda",
+   "title": "Today's Agenda", "body": "**1.** Market\n**2.** Product\n**3.** Q&A",
+   "notes": "..."},
+  {"slide_type": "team", "layout_name": "Team", "title": "Core Team",
+   "body_slots": [{"text": "Alice — CEO", "placeholder_idx": 1},
+                  {"text": "Bob — CTO", "placeholder_idx": 2}],
+   "notes": "..."}
+]
+```
+
+- **Discover layouts**: run `available_layouts(contract)` (from `layout_contract`) to list every layout name + placeholder fingerprint + content area. Use `classify_layout_fingerprint(fp)` to get the nearest standard type as a field-set hint.
+- **Single/double body**: a `body` (or `body_left`/`body_right`) field fills the layout's BODY/OBJECT placeholder(s) — works for any layout, not just the 8 types.
+- **Multi-slot (≥3)**: use `body_slots`/`image_paths` (the `placeholder_backfill` pass fills them after render).
+- **Precedence**: `layout_name` > config-pin > fingerprint match > name fallback. Per-slide authoring wins over deck-wide operator config.
 
 ## Chart Slides
 
@@ -509,7 +531,7 @@ COACHING: Matter-of-fact tone, don't over-sell. Be ready for: "Does BIM work wit
 ## Example Interaction
 
 **User**: "Create a 3-page PPT about how AI empowers accounting"
-**Action**: English only → outline (3 slides = 1 cover + 1 content + 1 closing; **shown as info, not confirmed**) → autonomous `standard` density + self-critique (**no pre-gen question**) → JSON → validate → resolve → render → return path → **one multi-select refinement question**.
+**Action**: Multilingual (match user prompt) → outline (3 slides = 1 cover + 1 content + 1 closing; **shown as info, not confirmed**) → autonomous `standard` density + self-critique (**no pre-gen question**) → JSON → validate → resolve → render → return path → **one multi-select refinement question**.
 
 1. Outline (3 total per the slide-count convention: N=3 → 1 cover + 1 content + 1 closing). Display it with *"Here's the outline I'll generate — proceeding with defaults; you can adjust in the next step"* and continue (no wait):
    ```

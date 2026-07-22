@@ -145,6 +145,7 @@ def resolve_and_clone(
     slide_data_list: List[Dict[str, Any]],
     words_per_in2: float = None,
     clone_on: str = "missing",
+    donor_template_path: Optional[str] = None,
 ) -> tuple:
     """Full Capability B loop (issue #47 wiring): plan → clone → hand off.
 
@@ -158,6 +159,13 @@ def resolve_and_clone(
     ``clone_on`` (default ``"missing"``): only clone when a slide_type's layout
     is genuinely missing; over-limit content is handled by density downshift
     (option A). Pass ``"any"`` to also clone for over-limit content.
+
+    BT-142 Phase 3.2: ``donor_template_path`` (optional, default ``None``)
+    replaces the legacy bundled ``template/default.pptx``. When layouts need
+    borrowing, the caller MUST supply a donor PPTX path; if absent, Level 1
+    borrow is skipped with a warning (the deck still renders with available
+    layouts). Callers can synthesize a minimal donor via
+    ``master_repairer._build_minimal_pptx_bytes(None)`` written to a temp file.
 
     Usage (agent workflow):
         active, overrides, note = resolve_and_clone(base, slides)
@@ -203,33 +211,40 @@ def resolve_and_clone(
             active = template_path
             overrides = {}
 
-    # --- Level 1: borrow from default.pptx (US-4.8 NEW) ---
-    if level1_slide_types and active:
-        # Resolve default.pptx relative to THIS file's location (not the
-        # template's directory — that would be the user's dir, not the repo).
-        # state_machine.py → scripts → template-modifier-skill → skills → .opencode → repo root
-        _repo_root = Path(__file__).resolve().parents[4]
-        default_path = str(_repo_root / "template" / "default.pptx")
-        # If template_path IS the default, borrowing is meaningless.
-        if os.path.normcase(os.path.abspath(template_path)) != os.path.normcase(os.path.abspath(default_path)):
+    # --- Level 1: borrow from a donor template (US-4.8 NEW, BT-142 Phase 3.2) ---
+    # BT-142 Phase 3.2: there is no longer a bundled ``template/default.pptx``.
+    # When layouts are missing, the caller MUST supply a donor template path
+    # via the new ``donor_template_path`` parameter. If absent, Level 1 borrow
+    # is skipped with a clear warning — the deck will still render (with the
+    # base template's available layouts) but missing slide types degrade.
+    if level1_slide_types and active and donor_template_path:
+        # If template_path IS the donor, borrowing is meaningless.
+        if os.path.normcase(os.path.abspath(template_path)) != os.path.normcase(os.path.abspath(donor_template_path)):
             try:
                 from master_cloner import clone_master_and_borrow  # CRIT-4: lazy import
                 extended, l1_overrides = clone_master_and_borrow(
                     active,
                     list(level1_slide_types),
-                    default_path,
+                    donor_template_path,
                 )
                 if l1_overrides:
                     active = extended
                     overrides.update(l1_overrides)
                     logger.info(
-                        "Level 1 borrow: %d layout(s) from default.pptx",
-                        len(l1_overrides),
+                        "Level 1 borrow: %d layout(s) from donor %s",
+                        len(l1_overrides), donor_template_path,
                     )
             except Exception as exc:
                 logger.warning(
                     "Level 1 borrow failed (%s); continuing with Level 0 only", exc
                 )
+    elif level1_slide_types and active and not donor_template_path:
+        logger.warning(
+            "Level 1 borrow skipped: %d missing slide_type(s) cannot be cloned "
+            "because no donor_template_path was provided. Provide a donor PPTX "
+            "to enable layout borrowing. Missing types: %s",
+            len(level1_slide_types), sorted(level1_slide_types),
+        )
     # C1 (architecture review): python-pptx's prs.save() inside the clone strips
     # the unmodeled ppt/template_schema.json part from template_new.pptx. Re-embed
     # so the derived file carries a schema describing the CLONED layout — otherwise

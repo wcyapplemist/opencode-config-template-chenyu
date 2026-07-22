@@ -143,7 +143,7 @@ class TestSchemaGating:
 # Full pipeline order: resolve -> validate -> render
 # ============================================================
 class TestPipelineOrder:
-    def test_resolve_then_validate_then_render(self, output_path, tmp_path):
+    def test_resolve_then_validate_then_render(self, template_path, output_path, tmp_path):
         from ppt_builder import generate_ppt_from_data
         from resolvers import resolve_slide_data_list
 
@@ -164,7 +164,7 @@ class TestPipelineOrder:
         assert gate.is_valid, gate.error_messages()
         # Stage: render (cleanup_temp=False isolates this test from the global
         # temp dir so it only exercises resolve -> validate -> render).
-        generate_ppt_from_data(resolved, output_path=output_path, cleanup_temp=False)
+        generate_ppt_from_data(resolved, template_path=template_path, output_path=output_path, cleanup_temp=False)
         prs = Presentation(output_path)
         assert len(prs.slides) == 2
         # Chart slide got real data via the resolver.

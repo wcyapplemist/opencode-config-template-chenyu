@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
 GENERATED_BY = "opencode-pptx-subagent/schema_extractor"
 
 # US-1.5: the canonical path of the embedded schema inside the PPTX zip, and the
@@ -161,10 +161,24 @@ _THEME_ROLE_MAP = {
 
 _THEME_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme"
 _NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+_NS_P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 
 
 class TemplateExtractionError(Exception):
     """Domain error raised when a .pptx cannot be extracted (bad zip, no master)."""
+
+
+class SchemaVersionError(Exception):
+    """Raised when an embedded schema's major version is incompatible (BT-142 Phase 1.4).
+
+    ``read_embedded_schema`` compares the embedded ``schema_version`` against the
+    current ``SCHEMA_VERSION`` constant. A **major** mismatch (e.g. embedded 2.x
+    vs current 1.x) raises this error — the consumer should not attempt to use a
+    schema from an incompatible generation. Minor and patch mismatches do not
+    raise: patch is forward-compatible (silent auto-upgrade on next embed);
+    minor produces a ``logger.warning`` but returns the data (additive fields
+    are expected).
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -859,6 +873,85 @@ def _slugify(name: str) -> str:
     return slug or "layout"
 
 
+def _resolve_typeface(typeface: Optional[str], theme_fonts: Dict[str, Optional[str]]) -> Optional[str]:
+    """Resolve a master/placeholder font reference to a concrete typeface.
+
+    The DrawingML ``<a:latin typeface=...>`` attribute is either an explicit
+    family name ("Century Gothic") or a theme reference token:
+    ``+mj-lt`` (major Latin), ``+mn-lt`` (minor Latin), or their EA/CS
+    counterparts (``+mj-ea`` etc.). We resolve the Latin tokens to the theme's
+    major/minor Latin typeface (passed in via ``theme_fonts``); EA/CS tokens
+    fall back to the same major/minor value (the body font). Anything else is
+    returned verbatim.
+    """
+    if not typeface:
+        return None
+    token = typeface.strip()
+    if token in ("+mj-lt", "+mj-ea", "+mj-cs"):
+        return theme_fonts.get("major") or None
+    if token in ("+mn-lt", "+mn-ea", "+mn-cs"):
+        return theme_fonts.get("minor") or None
+    return token
+
+
+def _extract_master_text_styles(
+    master: Any, theme_fonts: Dict[str, Optional[str]]
+) -> Dict[str, Any]:
+    """Read the slide master's ``<p:txStyles>`` default text styling.
+
+    These are the *inherited* defaults that govern text typed into title/body
+    placeholders and plain text boxes when no run-level font is set — i.e. the
+    "default font" users see when using the template. Captured per role
+    (title / body / other), each yielding::
+
+        {"font": str, "size_pt": float|None, "color": str, "bold": bool}
+
+    Reads ``<p:txStyles><{title,body,other}Style>`` -> first ``<a:lvl1pPr>`` ->
+    ``<a:defRPr>`` (sz=bundredths-of-pt, b, <a:latin typeface>, <a:solidFill>).
+
+    Best-effort: returns ``{}`` when the master has no txStyles or parsing
+    fails (logged at warning). The ``theme_fonts`` dict ("major"/"minor") is
+    used to resolve ``+mj-lt``/``+mn-lt`` references (US-3.5).
+    """
+    out: Dict[str, Any] = {}
+    try:
+        master_el = getattr(master, "element", None)
+        if master_el is None:
+            return out
+        txs = master_el.find(f"{{{_NS_P}}}txStyles")
+        if txs is None:
+            return out
+        for key, tag in (("title", "titleStyle"), ("body", "bodyStyle"), ("other", "otherStyle")):
+            style_el = txs.find(f"{{{_NS_P}}}{tag}")
+            if style_el is None:
+                continue
+            defr = style_el.find(f".//{{{_NS_A}}}defRPr")
+            if defr is None:
+                continue
+            latin = defr.find(f"{{{_NS_A}}}latin")
+            typeface = _resolve_typeface(
+                latin.get("typeface") if latin is not None else None, theme_fonts)
+            sz_raw = defr.get("sz")
+            size_pt: Optional[float] = None
+            if sz_raw and str(sz_raw).lstrip("-").isdigit():
+                size_pt = round(int(sz_raw) / 100.0, 1)
+            color = ""
+            fill = defr.find(f"{{{_NS_A}}}solidFill")
+            if fill is not None:
+                srgb = fill.find(f"{{{_NS_A}}}srgbClr")
+                if srgb is not None and srgb.get("val"):
+                    color = "#" + str(srgb.get("val")).upper()
+            out[key] = {
+                "font": typeface or "",
+                "size_pt": size_pt,
+                "color": color,
+                "bold": str(defr.get("b")).lower() == "1",
+            }
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("master text-style capture failed (%s); emitting empty", exc)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Public API — extract_schema (Task 4)
 # ---------------------------------------------------------------------------
@@ -890,6 +983,8 @@ def extract_schema(pptx_path: str) -> Dict[str, Any]:
     theme = _build_theme(prs)
     body_font = (theme.get("font_palette") or {}).get("body") or ""
     default_body = body_font if body_font in _BUILTIN_FONTS else _DEFAULT_FALLBACK_FONT
+    _palette = theme.get("font_palette") or {}
+    theme_fonts = {"major": _palette.get("heading"), "minor": _palette.get("body")}
 
     # Slide master (AC#2): parse explicitly. A master may legally have zero
     # shapes (e.g., a synthetic minimal deck).
@@ -906,6 +1001,7 @@ def extract_schema(pptx_path: str) -> Dict[str, Any]:
         slide_master = {
             "name": "(no master)",
             "components": [],
+            "text_defaults": {},
         }
     else:
         master = masters[0]
@@ -915,6 +1011,7 @@ def extract_schema(pptx_path: str) -> Dict[str, Any]:
         slide_master = {
             "name": getattr(master, "name", "Slide Master") or "Slide Master",
             "components": master_components,
+            "text_defaults": _extract_master_text_styles(master, theme_fonts),
         }
 
     # Layouts (AC#2): enumerate every layout under the master.
@@ -1375,14 +1472,81 @@ def embed_schema(
     return EmbeddedSchemaResult(str(out_path), original_bytes, new_bytes, new_bytes - original_bytes)
 
 
+def _parse_version(v: str) -> Optional[tuple]:
+    """Parse a ``"major.minor.patch"`` string into a 3-tuple of ints. None on failure."""
+    try:
+        parts = v.split(".")
+        if len(parts) != 3:
+            return None
+        return (int(parts[0]), int(parts[1]), int(parts[2]))
+    except (ValueError, AttributeError):
+        return None
+
+
+def _check_schema_version(data: Dict[str, Any], pptx_path: str) -> None:
+    """BT-142 Phase 1.4 — negotiate the embedded schema version against ``SCHEMA_VERSION``.
+
+    Behavior:
+      - patch mismatch (e.g. embedded 1.1.1 vs current 1.1.0) → silent (forward-compatible)
+      - minor mismatch (e.g. embedded 1.0.x vs current 1.1.x) → ``logger.warning`` + return data
+      - major mismatch (e.g. embedded 2.x.x vs current 1.x.x) → raise :class:`SchemaVersionError`
+      - missing / malformed version field → ``logger.warning`` + return data (defensive)
+
+    Callers should let :class:`SchemaVersionError` propagate — it indicates the
+    schema is from an incompatible generation and consumers will misinterpret fields.
+    """
+    metadata = data.get("template_metadata") if isinstance(data, dict) else None
+    if not isinstance(metadata, dict):
+        logger.warning(
+            "embedded schema at %s has no template_metadata; skipping version check",
+            pptx_path,
+        )
+        return
+
+    embedded_raw = metadata.get("schema_version")
+    embedded = _parse_version(embedded_raw) if isinstance(embedded_raw, str) else None
+    current = _parse_version(SCHEMA_VERSION)
+
+    if embedded is None:
+        logger.warning(
+            "embedded schema at %s has missing/malformed schema_version (%r); skipping version check",
+            pptx_path, embedded_raw,
+        )
+        return
+    if current is None:  # defensive — SCHEMA_VERSION should always parse
+        return
+
+    major_e, minor_e, patch_e = embedded
+    major_c, minor_c, patch_c = current
+
+    if major_e != major_c:
+        raise SchemaVersionError(
+            f"embedded schema major version {embedded_raw} is incompatible with "
+            f"current SCHEMA_VERSION {SCHEMA_VERSION} (major mismatch). "
+            f"Re-extract the template with the current engine, or pin to a compatible version."
+        )
+    if minor_e != minor_c:
+        logger.warning(
+            "embedded schema minor version %s differs from current %s (additive fields may be missing/extra); proceeding",
+            embedded_raw, SCHEMA_VERSION,
+        )
+        return
+    if patch_e != patch_c:
+        # Patch is forward-compatible — silent. The next embed re-writes the current version.
+        return
+
+
 def read_embedded_schema(pptx_path: str) -> Optional[Dict[str, Any]]:
     """Read the embedded ``ppt/template_schema.json`` from a PPTX (US-1.5).
 
-    Error contract (architecture review MINOR-3/4):
+    Error contract (architecture review MINOR-3/4 + BT-142 Phase 1.4):
       - valid zip + present        -> the schema dict
       - valid zip + absent         -> ``None``
       - malformed / non-object JSON -> ``logger.warning`` + ``None`` (corrupt-as-absent)
       - corrupt zip / unreadable    -> raise :class:`TemplateExtractionError`
+      - major version mismatch      -> raise :class:`SchemaVersionError` (BT-142 Phase 1.4)
+      - minor version mismatch      -> ``logger.warning`` + return data
+      - patch version mismatch      -> silent (forward-compatible)
     """
     try:
         with zipfile.ZipFile(str(pptx_path), "r") as z:
@@ -1412,6 +1576,7 @@ def read_embedded_schema(pptx_path: str) -> Optional[Dict[str, Any]]:
             _EMBEDDED_SCHEMA_PATH,
         )
         return None
+    _check_schema_version(data, str(pptx_path))  # BT-142 Phase 1.4
     return data
 
 
@@ -1450,6 +1615,16 @@ def build_extraction_summary(schema: Dict[str, Any]) -> str:
         lines.append(f"Slide size: {size_str}")
     lines.append(f"Slide master: {master.get('name') or '(unnamed)'} "
                  f"({len(master_comps)} component{'s' if len(master_comps) != 1 else ''})")
+    text_defaults = master.get("text_defaults") or {}
+    for role in ("title", "body", "other"):
+        td = text_defaults.get(role)
+        if not isinstance(td, dict):
+            continue
+        sz = td.get("size_pt")
+        sz_s = "{:g}pt".format(sz) if isinstance(sz, (int, float)) else "?pt"
+        weight = "bold" if td.get("bold") else "regular"
+        lines.append(f"  master {role} text: {td.get('font') or '?'} {sz_s} "
+                     f"{td.get('color') or ''} ({weight})".rstrip())
     lines.append(f"Layouts: {len(layouts)}")
     for layout in layouts:
         if isinstance(layout, dict):
